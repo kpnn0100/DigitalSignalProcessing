@@ -1,10 +1,10 @@
-
 #include "Block.h"
 
 void Block::update()
 {
     if (isParallel)
     {
+        // Calculate the maximum sample delay among all processors for parallel mode
         double sampleDelay = 0;
         for (auto processor : processorList)
         {
@@ -16,6 +16,7 @@ void Block::update()
     }
     else
     {
+        // Calculate the total delay for serial mode
         double delay = 0;
         for (auto processor : processorList)
         {
@@ -23,6 +24,8 @@ void Block::update()
         }
         setSampleDelay(delay);
     }
+
+    // Create Delay instances for each processor to synchronize their sample delays
     delaySyncMachine = vector<Delay>(processorList.size());
     for (int i = 0; i < processorList.size(); i++)
     {
@@ -32,13 +35,14 @@ void Block::update()
 
 void Block::setIsParallel(bool newState)
 {
-    isParallel = newState;
+    isParallel = newState; // Set the parallel processing mode
 }
 
-void Block::add(SignalProcessor * newProcessor)
+void Block::add(SignalProcessor* newProcessor)
 {
-    processorList.push_back(newProcessor);
-    callUpdate();
+    processorList.push_back(newProcessor); // Add a new processor to the list
+    newProcessor->setParent(this); // Set the parent of the new processor to this block
+    callUpdate(); // Update the block's state
 }
 
 double Block::out(double in)
@@ -46,30 +50,38 @@ double Block::out(double in)
     if (isParallel)
     {
         double out = 0;
+
+        // Process each processor's output using synchronized delays
         for (int i = 0; i < processorList.size(); i++)
         {
             out += delaySyncMachine[i].out(processorList[i]->out(in));
         }
+
+        // Average the outputs and ensure the value is within the range [-1, 1]
         out = out / processorList.size();
-        if (out < 1 && out > -1)
-            return out;
-        if (out >= 1)
-            return 1;
-        if (out <= -1)
+        if (out < -1)
             return -1;
+        else if (out > 1)
+            return 1;
+        else
+            return out;
     }
     else
     {
         double out = in;
+
+        // Process the input through each processor sequentially
         for (int i = 0; i < processorList.size(); i++)
         {
             out = processorList[i]->out(out);
         }
-        if (out < 1 && out > -1)
-            return out;
-        if (out >= 1)
-            return 1;
-        if (out <= -1)
+
+        // Ensure the output value is within the range [-1, 1]
+        if (out < -1)
             return -1;
+        else if (out > 1)
+            return 1;
+        else
+            return out;
     }
 }
