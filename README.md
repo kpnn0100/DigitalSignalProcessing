@@ -1,1 +1,1 @@
-# Digital Signal Processing for audio by Gyrus Space
+# Digital Signal Processing by Gyrus Space

@@ -93,7 +93,10 @@ public:
         }
         return *this;
     }
-
+    T at(int index) const
+    {
+        return *(storage + (head + index) % cap);
+    }
     T &operator[](int index)
     {
         return *(storage + (head + index) % cap);

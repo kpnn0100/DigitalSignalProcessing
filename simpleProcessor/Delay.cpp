@@ -1,28 +1,3 @@
-#pragma once
-#include "SignalProcessor.h"
-#include <cmath>
-class Delay : public SignalProcessor
-{
-private:
-    CircularList<double> delayBuffer;
-    double mainDelay;
-    int mMaxDelay;
-public:
-    Delay();
-    Delay(double delay);
-    Delay(double delay, double maxDelay);
-    void setDelay(double newDelay);
-    double out(double in) override;
-    void setMaxDelay(int maxDelay)
-    {
-        mMaxDelay = maxDelay;
-        while (delayBuffer.size()<mMaxDelay)
-        {
-            delayBuffer.push_back(0.0);
-        }
-    }
-};
-
 #include "Delay.h"
 
 Delay::Delay()
@@ -73,4 +48,10 @@ double Delay::out(double in)
         delayBuffer.push_front_and_pop_back(in);
         return outSample;
     } else return in;
+}
+
+inline void Delay::setMaxDelay(int maxDelay)
+{
+    mMaxDelay = maxDelay;
+    delayBuffer = CircularList<double>(maxDelay);
 }
