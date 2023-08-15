@@ -45,7 +45,7 @@ void Block::add(SignalProcessor* newProcessor)
     callUpdate(); // Update the block's state
 }
 
-double Block::out(double in)
+double Block::process(double in)
 {
     if (isParallel)
     {

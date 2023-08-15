@@ -19,7 +19,7 @@ void Gain::setGain(double gain)
     mGainFactor = gain;
 }
 
-double Gain::out(double in)
+double Gain::process(double in)
 {
     return in * mGainFactor;
 }

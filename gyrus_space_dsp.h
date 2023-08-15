@@ -10,5 +10,8 @@
 
 //Spatial
 #include "spatial/Positioner.h"
+//Equalizer
+#include "equalizer/LowPassFilter.h"
+#include "equalizer/LowPassFilterButterWorth.h"
 
 #include "util/Util.h"

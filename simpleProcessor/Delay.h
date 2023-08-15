@@ -31,7 +31,13 @@ private:
     CircularList<double> delayBuffer; /**< Circular buffer to store delayed samples. */
     double mainDelay; /**< The main delay value for the input signal. */
     int mMaxDelay; /**< The maximum allowable delay value. */
-
+    /**
+     * @brief Processes the input signal with the applied delay.
+     *
+     * @param in The input signal value.
+     * @return The output signal value after applying the delay.
+     */
+    double process(double in) override;
 public:
     /**
      * @brief Default constructor for the Delay class.
@@ -66,14 +72,6 @@ public:
      * @param newDelay The new delay value in samples.
      */
     void setDelay(double newDelay);
-
-    /**
-     * @brief Processes the input signal with the applied delay.
-     *
-     * @param in The input signal value.
-     * @return The output signal value after applying the delay.
-     */
-    double out(double in) override;
 
     /**
      * @brief Sets the maximum allowable delay value.

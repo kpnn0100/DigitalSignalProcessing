@@ -16,7 +16,9 @@
  */
 #pragma once
 #include "CircularList.h"
+#define _USE_MATH_DEFINES
 #include <math.h>
+#include <cmath>
  /**
   * @brief A base signal processing module
   *
@@ -34,7 +36,10 @@ protected:
     double mSampleDelay = 0; 
     /**< The global sample rate for all signal processors. */
     static double mSampleRate; 
-
+    /**< The global BufferSize for all signal processors. */
+    static int mBufferSize;
+    /**< Buffer counter for smooth change of update */
+    int mBufferCounter;
     /**
      * @brief Sets the sample delay for the signal processor.
      *
@@ -47,7 +52,16 @@ protected:
      * should call this when something affect its parent, ex: changing sampleDelay
      */
     void callUpdate();
+    /**
+     * @brief overide this for sample processing.
+     *
+     * @param in The input signal value.
+     * @return The processed output signal value.
+     */
+    
+    virtual double process(double out) = 0;
 
+    virtual void smoothUpdate();
 public:
     /**
      * @brief Default constructor for the SignalProcessor class.
@@ -55,7 +69,12 @@ public:
      * Initializes the signal processor and calls the update method.
      */
     SignalProcessor();
-
+    /**
+     * @brief Sets the buffer size for the signal processor and triggers an update.
+     *
+     * @param sampleRate The new buffer size to be set.
+     */
+    void setBufferSize(double bufferSize);
     /**
      * @brief Sets the sample rate for the signal processor and triggers an update.
      *
@@ -76,15 +95,13 @@ public:
      * This method should be overridden by subclasses to perform specific update operations.
      */
     virtual void update();
-
-    /**
+        /**
      * @brief Pure virtual method to process an input signal and produce an output signal.
      *
      * @param in The input signal value.
      * @return The processed output signal value.
      */
-    virtual double out(double in) = 0;
-
+    double out(double in);
     /**
      * @brief Returns the sample delay for the signal processor.
      *

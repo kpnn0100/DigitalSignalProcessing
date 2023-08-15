@@ -32,7 +32,7 @@ void Delay::setDelay(double newDelay)
     }
 }
 
-double Delay::out(double in)
+double Delay::process(double in)
 {
     if (mainDelay > 0)
     {

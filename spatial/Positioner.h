@@ -37,38 +37,36 @@ private:
     Coordinate mDestination; /**< The destination position in space. */
     Coordinate mOldSource; /**< The previous source position used for smooth transition. */
     Coordinate mOldDestination; /**< The previous destination position used for smooth transition. */
+    Coordinate mCurrentSource;
+    Coordinate mCurrentDestination;
     double mDelaySample; /**< The delay sample value. */
     double mMaxDistance; /**< The maximum distance for delay calculation. */
     static const double SPEED_OF_SOUND; /**< The speed of sound in the medium. */
     bool isNeedUpdate; /**< Flag indicating the need for parameter update. */
     bool mSmoothChange = true; /**< Flag indicating smooth or abrupt position changes. */
-    int mCounter; /**< Counter for smooth position transition. */
-    int mLastCounter; /**< The counter value at the last position update. */
     double mCurrentDistance; /**< The current distance between source and destination. */
     double mCurrentGain; /**< The current gain adjustment factor. */
     static const double STANDARD_DISTANCE; /**< The standard reference distance. */
     Block mBlockFilter; /**< Block for managing delay and gain filters. */
     Delay mDelayFilter; /**< Delay filter for adjusting sound delay. */
     Gain mGainFilter; /**< Gain filter for adjusting sound gain. */
-
-    /**
-     * @brief Updates the position transition counter and previous positions.
-     */
-    void updateCounter();
-
-public:
-    /**
-     * @brief Default constructor for the Positioner class.
-     */
-    Positioner();
-
+    Gain mOffsetGainFilter;
+    Positioner* mSyncTarget;
+    bool isKeepGain = true;
     /**
      * @brief Processes the input signal while simulating sound source movement.
      *
      * @param in The input signal value.
      * @return The processed output signal value.
      */
-    double out(double in) override;
+    double process(double in) override;
+public:
+    void smoothUpdate() override;
+    void setKeepGain(bool keepGain);
+    /**
+     * @brief Default constructor for the Positioner class.
+     */
+    Positioner();
 
     /**
      * @brief Sets the smooth or abrupt change in position.

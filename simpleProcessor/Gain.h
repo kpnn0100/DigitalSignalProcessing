@@ -27,7 +27,13 @@ class Gain : public SignalProcessor
 {
 protected:
     double mGainFactor; /**< The gain factor to apply to the input signal. */
-
+    /**
+     * @brief Processes the input signal by applying the gain factor.
+     *
+     * @param in The input signal value.
+     * @return The output signal value after applying the gain.
+     */
+    virtual double process(double in) override;
 public:
     /**
      * @brief Default constructor for the Gain class.
@@ -55,11 +61,4 @@ public:
      */
     void setGain(double newGain);
 
-    /**
-     * @brief Processes the input signal by applying the gain factor.
-     *
-     * @param in The input signal value.
-     * @return The output signal value after applying the gain.
-     */
-    virtual double out(double in) override;
 };

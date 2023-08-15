@@ -62,6 +62,6 @@ public:
      * @param in The input signal value.
      * @return The processed output signal value.
      */
-    virtual double out(double in) override;
+    virtual double process(double in) override;
 };
 
