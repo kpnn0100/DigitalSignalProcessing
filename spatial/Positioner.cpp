@@ -7,10 +7,10 @@ Positioner::Positioner()
 {
     // Initialize the Delay and Block filters for processing
     mDelayFilter = Delay();
+    mDelayFilter.setSmoothEnable(false);
     mSyncTarget = nullptr;
     mBlockFilter.add(&mDelayFilter);
     mBlockFilter.add(&mGainFilter);
-    mBlockFilter.add(&mOffsetGainFilter);
     mBlockFilter.setIsParallel(false); // Set the block to process filters serially
 }
 
@@ -19,34 +19,39 @@ double Positioner::process(double in)
     return mBlockFilter.out(in); // Process the input through the Block filter
 }
 
-void Positioner::setSmoothChange(bool smoothChange)
-{
-    mSmoothChange = smoothChange; // Set the position change smoothness flag
-}
 
 
-void Positioner::smoothUpdate()
+void Positioner::smoothUpdate(double currentRatio)
 {
-    updateDelaySample();
+    updateDelaySample(currentRatio);
     updateGain();
 }
 
-void Positioner::setKeepGain(bool keepGain)
-{
-    isKeepGain = keepGain;
-}
 
+void Positioner::saveProperty()
+{
+    mOldDestination = mCurrentDestination;
+    mOldSource = mCurrentSource;
+}
 
 void Positioner::setDestination(Coordinate destination)
 {
-    mOldDestination = mCurrentDestination;
+    if (mDestination == destination)
+    {
+        return;
+    }
+    saveProperty();
     mDestination = destination; // Set the new destination
     callUpdate();
 }
 
 void Positioner::setSource(Coordinate source)
 {
-    mOldSource = mCurrentSource;
+    if (mSource == source)
+    {
+        return;
+    }
+    saveProperty();
     mSource = source; // Set the new source
     callUpdate();
 }
@@ -58,27 +63,16 @@ void Positioner::setMaxDistance(double maxDistance)
     mDelayFilter.setMaxDelay((int)(maxDistance / SPEED_OF_SOUND * mSampleRate));
 }
 
-void Positioner::updateDelaySample()
+void Positioner::updateDelaySample(double currentRatio)
 {
-    double ratio;
-    if (mBufferSize == 0)
-    {
-        ratio = 1.0; // No previous transition
-    }
-    else
-    {
-        ratio = (double)mBufferCounter / (double)mBufferSize;
-    }
-
     // Calculate expected positions during transition
-    mCurrentSource = mOldSource * (1 - ratio) + mSource * ratio;
-    mCurrentDestination = mOldDestination * (1 - ratio) + mDestination * ratio;
-
+    mCurrentSource = mOldSource * (1 - currentRatio) + mSource * currentRatio;
+    mCurrentDestination = mOldDestination * (1 - currentRatio) + mDestination * currentRatio;
     double distanceToDelay;
     double distance;
 
     // Calculate the distance for delay and gain adjustment
-    if (mSmoothChange)
+    if (mSmoothEnable)
     {
         distance = mCurrentSource.distanceTo(mCurrentDestination); // Smooth transition
     }
@@ -103,14 +97,7 @@ void Positioner::updateGain()
 {
 
     mCurrentGain = STANDARD_DISTANCE / mCurrentDistance; // Calculate the gain adjustment
-    if (isKeepGain)
-    {
-        mGainFilter.setGain(1.0);
-    }
-    else
-    {
-        mGainFilter.setGain(mCurrentGain); // Update the gain filter with the new gain
-    }
+    mGainFilter.setGain(mCurrentGain); // Update the gain filter with the new gain
 
 }
 
@@ -121,5 +108,23 @@ double Positioner::getGain()
 
 void Positioner::update()
 {
+    if (mSmoothEnable)
+    {
+        smoothUpdate(0.0);
+    }
+    else
+    {
+        updateDelaySample(1.0);
+        updateGain();
+    }
+}
 
+Coordinate Positioner::getCurrentSource()
+{
+    return mCurrentSource;
+}
+
+Coordinate Positioner::getCurrentDestination()
+{
+    return mCurrentDestination;
 }

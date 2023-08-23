@@ -42,17 +42,13 @@ private:
     double mDelaySample; /**< The delay sample value. */
     double mMaxDistance; /**< The maximum distance for delay calculation. */
     static const double SPEED_OF_SOUND; /**< The speed of sound in the medium. */
-    bool isNeedUpdate; /**< Flag indicating the need for parameter update. */
-    bool mSmoothChange = true; /**< Flag indicating smooth or abrupt position changes. */
     double mCurrentDistance; /**< The current distance between source and destination. */
     double mCurrentGain; /**< The current gain adjustment factor. */
     static const double STANDARD_DISTANCE; /**< The standard reference distance. */
     Block mBlockFilter; /**< Block for managing delay and gain filters. */
     Delay mDelayFilter; /**< Delay filter for adjusting sound delay. */
     Gain mGainFilter; /**< Gain filter for adjusting sound gain. */
-    Gain mOffsetGainFilter;
     Positioner* mSyncTarget;
-    bool isKeepGain = true;
     /**
      * @brief Processes the input signal while simulating sound source movement.
      *
@@ -60,20 +56,14 @@ private:
      * @return The processed output signal value.
      */
     double process(double in) override;
+    void saveProperty();
 public:
-    void smoothUpdate() override;
-    void setKeepGain(bool keepGain);
+    void smoothUpdate(double currentRatio) override;
     /**
      * @brief Default constructor for the Positioner class.
      */
     Positioner();
 
-    /**
-     * @brief Sets the smooth or abrupt change in position.
-     *
-     * @param smoothChange True for smooth position change, false for abrupt change.
-     */
-    void setSmoothChange(bool smoothChange);
 
     /**
      * @brief Sets the destination position in space.
@@ -113,7 +103,7 @@ public:
     /**
      * @brief Updates the delay sample and delay filter settings.
      */
-    void updateDelaySample();
+    void updateDelaySample(double currentRatio);
 
     /**
      * @brief Updates the gain adjustment factor.
@@ -126,4 +116,6 @@ public:
      * This method is called to reset position update parameters.
      */
     void update() override;
+    Coordinate getCurrentSource();
+    Coordinate getCurrentDestination();
 };

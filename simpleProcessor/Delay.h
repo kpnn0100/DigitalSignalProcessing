@@ -31,6 +31,8 @@ private:
     CircularList<double> delayBuffer; /**< Circular buffer to store delayed samples. */
     double mainDelay; /**< The main delay value for the input signal. */
     int mMaxDelay; /**< The maximum allowable delay value. */
+    double mOldDelay;
+    double mCurrentDelay;
     /**
      * @brief Processes the input signal with the applied delay.
      *
@@ -79,4 +81,5 @@ public:
      * @param maxDelay The maximum delay value in samples.
      */
     void setMaxDelay(int maxDelay);
+    void smoothUpdate(double currentRatio) override;
 };

@@ -15,31 +15,47 @@
  *  shall not be held liable for any damages or liabilities arising from the use of this library.
  */
 #pragma once
+
 #include "CircularList.h"
+#include "../util/IPropertyChangeListener.h"
+#include <vector>
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <cmath>
+
  /**
   * @brief A base signal processing module
   *
+  * This class serves as the base for various signal processing modules in the Gyrus Space DSP Library.
+  * It provides functionality for processing digital signals and audio data with support for
+  * buffer size, sample rate, and smoothing updates.
   */
 class SignalProcessor
 {
 private:
     /**< Pointer to the parent SignalProcessor, if any. */
-    SignalProcessor* mParent = nullptr; 
+    SignalProcessor* mParent = nullptr;
+    bool mBypass = false;
+    // Helper methods for smoothing and buffer management
+    void updateBufferCounter();
+    bool shouldSmoothUpdate();
+    double calculateSmoothRatio();
+    void performSmoothUpdate(double ratio);
 
 protected:
-    /**< The sample delay for the signal processor. 
-        This is for sync the delay when using parallel processor
+    std::vector<IPropertyChangeListener*> mPropertyListenerList;
+    bool mSmoothEnable = true;
+    /**< The sample delay for the signal processor.
+        This is for synchronizing the delay when using parallel processors.
     */
-    double mSampleDelay = 0; 
+    double mSampleDelay = 0;
     /**< The global sample rate for all signal processors. */
-    static double mSampleRate; 
+    static double mSampleRate;
     /**< The global BufferSize for all signal processors. */
     static int mBufferSize;
     /**< Buffer counter for smooth change of update */
     int mBufferCounter;
+
     /**
      * @brief Sets the sample delay for the signal processor.
      *
@@ -49,19 +65,32 @@ protected:
 
     /**
      * @brief Calls the update method of the signal processor and its parent.
-     * should call this when something affect its parent, ex: changing sampleDelay
+     * This should be called when something affects its parent, for example, changing sampleDelay.
      */
     void callUpdate();
+
     /**
-     * @brief overide this for sample processing.
+     * @brief Virtual method for processing an input signal.
+     *
+     * This method should be overridden by subclasses to perform specific signal processing operations.
      *
      * @param in The input signal value.
      * @return The processed output signal value.
      */
-    
-    virtual double process(double out) = 0;
+    virtual double process(double in) = 0;
 
-    virtual void smoothUpdate();
+    /**
+     * @brief Notifies property listeners of property changes.
+     */
+    void notifyPropertyListener();
+
+    /**
+     * @brief Performs a smooth update of the signal processor's state.
+     *
+     * @param currentRatio The current ratio used for smoothing the update.
+     */
+    virtual void smoothUpdate(double currentRatio);
+
 public:
     /**
      * @brief Default constructor for the SignalProcessor class.
@@ -69,18 +98,20 @@ public:
      * Initializes the signal processor and calls the update method.
      */
     SignalProcessor();
+
     /**
      * @brief Sets the buffer size for the signal processor and triggers an update.
      *
-     * @param sampleRate The new buffer size to be set.
+     * @param bufferSize The new buffer size to be set.
      */
-    void setBufferSize(double bufferSize);
+    static void setBufferSize(double bufferSize);
+
     /**
      * @brief Sets the sample rate for the signal processor and triggers an update.
      *
      * @param sampleRate The new sample rate to be set.
      */
-    void setSampleRate(double sampleRate);
+    static void setSampleRate(double sampleRate);
 
     /**
      * @brief Sets the parent SignalProcessor for this instance.
@@ -90,18 +121,27 @@ public:
     void setParent(SignalProcessor* parent);
 
     /**
+     * @brief Adds a property listener to the signal processor.
+     *
+     * @param listener Pointer to the property change listener.
+     */
+    void addPropertyListener(IPropertyChangeListener* listener);
+
+    /**
      * @brief Virtual method to update the state of the signal processor.
      *
      * This method should be overridden by subclasses to perform specific update operations.
      */
     virtual void update();
-        /**
-     * @brief Pure virtual method to process an input signal and produce an output signal.
+
+    /**
+     * @brief Processes an input signal and produces an output signal.
      *
      * @param in The input signal value.
      * @return The processed output signal value.
      */
     double out(double in);
+
     /**
      * @brief Returns the sample delay for the signal processor.
      *
@@ -110,9 +150,17 @@ public:
     double getSampleDelay();
 
     /**
+     * @brief Enables or disables smooth updates for the signal processor.
+     *
+     * @param smoothEnable Boolean indicating whether smooth updates should be enabled.
+     */
+    void setSmoothEnable(bool smoothEnable);
+
+    /**
      * @brief Destructor for the SignalProcessor class.
      *
      * This destructor can be overridden by subclasses if needed.
      */
+    void setBypass(bool bypass);
     virtual ~SignalProcessor();
 };

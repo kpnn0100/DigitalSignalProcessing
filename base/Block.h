@@ -33,7 +33,8 @@ protected:
     bool isParallel = false; /**< Flag indicating whether the processors in the block run in parallel. */
     vector<SignalProcessor*> processorList; /**< List of SignalProcessors in the block. */
     vector<Delay> delaySyncMachine; /**< List of Delay instances for sample delay synchronization. */
-
+    static constexpr double OUTPUT_MIN = -1.0;
+    static constexpr double OUTPUT_MAX = 1.0;
 public:
     /**
      * @brief Updates the state of the block and its contained processors.

@@ -47,41 +47,18 @@ void Block::add(SignalProcessor* newProcessor)
 
 double Block::process(double in)
 {
-    if (isParallel)
-    {
-        double out = 0;
-
-        // Process each processor's output using synchronized delays
-        for (int i = 0; i < processorList.size(); i++)
-        {
-            out += delaySyncMachine[i].out(processorList[i]->out(in));
+    double out = isParallel ? 0.0 : in;
+    for (int i = 0; i < processorList.size(); i++)
+        if (isParallel) {
+            out += delaySyncMachine[i].out(processorList[i]->out(in))/ (double)processorList.size();
         }
-
-        // Average the outputs and ensure the value is within the range [-1, 1]
-        out = out / processorList.size();
-        if (out < -1)
-            return -1;
-        else if (out > 1)
-            return 1;
-        else
-            return out;
-    }
-    else
-    {
-        double out = in;
-
-        // Process the input through each processor sequentially
-        for (int i = 0; i < processorList.size(); i++)
-        {
+        else {
             out = processorList[i]->out(out);
         }
-
-        // Ensure the output value is within the range [-1, 1]
-        if (out < -1)
-            return -1;
-        else if (out > 1)
-            return 1;
-        else
-            return out;
-    }
+    if (out < OUTPUT_MIN)
+        return OUTPUT_MIN;
+    else if (out > OUTPUT_MAX)
+        return OUTPUT_MAX;
+    else
+        return out;
 }

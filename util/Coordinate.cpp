@@ -50,6 +50,20 @@ double Coordinate::distanceTo(const Coordinate& other) const
     double dz = z - other.z;
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
+double Coordinate::angleToOnXZPlane(const Coordinate& other) const
+{
+    double xVector = other.x - x;
+    double yVector = other.z - z;
+    if (xVector == 0.0 && yVector == 0)
+    {
+        return 0;
+    }
+    double degree = atan2(yVector, xVector) * 180 / M_PI;
+    if (degree < 0.0)
+        degree = 360.0 + degree;
+    return degree;
+}
+
 
 Coordinate Coordinate::operator+(const Coordinate& other) const
 {
@@ -72,4 +86,8 @@ Coordinate Coordinate::operator/(double scalar) const
         return Coordinate(x / scalar, y / scalar, z / scalar);
     else
         throw std::runtime_error("Division by zero!");
+}
+bool Coordinate::operator==(const Coordinate& other) const
+{
+    return x == other.x && y == other.y && z == other.z;
 }
