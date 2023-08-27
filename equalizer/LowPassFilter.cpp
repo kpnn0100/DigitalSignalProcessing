@@ -42,11 +42,11 @@ void LowPassFilter::update() {
     double RC = 1.0 / (2.0 * M_PI * mCurrentCutoffFrequency);
     // Calculate the smoothing factor (alpha) for the filter
     alpha = dt / (RC + dt);
+    setSampleDelay(calculatePhaseDelay());
     if (isnan(alpha) || isinf(alpha))
     {
         alpha = 1.0;
     }
-    alpha = 0.9;
     
 }
 
@@ -62,6 +62,13 @@ void LowPassFilter::smoothUpdate(double currentRatio)
 double LowPassFilter::process(double in) {
     filteredValue = alpha * in + (1.0 - alpha) * filteredValue;
     return filteredValue;
+}
+
+double LowPassFilter::calculatePhaseDelay()
+{
+    double RC = 1.0 / (2.0 * M_PI * mCurrentCutoffFrequency);
+    double averagePhaseDelaySamples = 0.5 * RC * mSampleRate;
+    return averagePhaseDelaySamples;
 }
 
 

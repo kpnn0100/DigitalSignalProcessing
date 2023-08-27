@@ -20,14 +20,14 @@ PositionSimulator::PositionSimulator()
         mMainFilter[i].add(mOffsetGain + i);
         mMainFilter[i].add(mPositioner + i);
         mPositioner[i].addPropertyListener(this);
-        //mAcousticShadowFilter[i].setCutoffFrequency(CUTOFF_FREQUENCY);
-        //mMainFilter[i].add(mAcousticShadowBlock + i);
-        //mAcousticShadowBlock[i].setIsParallel(true);
-        //mAcousticShadowBlock[i].add(mLowpassAndGainBlock + i);
-        //mAcousticShadowBlock[i].add(mParallelGainForLowpass + i);
-        //mLowpassAndGainBlock[i].setIsParallel(false);
-        //mLowpassAndGainBlock[i].add(mAcousticShadowFilter + i);
-        //mLowpassAndGainBlock[i].add(mRatioGainForLowpass + i);
+        mAcousticShadowFilter[i].setCutoffFrequency(CUTOFF_FREQUENCY);
+        mMainFilter[i].add(mAcousticShadowBlock + i);
+        mAcousticShadowBlock[i].setIsParallel(true);
+        mAcousticShadowBlock[i].add(mLowpassAndGainBlock + i);
+        mAcousticShadowBlock[i].add(mParallelGainForLowpass + i);
+        mLowpassAndGainBlock[i].setIsParallel(false);
+        mLowpassAndGainBlock[i].add(mAcousticShadowFilter + i);
+        mLowpassAndGainBlock[i].add(mRatioGainForLowpass + i);
     }
 
 

@@ -10,7 +10,8 @@ private:
     double mCutoffFrequency;
     double mOldCutoffFrequency;
     double mCurrentCutoffFrequency;
-double process(double in) override;
+    double process(double in) override;
+    double calculatePhaseDelay();
 public:
     LowPassFilter();
     explicit LowPassFilter(double cutoffFrequency);
