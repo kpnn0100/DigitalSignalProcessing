@@ -10,53 +10,76 @@
 
 #include "LowPassFilterButterWorth.h"
 
-LowPassFilterButterWorth::LowPassFilterButterWorth() : LowPassFilterButterWorth(10000.0, 12.0) {}
+double LowPassFilterButterWorth::process(double in)
+{
+    inputBuffer.push_back(in);
+    if (inputBuffer.size() > mOrder) {
+        inputBuffer.erase(inputBuffer.begin());
+    }
+    if (in != 0.0)
+    {
+        int a = 5;
+    }
+    double output = 0.0;
+    for (int i = 0; i < mOrder; ++i) {
+        output += bCoeffs[i] * inputBuffer[mOrder - 1 - i];
+    }
 
-LowPassFilterButterWorth::LowPassFilterButterWorth(double cutoffFreq, double slope)
-    : cutoffFreq(cutoffFreq), slope(slope) {
-    callUpdate();
-    reset();
-}
+    for (int i = 1; i < mOrder; ++i) {
+        output -= aCoeffs[i] * outputBuffer[mOrder - 1 - i];
+    }
 
-double LowPassFilterButterWorth::process(double in) {
-    // Direct Form I implementation
-    double output = b[0] * in + z[0];
-    z[0] = b[1] * in - a[1] * output + z[1];
-    z[1] = b[2] * in - a[2] * output;
+    outputBuffer.push_back(output);
+    if (outputBuffer.size() > mOrder) {
+        outputBuffer.erase(outputBuffer.begin());
+    }
+
     return output;
 }
 
-void LowPassFilterButterWorth::reset() {
-    z[0] = 0.0;
-    z[1] = 0.0;
-}
-
-void LowPassFilterButterWorth::setCutoffFrequency(double freq)
-
+double LowPassFilterButterWorth::calculatePhaseDelay()
 {
-    if (cutoffFreq != freq)
-    {
-        cutoffFreq = freq;
-        callUpdate();
-        reset();
-    }
-
+    return 0.0;
 }
 
-void LowPassFilterButterWorth::update() {
-    double wc = 2.0 * M_PI * cutoffFreq / mSampleRate;
-    double A = std::pow(10.0, slope / 40.0);
-    double beta = 0.5 * (1.0 - std::sqrt(1.0 - 1.0 / (A * A)));
+void LowPassFilterButterWorth::update()
+{
+    bCoeffs.resize(mOrder);
+    aCoeffs.resize(mOrder);
 
-    b[0] = (1.0 - std::exp(-beta * wc)) / (2.0 - 2.0 * std::cos(wc));
-    b[1] = 2.0 * b[0];
-    b[2] = b[0];
-    a[1] = -2.0 * std::exp(-beta * wc) * std::cos(wc);
-    a[2] = std::exp(-2.0 * beta * wc);
+    const double wc = 2.0 * M_PI * mCurrentCutoffFrequency;
+    const double T = 1.0 / mSampleRate;
 
-    // Normalize filter coefficients
-    b[0] /= a[2];
-    b[1] /= a[2];
-    b[2] /= a[2];
-    a[1] /= a[2];
+    for (int k = 1; k <= mOrder; ++k) {
+        const double theta = M_PI * k / mOrder;
+        const double alpha = sin(0.5 * theta) / cos(0.5 * theta);
+        const double beta = 1.0 + alpha;
+
+        bCoeffs[k - 1] = 1.0 / beta;
+        aCoeffs[k - 1] = (1.0 - alpha) / beta;
+    }
+}
+
+
+void LowPassFilterButterWorth::reset()
+{
+    inputBuffer = std::vector<double>(mOrder, 0.0);
+    outputBuffer = std::vector<double>(mOrder, 0.0);
+}
+
+LowPassFilterButterWorth::LowPassFilterButterWorth()
+{
+    mOrder = 1;
+    reset();
+    callUpdate();
+}
+
+void LowPassFilterButterWorth::setOrder(int order)
+{
+    if (mOrder != order)
+    {
+        mOrder = order;
+        reset();
+        callUpdate();
+    }
 }

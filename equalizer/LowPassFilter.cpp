@@ -1,38 +1,5 @@
 #include "LowPassFilter.h"
-#include <cmath>
 
-LowPassFilter::LowPassFilter() : LowPassFilter(10000.0) {}
-
-LowPassFilter::LowPassFilter(double cutoffFrequency) {
-    /*logger = new FileLogger(juce::String("G:\\Dev\\plugin\\DSPTester\\Builds\\VisualStudio2022\\x64\\Debug\\VST3\\log.txt"), "log");*/
-    mCutoffFrequency = cutoffFrequency;
-    mOldCutoffFrequency = cutoffFrequency;
-    mCurrentCutoffFrequency = cutoffFrequency;
-    mSmoothEnable = false;
-    reset();
-    callUpdate();
-}
-void LowPassFilter::setCutoffFrequency(double freq)
-
-{
-
-    if (mCutoffFrequency != freq)
-    {
-
-        mCutoffFrequency = freq;
-        mOldCutoffFrequency = mCurrentCutoffFrequency;
-        if (mSmoothEnable)
-        {
-            smoothUpdate(0.0);
-        }
-        else
-        {
-            smoothUpdate(1.0);
-        }
-        
-    }
-
-}
 void LowPassFilter::reset()
 {
     filteredValue = 0.0;
@@ -47,15 +14,6 @@ void LowPassFilter::update() {
     {
         alpha = 1.0;
     }
-    
-}
-
-void LowPassFilter::smoothUpdate(double currentRatio)
-{
-    double oldCutoffLog = log(mOldCutoffFrequency);
-    double newCutoffLog = log(mCutoffFrequency);
-    mCurrentCutoffFrequency = exp(oldCutoffLog * (1 - currentRatio) + newCutoffLog * currentRatio);
-    update();
 }
 
 

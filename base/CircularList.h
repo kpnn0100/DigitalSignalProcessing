@@ -244,7 +244,7 @@ public:
         head = ((head - 1) + cap) % cap;
         *(storage + head) = data;
     }
-    void pop_front(T data)
+    void pop_front()
     {
         s--;
         head = (head + 1) % cap;
