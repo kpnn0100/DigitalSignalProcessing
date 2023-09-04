@@ -32,12 +32,20 @@ PositionSimulator::PositionSimulator()
 
 
 }
+void PositionSimulator::setOffsetDistance(double offsetDistance)
+{
+    mOffsetDistance = offsetDistance;
+    for (auto & positioner : mPositioner)
+    {
+        positioner.setOffsetDistance(mOffsetDistance);
+        positioner.updateGain();
+    }
+}
 void PositionSimulator::prepare()
 {
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
-        mAcousticShadowFilter[i].update();
-        mAcousticShadowFilter[i].reset();
+        mMainFilter[i].prepare();
     }
 }
 double PositionSimulator::degreeToRatio(double degree, int channel)
@@ -69,6 +77,28 @@ double PositionSimulator::degreeToRatio(double degree, int channel)
     }
     ratio = MIN_SHADOW_RATIO + (MAX_SHADOW_RATIO - MIN_SHADOW_RATIO) * ratio;
     return ratio;
+}
+
+void PositionSimulator::setCurrentGain(double gain)
+{
+    if (gain != mCurrentGain)
+    {
+        mCurrentGain = gain;
+        onCurrentGainChanged();
+    }
+}
+
+void PositionSimulator::addGainListener(std::function<void()> callback)
+{
+    mGainListenerList.push_back(callback);
+}
+
+void PositionSimulator::onCurrentGainChanged()
+{
+    for (auto listener : mGainListenerList)
+    {
+        listener();
+    }
 }
 
 
@@ -103,16 +133,21 @@ void PositionSimulator::setMaxDistance(double maxDistance)
 
 void PositionSimulator::onPropertyChange()
 {
+
     double offsetGain = 1.0 / std::max(mPositioner[0].getGain(), mPositioner[1].getGain());
+
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
         if (mKeepGain)
         {
             (mOffsetGain + i)->setGain(offsetGain);
+
+            setCurrentGain(offsetGain);
         }
         else
         {
             (mOffsetGain + i)->setGain(1.0);
+            setCurrentGain(1.0);
         }
         double ratio = degreeToRatio(mPositioner[i].getCurrentDestination().angleToOnXZPlane(mPositioner[i].getCurrentSource()),i);
         mParallelGainForLowpass[i].setGain(ratio);
@@ -121,7 +156,13 @@ void PositionSimulator::onPropertyChange()
 
 }
 
+double PositionSimulator::getCurrentGain()
+{
+    return mCurrentGain;
+}
+
 void PositionSimulator::setKeepGain(bool keepGain)
 {
     mKeepGain = keepGain;
+    onPropertyChange();
 }

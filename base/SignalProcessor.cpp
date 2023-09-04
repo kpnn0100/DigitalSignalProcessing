@@ -14,6 +14,7 @@ void SignalProcessor::smoothUpdate(double currentRatio)
 
 SignalProcessor::SignalProcessor()
 {
+    setSampleDelay(0);
     callUpdate();
 }
 void SignalProcessor::setBufferSize(double bufferSize)
@@ -81,6 +82,17 @@ void SignalProcessor::addPropertyListener(IPropertyChangeListener* listener)
 void SignalProcessor::update()
 {
     // Default implementation, can be overridden by subclasses
+}
+
+/**
+* @brief Prepare the processor before get into processing;
+*
+* This method should be overridden by subclasses to perform specific update operations.
+*/
+
+inline void SignalProcessor::prepare()
+{
+
 }
 
 double SignalProcessor::out(double in)

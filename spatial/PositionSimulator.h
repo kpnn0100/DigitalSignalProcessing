@@ -24,7 +24,7 @@
 #include "../equalizer/LowPassFilter.h"
 #include "../util/Util.h"
 #include "../util/IPropertyChangeListener.h"
-
+#include <functional>
 #include <cmath>
 
 
@@ -49,9 +49,17 @@ private:
 	LowPassFilter mAcousticShadowFilter[2];
     Gain mRatioGainForLowpass[2];
     Gain mParallelGainForLowpass[2];
+    double mCurrentGain;
+    double mCurrentOffsetGain;
+    double mOffsetDistance;
+    std::vector < std::function<void()>> mGainListenerList;
     double degreeToRatio(double degree, int channel);
+    void setCurrentGain(double gain);
+
+    void onCurrentGainChanged();
 public:
     PositionSimulator();
+    void setOffsetDistance(double offsetDistance);
     void prepare();
 	SignalProcessor& getFilter(int channel);
     /**
@@ -81,5 +89,7 @@ public:
      * @return The current distance value.
      */
     void onPropertyChange() override;
+    double getCurrentGain();
+    void addGainListener(std::function<void()> callback);
     void setKeepGain(bool keepGain);
 };

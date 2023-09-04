@@ -133,7 +133,12 @@ public:
      * This method should be overridden by subclasses to perform specific update operations.
      */
     virtual void update();
-
+    /**
+     * @brief Prepare the processor before getting into processing
+     *
+     * This method should be overridden by subclasses to perform specific prepare operations.
+     */
+    virtual void prepare();
     /**
      * @brief Processes an input signal and produces an output signal.
      *
@@ -157,10 +162,15 @@ public:
     void setSmoothEnable(bool smoothEnable);
 
     /**
+     * @brief Enables or disables bypass for the signal processor.
+     *
+     * @param bypass Boolean indicating whether bypass should be enabled.
+     */
+    void setBypass(bool bypass);
+    /**
      * @brief Destructor for the SignalProcessor class.
      *
      * This destructor can be overridden by subclasses if needed.
      */
-    void setBypass(bool bypass);
     virtual ~SignalProcessor();
 };

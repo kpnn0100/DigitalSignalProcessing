@@ -1,5 +1,13 @@
 #include "Block.h"
 
+void Block::prepare()
+{
+    for (auto processor : processorList)
+    {
+        processor->prepare();
+    }
+}
+
 void Block::update()
 {
     if (isParallel)
@@ -44,21 +52,39 @@ void Block::add(SignalProcessor* newProcessor)
     newProcessor->setParent(this); // Set the parent of the new processor to this block
     callUpdate(); // Update the block's state
 }
-
+void Block::addFront(SignalProcessor* newProcessor)
+{
+    processorList.insert(processorList.begin(), newProcessor); // Add a new processor to the list
+    newProcessor->setParent(this); // Set the parent of the new processor to this block
+    callUpdate(); // Update the block's state
+}
+void Block::setNeedAverage(bool needAverage)
+{
+    mNeedAverage = needAverage;
+}
 double Block::process(double in)
 {
     double out = isParallel ? 0.0 : in;
     for (int i = 0; i < processorList.size(); i++)
         if (isParallel) {
-            out += delaySyncMachine[i].out(processorList[i]->out(in))/ (double)processorList.size();
+            if (mNeedAverage)
+            {
+                out += delaySyncMachine[i].out(processorList[i]->out(in))
+                    / (double)processorList.size();
+            }
+            
+            else
+            {
+                out += delaySyncMachine[i].out(processorList[i]->out(in));
+            }
         }
         else {
             out = processorList[i]->out(out);
         }
-    if (out < OUTPUT_MIN)
-        return OUTPUT_MIN;
-    else if (out > OUTPUT_MAX)
-        return OUTPUT_MAX;
-    else
+    //if (out < OUTPUT_MIN)
+    //    return OUTPUT_MIN;
+    //else if (out > OUTPUT_MAX)
+    //    return OUTPUT_MAX;
+    //else
         return out;
 }

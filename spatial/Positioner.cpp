@@ -6,12 +6,16 @@ const double Positioner::STANDARD_DISTANCE = 1.0; // Standard reference distance
 Positioner::Positioner()
 {
     // Initialize the Delay and Block filters for processing
+    setSmoothEnable(true);
     mDelayFilter = Delay();
     mDelayFilter.setSmoothEnable(false);
     mSyncTarget = nullptr;
     mBlockFilter.add(&mDelayFilter);
     mBlockFilter.add(&mGainFilter);
     mBlockFilter.setIsParallel(false); // Set the block to process filters serially
+    mDelaySample = 0.0;
+
+    smoothUpdate(1.0);
 }
 
 double Positioner::process(double in)
@@ -20,6 +24,16 @@ double Positioner::process(double in)
 }
 
 
+
+void Positioner::setOffsetDistance(double offsetDistance)
+{
+    mOffsetDistance = offsetDistance;
+}
+
+void Positioner::setKeepGain(bool keepGain)
+{
+    mKeepGain = keepGain;
+}
 
 void Positioner::smoothUpdate(double currentRatio)
 {
@@ -95,9 +109,23 @@ double Positioner::getDistance()
 
 void Positioner::updateGain()
 {
+    if (mKeepGain)
+    {
+        mCurrentGain = 1.0;
+        mGainFilter.setGain(1.0);
+        return;
+    }
+    if (mCurrentDistance == 0.0)
+    {
+        mCurrentGain = 1.0;
+        mGainFilter.setGain(1.0);
+    }
+    else
+    {
+        mCurrentGain = STANDARD_DISTANCE / (mCurrentDistance+mOffsetDistance); // Calculate the gain adjustment
+        mGainFilter.setGain(mCurrentGain); // Update the gain filter with the new gain
+    }
 
-    mCurrentGain = STANDARD_DISTANCE / mCurrentDistance; // Calculate the gain adjustment
-    mGainFilter.setGain(mCurrentGain); // Update the gain filter with the new gain
 
 }
 

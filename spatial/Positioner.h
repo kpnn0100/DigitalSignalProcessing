@@ -48,6 +48,8 @@ private:
     Block mBlockFilter; /**< Block for managing delay and gain filters. */
     Delay mDelayFilter; /**< Delay filter for adjusting sound delay. */
     Gain mGainFilter; /**< Gain filter for adjusting sound gain. */
+    double mOffsetDistance = 0.0;
+    bool mKeepGain = false;
     Positioner* mSyncTarget;
     /**
      * @brief Processes the input signal while simulating sound source movement.
@@ -58,6 +60,8 @@ private:
     double process(double in) override;
     void saveProperty();
 public:
+    void setOffsetDistance(double offsetDistance);
+    void setKeepGain(bool keepGain);
     void smoothUpdate(double currentRatio) override;
     /**
      * @brief Default constructor for the Positioner class.

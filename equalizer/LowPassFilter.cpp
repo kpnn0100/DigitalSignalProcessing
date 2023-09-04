@@ -29,4 +29,9 @@ double LowPassFilter::calculatePhaseDelay()
     return averagePhaseDelaySamples;
 }
 
+void LowPassFilter::prepare()
+{
+    reset();
+}
+
 
