@@ -56,7 +56,7 @@ void Positioner::setDestination(Coordinate destination)
     }
     saveProperty();
     mDestination = destination; // Set the new destination
-    callUpdate();
+    update();
 }
 
 void Positioner::setSource(Coordinate source)
@@ -67,7 +67,7 @@ void Positioner::setSource(Coordinate source)
     }
     saveProperty();
     mSource = source; // Set the new source
-    callUpdate();
+    update();
 }
 
 void Positioner::setMaxDistance(double maxDistance)

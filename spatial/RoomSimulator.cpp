@@ -21,9 +21,11 @@ RoomSimulation::RoomSimulation()
         mMainFilter[i].setIsParallel(true);
         mMainFilter[i].setNeedAverage(false);
         mEffectBlock[i].add(&mOffsetGainForReflect);
+        mEffectBlock[i].add(&mWetGain);
         mReflectorContainer[i].setIsParallel(true);
         mReflectorContainer[i].setNeedAverage(false);
         mEffectBlock[i].add(&mReflectorContainer[i]);
+        mMainSourceWithMix[i].setIsParallel(false);
         for (int j = START_FROM; j < WALL_COUNT; j++)
         {
             mBeforeBounce[i][j].setMaxDistance(100.0);
@@ -35,8 +37,9 @@ RoomSimulation::RoomSimulation()
             if (i == CHANNEL_COUNT-1 && j == WALL_COUNT-1)
                 mBeforeBounce[i][j].addPropertyListener(this);
         }
-
-        mMainFilter[i].add(&mMainSource.getFilter(i));
+        mMainSourceWithMix[i].add(&mMainSource.getFilter(i));
+        mMainSourceWithMix[i].add(&mDryGain);
+        mMainFilter[i].add(&mMainSourceWithMix[i]);
         mMainFilter[i].add(&mEffectBlock[i]);
     }
 }
@@ -126,7 +129,6 @@ void RoomSimulation::setRoomSize(int dimension, double value)
     {
         mRoomSize.set(dimension, value);
         update();
-        
     }
     
 }
@@ -163,4 +165,16 @@ void RoomSimulation::onPropertyChange()
         double distance = mBeforeBounce[0][j].getDistance();
         mBounceSource[j].setOffsetDistance(distance);
     }
+}
+
+void RoomSimulation::setDryMix(double dryMix)
+{
+    mDryMix = dryMix;
+    mDryGain.setGain(dryMix);
+}
+
+void RoomSimulation::setWetMix(double wetMix)
+{
+    mWetMix = wetMix;
+    mWetGain.setGain(wetMix);
 }

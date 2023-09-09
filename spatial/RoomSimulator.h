@@ -20,11 +20,16 @@ private:
     Coordinate mSource;
     Coordinate mDestination;
     Block mMainFilter[2];
+    Block mMainSourceWithMix[2];
+    Gain mDryGain;
+    Gain mWetGain;
     PositionSimulator mMainSource;
     Gain mOffsetGainForReflect;
     Block mEffectBlock[2];
     Block mReflectorContainer[2];
     Block mSingleReflect[CHANNEL_COUNT][WALL_COUNT];
+    double mDryMix=1.0;
+    double mWetMix=1.0;
     PositionSimulator mBounceSource[WALL_COUNT];
     Positioner mBeforeBounce[CHANNEL_COUNT][WALL_COUNT];
     int mNumberOfBounce = 1;
@@ -43,4 +48,6 @@ public:
     void setKeepGain(bool keepGain);
     void setNumberOfBounce(int numberOfBounce);
     virtual void onPropertyChange() override;
+    void setDryMix(double dryMix);
+    void setWetMix(double wetMix);
 };
