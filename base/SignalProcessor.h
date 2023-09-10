@@ -55,7 +55,6 @@ protected:
     static int mBufferSize;
     /**< Buffer counter for smooth change of update */
     int mBufferCounter;
-
     /**
      * @brief Sets the sample delay for the signal processor.
      *
@@ -167,6 +166,7 @@ public:
      * @param bypass Boolean indicating whether bypass should be enabled.
      */
     void setBypass(bool bypass);
+    void callRecursiveUpdate();
     /**
      * @brief Destructor for the SignalProcessor class.
      *

@@ -21,6 +21,14 @@ void SignalProcessor::setBufferSize(double bufferSize)
 {
     mBufferSize = bufferSize;
 }
+void SignalProcessor::callRecursiveUpdate()
+{
+    callUpdate();
+    if (mParent != nullptr)
+    {
+        mParent->callRecursiveUpdate();
+    }
+}
 void SignalProcessor::setSampleDelay(double newSampleDelay)
 {
     mSampleDelay = newSampleDelay;
@@ -59,10 +67,6 @@ void SignalProcessor::callUpdate()
 {
     mBufferCounter = 0;
     update();
-    if (mParent != nullptr)
-    {
-        mParent->callUpdate();
-    }
     notifyPropertyListener();
 }
 

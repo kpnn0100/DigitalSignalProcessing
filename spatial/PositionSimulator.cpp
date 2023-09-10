@@ -14,7 +14,6 @@ PositionSimulator::PositionSimulator()
 {
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
-
         mMainFilter[i].setIsParallel(false);
         mOffsetGain[i].setSmoothEnable(false);
         mMainFilter[i].add(mOffsetGain + i);
@@ -28,9 +27,8 @@ PositionSimulator::PositionSimulator()
         mLowpassAndGainBlock[i].setIsParallel(false);
         mLowpassAndGainBlock[i].add(mAcousticShadowFilter + i);
         mLowpassAndGainBlock[i].add(mRatioGainForLowpass + i);
+        mAcousticShadowFilter[i].callRecursiveUpdate();
     }
-
-
 }
 void PositionSimulator::setOffsetDistance(double offsetDistance)
 {
