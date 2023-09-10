@@ -39,6 +39,7 @@ private:
     Coordinate mOldDestination; /**< The previous destination position used for smooth transition. */
     Coordinate mCurrentSource;
     Coordinate mCurrentDestination;
+
     double mDelaySample; /**< The delay sample value. */
     double mMaxDistance; /**< The maximum distance for delay calculation. */
     static const double SPEED_OF_SOUND; /**< The speed of sound in the medium. */
@@ -49,6 +50,8 @@ private:
     Delay mDelayFilter; /**< Delay filter for adjusting sound delay. */
     Gain mGainFilter; /**< Gain filter for adjusting sound gain. */
     double mOffsetDistance = 0.0;
+    double mOldOffsetDistance = 0.0;
+    double mCurrentOffsetDistance = 0.0;
     bool mKeepGain = false;
     Positioner* mSyncTarget;
     /**
@@ -112,7 +115,7 @@ public:
     /**
      * @brief Updates the gain adjustment factor.
      */
-    void updateGain();
+    void updateGain(double currentRatio);
 
     /**
      * @brief Overrides the base class update method.

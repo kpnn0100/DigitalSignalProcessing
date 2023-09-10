@@ -37,7 +37,7 @@ private:
     SignalProcessor* mParent = nullptr;
     bool mBypass = false;
     // Helper methods for smoothing and buffer management
-    void updateBufferCounter();
+    bool updateBufferCounter();
     bool shouldSmoothUpdate();
     double calculateSmoothRatio();
     void performSmoothUpdate(double ratio);

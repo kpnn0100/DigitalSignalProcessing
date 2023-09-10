@@ -29,14 +29,16 @@ void SignalProcessor::setSampleDelay(double newSampleDelay)
         mParent->callUpdate();
     }
 }
-void SignalProcessor::updateBufferCounter()
+bool SignalProcessor::updateBufferCounter()
 {
     mBufferCounter++;
 
     if (mBufferCounter > mBufferSize)
     {
         mBufferCounter = mBufferSize;
+        return false;
     }
+    return true;
 }
 
 bool SignalProcessor::shouldSmoothUpdate()
@@ -100,10 +102,12 @@ double SignalProcessor::out(double in)
     
     if (shouldSmoothUpdate())
     {
-        updateBufferCounter();
-        double ratio = calculateSmoothRatio();
-        performSmoothUpdate(ratio);
-        notifyPropertyListener();
+        if (updateBufferCounter())
+        {
+            double ratio = calculateSmoothRatio();
+            performSmoothUpdate(ratio);
+            notifyPropertyListener();
+        }
     }
     if (mBypass)
         return in;

@@ -25,10 +25,6 @@ double Positioner::process(double in)
 
 
 
-void Positioner::setOffsetDistance(double offsetDistance)
-{
-    mOffsetDistance = offsetDistance;
-}
 
 void Positioner::setKeepGain(bool keepGain)
 {
@@ -38,14 +34,23 @@ void Positioner::setKeepGain(bool keepGain)
 void Positioner::smoothUpdate(double currentRatio)
 {
     updateDelaySample(currentRatio);
-    updateGain();
+    updateGain(currentRatio);
 }
 
 
 void Positioner::saveProperty()
 {
+    mOldOffsetDistance = mCurrentOffsetDistance;
     mOldDestination = mCurrentDestination;
     mOldSource = mCurrentSource;
+}
+void Positioner::setOffsetDistance(double offsetDistance)
+{
+    if (mOffsetDistance == offsetDistance)
+        return;
+    saveProperty();
+    mOffsetDistance = offsetDistance;
+    callUpdate();
 }
 
 void Positioner::setDestination(Coordinate destination)
@@ -56,7 +61,7 @@ void Positioner::setDestination(Coordinate destination)
     }
     saveProperty();
     mDestination = destination; // Set the new destination
-    update();
+    callUpdate();
 }
 
 void Positioner::setSource(Coordinate source)
@@ -67,7 +72,7 @@ void Positioner::setSource(Coordinate source)
     }
     saveProperty();
     mSource = source; // Set the new source
-    update();
+    callUpdate();
 }
 
 void Positioner::setMaxDistance(double maxDistance)
@@ -104,11 +109,12 @@ void Positioner::updateDelaySample(double currentRatio)
 
 double Positioner::getDistance()
 {
-    return mCurrentDistance; // Return the current distance
+    return mSource.distanceTo(mDestination); // Return the current distance
 }
 
-void Positioner::updateGain()
+void Positioner::updateGain(double currentRatio)
 {
+    mCurrentOffsetDistance = mOldOffsetDistance * (1 - currentRatio) + mOffsetDistance * currentRatio;
     if (mKeepGain)
     {
         mCurrentGain = 1.0;
@@ -122,7 +128,7 @@ void Positioner::updateGain()
     }
     else
     {
-        mCurrentGain = STANDARD_DISTANCE / (mCurrentDistance+mOffsetDistance); // Calculate the gain adjustment
+        mCurrentGain = STANDARD_DISTANCE / (mCurrentDistance+ mCurrentOffsetDistance); // Calculate the gain adjustment
         mGainFilter.setGain(mCurrentGain); // Update the gain filter with the new gain
     }
 
@@ -142,8 +148,7 @@ void Positioner::update()
     }
     else
     {
-        updateDelaySample(1.0);
-        updateGain();
+        smoothUpdate(1.0);
     }
 }
 

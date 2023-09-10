@@ -38,7 +38,6 @@ void PositionSimulator::setOffsetDistance(double offsetDistance)
     for (auto & positioner : mPositioner)
     {
         positioner.setOffsetDistance(mOffsetDistance);
-        positioner.updateGain();
     }
 }
 void PositionSimulator::prepare()
