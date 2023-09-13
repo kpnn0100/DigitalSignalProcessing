@@ -15,8 +15,7 @@ class RoomSimulation : public IPropertyChangeListener
 {
 private:
     static const int CHANNEL_COUNT = 2;
-    static const int WALL_COUNT = 6;
-    static const int START_FROM = 0;
+    int mDepth = 2;
     MultiThreader mMainWorker;
     std::vector<std::function<void()>> mReflectCalculatorList;
     Coordinate mRoomSize;
@@ -30,15 +29,12 @@ private:
     Gain mOffsetGainForReflect;
     Block mEffectBlock[2];
     Block mReflectorContainer[2];
-    Block mSingleReflect[CHANNEL_COUNT][WALL_COUNT];
     double mDryMix=1.0;
     double mWetMix=1.0;
-    PositionSimulator mBounceSource[WALL_COUNT];
-    Positioner mBeforeBounce[CHANNEL_COUNT][WALL_COUNT];
-    int mNumberOfBounce = 1;
-    void updateSingleReflector(int ID);
+    std::vector<PositionSimulator> mBounceSource;
+    void updateSingleReflector(int x, int y, int z, int index);
     void updateReflector();
-
+    int getIndex(int x, int y, int z);
 public:
     RoomSimulation();
     void prepare();
@@ -50,7 +46,7 @@ public:
     void setRoomSize(int dimension, double value);
     void setMaxDistance(double maxDistance);
     void setKeepGain(bool keepGain);
-    void setNumberOfBounce(int numberOfBounce);
+    void setDepth(int depth);
     virtual void onPropertyChange() override;
     void setDryMix(double dryMix);
     void setWetMix(double wetMix);

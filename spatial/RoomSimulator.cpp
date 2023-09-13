@@ -13,15 +13,21 @@
 RoomSimulation::RoomSimulation()
 {
     mMainWorker.start();
-    mReflectCalculatorList.resize(WALL_COUNT);
-    for (int j = START_FROM; j < WALL_COUNT; j++)
+    //make a square surround main room
+    int numberOfBounce;
+    if (mDepth == 0)
     {
-        mReflectCalculatorList[j] = std::bind(&RoomSimulation::updateSingleReflector, this, j);
+        numberOfBounce = 0;
     }
-    mRoomSize = Coordinate(1.0, 1.0, 1.0);
+    else
+    {
+        numberOfBounce = ((mDepth - 1) * 2 + 1) * ((mDepth - 1) * 2 + 1) * ((mDepth - 1) * 2 + 1) - 1 + 6;
+    }
+    mBounceSource.resize(numberOfBounce);
     mMainSource.addGainListener([this]() {
         this->updateGain();
         });
+    mRoomSize = Coordinate(1.0, 1.0, 1.0);
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
         mMainFilter[i].setIsParallel(true);
@@ -31,31 +37,26 @@ RoomSimulation::RoomSimulation()
         mReflectorContainer[i].setIsParallel(true);
         mReflectorContainer[i].setNeedAverage(false);
         mEffectBlock[i].add(&mReflectorContainer[i]);
-        mMainSourceWithMix[i].setIsParallel(false);
-        for (int j = START_FROM; j < WALL_COUNT; j++)
+        for (auto& bounceSource : mBounceSource)
         {
-            mBeforeBounce[i][j].setMaxDistance(100.0);
-            mBounceSource[j].setMaxDistance(100.0);
-            mSingleReflect[i][j].add(&mBeforeBounce[i][j]);
-            mSingleReflect[i][j].add(&mBounceSource[j].getFilter(i)); 
-            mReflectorContainer[i].add(&mSingleReflect[i][j]);
-            mBeforeBounce[i][j].setKeepGain(true);
-            //if (i == CHANNEL_COUNT-1 && j == WALL_COUNT-1)
-            //    mBeforeBounce[i][j].addPropertyListener(this);
+            bounceSource.setKeepGain(false);
+            mReflectorContainer[i].add(&bounceSource.getFilter(i));
         }
+        mMainSourceWithMix[i].setIsParallel(false);
         mMainSourceWithMix[i].add(&mMainSource.getFilter(i));
         mMainSourceWithMix[i].add(&mDryGain);
         mMainFilter[i].add(&mMainSourceWithMix[i]);
         mMainFilter[i].add(&mEffectBlock[i]);
     }
+
 }
 
 void RoomSimulation::prepare()
 {
     mMainSource.prepare();
-    for (int j = 0; j < WALL_COUNT; j++)
+    for (auto& bounceSource : mBounceSource)
     {
-        mBounceSource[j].prepare();
+        bounceSource.prepare();
     }
 }
 
@@ -70,44 +71,64 @@ SignalProcessor& RoomSimulation::getFilter(int channel)
 {
     return mMainFilter[channel];
 }
-
-void RoomSimulation::updateSingleReflector(int ID)
+inline int RoomSimulation::getIndex(int x, int y, int z)
 {
-    int j = ID;
-    mBounceSource[j].setDestination(mDestination);
-    Coordinate middle;
-    middle.set(j % 3, 0 + j / 3 * mRoomSize.get(j % 3));
-    double mainSide = mSource.get(j % 3) - middle.get(j % 3);
-    double ratioSide = mDestination.get(j % 3) - middle.get(j % 3);
-    if ((mainSide + ratioSide) == 0)
+    int index = (x+ mDepth) + (y+ mDepth)*3 + (z+ mDepth)*3*3;
+    if (x + y + z > 0)
     {
-        return;
+        index -= 1;
     }
-    double ratio = mainSide / (mainSide + ratioSide);
-    double midSide = mSource.get((j + 1) % 3) * (1 - ratio) + mDestination.get((j + 1) % 3) * ratio;
-    double nextSide = mSource.get((j + 2) % 3) * (1 - ratio) + mDestination.get((j + 2) % 3) * ratio;
-    middle.set((j + 1) % 3, midSide);
-    middle.set((j + 2) % 3, nextSide);
-
-    mBounceSource[j].setSource(middle);
-
-    for (int i = 0; i < CHANNEL_COUNT; i++)
+    return index;
+}
+void RoomSimulation::updateSingleReflector(int x, int y, int z,int index)
+{
+    //int index = getIndex(x, y, z);
+    mBounceSource[index].setSource(mSource);
+    Coordinate destination = mDestination;
+    int coor[] = { x,y,z };
+    for (int i = 0 ; i< 3; i++)
     {
-        mBeforeBounce[i][j].setSource(mSource);
-        mBeforeBounce[i][j].setDestination(middle);
+        if (coor[i] % 2 == 0)
+        {
+            double newValue = destination.get(i) + ((double)coor[i]) * mRoomSize.get(i);
+            destination.set(i, newValue);
+        }
+        else
+        {
+            double flipValue = mRoomSize.get(i) - destination.get(i);
+            double newValue = flipValue + ((double)coor[i]) * mRoomSize.get(i);
+            double flipNewValue = mSource.get(i) - (newValue - mSource.get(i));
+            destination.set(i, flipNewValue);
+        }    
     }
-    double distance = mBeforeBounce[0][j].getDistance();
-    mBounceSource[j].setOffsetDistance(distance);
+    mBounceSource[index].setDestination(destination);
 }
 
 void RoomSimulation::updateReflector()
 {
-    for (int j = START_FROM; j < WALL_COUNT; j++)
+    int index = 0;
+    for (int i = -mDepth; i < mDepth +1; i++)
     {
-        updateSingleReflector(j);
+        for (int j = -mDepth; j < mDepth + 1; j++)
+        {
+            for (int k = -mDepth; k < mDepth + 1; k++)
+            {
+                if (i == 0 && j == 0 && k == 0)
+                {
+                    continue;
+                }
+                if (abs(i) + abs(j) + abs(k) <= mDepth)
+                {
+                    updateSingleReflector(k, j, i, index);
+                    index++;
+                }
+            }
+        }
     }
     
 }
+
+
 
 void RoomSimulation::updateGain()
 {
@@ -150,13 +171,9 @@ void RoomSimulation::setMaxDistance(double maxDistance)
 {
     mMainSource.setMaxDistance(maxDistance);
 
-    for (int j = START_FROM; j < WALL_COUNT; j++)
+    for (auto& bounceSource : mBounceSource)
     {
-        mBounceSource[j].setMaxDistance(maxDistance);
-        for (int i = 0; i < CHANNEL_COUNT; i++)
-        {
-            mBeforeBounce[i][j].setMaxDistance(maxDistance);
-        }
+        bounceSource.setMaxDistance(maxDistance);
     }
 
 }
@@ -166,9 +183,9 @@ void RoomSimulation::setKeepGain(bool keepGain)
     mMainSource.setKeepGain(keepGain);
 }
 
-void RoomSimulation::setNumberOfBounce(int numberOfBounce)
+void RoomSimulation::setDepth(int depth)
 {
-    mNumberOfBounce = numberOfBounce;
+    mDepth = depth;
 }
 
 void RoomSimulation::onPropertyChange()
