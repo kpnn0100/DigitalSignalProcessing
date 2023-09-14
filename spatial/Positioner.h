@@ -123,6 +123,10 @@ public:
      * This method is called to reset position update parameters.
      */
     void update() override;
+    double getTargetGain();
     Coordinate getCurrentSource();
     Coordinate getCurrentDestination();
+
+    Coordinate getSource();
+    Coordinate getDestination();
 };

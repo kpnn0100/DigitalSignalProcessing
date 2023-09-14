@@ -88,6 +88,7 @@ public:
      *
      * @return The current distance value.
      */
+    void updateGain();
     void onPropertyChange() override;
     double getCurrentGain();
     void addGainListener(std::function<void()> callback);

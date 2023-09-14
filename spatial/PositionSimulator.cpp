@@ -15,10 +15,9 @@ PositionSimulator::PositionSimulator()
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
         mMainFilter[i].setIsParallel(false);
-        mOffsetGain[i].setSmoothEnable(false);
+        mOffsetGain[i].setSmoothEnable(true);
         mMainFilter[i].add(mOffsetGain + i);
         mMainFilter[i].add(mPositioner + i);
-        mPositioner[i].addPropertyListener(this);
         mAcousticShadowFilter[i].setCutoffFrequency(CUTOFF_FREQUENCY);
         mMainFilter[i].add(mAcousticShadowBlock + i);
         mAcousticShadowBlock[i].setIsParallel(true);
@@ -27,6 +26,8 @@ PositionSimulator::PositionSimulator()
         mLowpassAndGainBlock[i].setIsParallel(false);
         mLowpassAndGainBlock[i].add(mAcousticShadowFilter + i);
         mLowpassAndGainBlock[i].add(mRatioGainForLowpass + i);
+        mParallelGainForLowpass[i].setSmoothEnable(true);
+        mRatioGainForLowpass[i].setSmoothEnable(true);
         mAcousticShadowFilter[i].callRecursiveUpdate();
     }
 }
@@ -106,17 +107,27 @@ SignalProcessor& PositionSimulator::getFilter(int channel)
 
 void PositionSimulator::setDestination(Coordinate destination)
 {
-    for (int i = 0; i < CHANNEL_COUNT; i++)
+    if (!(mDestination == destination))
     {
-        mPositioner[i].setDestination(destination - Coordinate(EAR_DISTANCE/2, 0, 0)+ Coordinate(EAR_DISTANCE, 0, 0)*i);
+        mDestination = destination;
+        for (int i = 0; i < CHANNEL_COUNT; i++)
+        {
+            mPositioner[i].setDestination(destination - Coordinate(EAR_DISTANCE / 2, 0, 0) + Coordinate(EAR_DISTANCE, 0, 0) * i);
+        }
+        updateGain();
     }
 }
 
 void PositionSimulator::setSource(Coordinate source)
 {
-    for (int i = 0; i < CHANNEL_COUNT; i++)
+    if (!(mSource == source))
     {
-        mPositioner[i].setSource(source);
+        mSource = source;
+        for (int i = 0; i < CHANNEL_COUNT; i++)
+        {
+            mPositioner[i].setSource(source);
+        }
+        updateGain();
     }
 }
 
@@ -126,19 +137,17 @@ void PositionSimulator::setMaxDistance(double maxDistance)
     {
         mPositioner[i].setMaxDistance(maxDistance);
     }
+    updateGain();
 }
 
-void PositionSimulator::onPropertyChange()
+void PositionSimulator::updateGain()
 {
-
-    double offsetGain = 1.0 / std::max(mPositioner[0].getGain(), mPositioner[1].getGain());
-
+    double offsetGain = 1.0 / std::max(mPositioner[0].getTargetGain(), mPositioner[1].getTargetGain());
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
         if (mKeepGain)
         {
             (mOffsetGain + i)->setGain(offsetGain);
-
             setCurrentGain(offsetGain);
         }
         else
@@ -146,10 +155,14 @@ void PositionSimulator::onPropertyChange()
             (mOffsetGain + i)->setGain(1.0);
             setCurrentGain(1.0);
         }
-        double ratio = degreeToRatio(mPositioner[i].getCurrentDestination().angleToOnXZPlane(mPositioner[i].getCurrentSource()),i);
+        double ratio = degreeToRatio(mPositioner[i].getDestination().angleToOnXZPlane(mPositioner[i].getSource()), i);
         mParallelGainForLowpass[i].setGain(ratio);
         mRatioGainForLowpass[i].setGain((1 - ratio) * 2);
     }
+}
+
+void PositionSimulator::onPropertyChange()
+{
 
 }
 
@@ -160,6 +173,10 @@ double PositionSimulator::getCurrentGain()
 
 void PositionSimulator::setKeepGain(bool keepGain)
 {
-    mKeepGain = keepGain;
-    onPropertyChange();
+    if (keepGain != mKeepGain)
+    {
+        mKeepGain = keepGain;
+        updateGain();
+    }
+
 }

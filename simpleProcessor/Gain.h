@@ -26,6 +26,8 @@
 class Gain : public SignalProcessor
 {
 protected:
+    double mOldGain;
+    double mCurrentGain;
     double mGainFactor; /**< The gain factor to apply to the input signal. */
     /**
      * @brief Processes the input signal by applying the gain factor.
@@ -60,5 +62,6 @@ public:
      * @param newGain The new gain factor to be set.
      */
     void setGain(double newGain);
+    void smoothUpdate(double ratio);
 
 };

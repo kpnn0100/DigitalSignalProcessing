@@ -77,7 +77,6 @@ protected:
      * @return The processed output signal value.
      */
     virtual double process(double in) = 0;
-
     /**
      * @brief Notifies property listeners of property changes.
      */

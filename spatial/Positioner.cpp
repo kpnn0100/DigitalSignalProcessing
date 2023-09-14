@@ -152,6 +152,19 @@ void Positioner::update()
     }
 }
 
+double Positioner::getTargetGain()
+{
+    if (mKeepGain)
+    {
+        return 1.0;
+    }
+    else
+    {
+        return STANDARD_DISTANCE / (mSource.distanceTo(mDestination) + mOffsetDistance);
+        
+     }
+}
+
 Coordinate Positioner::getCurrentSource()
 {
     return mCurrentSource;
@@ -160,4 +173,14 @@ Coordinate Positioner::getCurrentSource()
 Coordinate Positioner::getCurrentDestination()
 {
     return mCurrentDestination;
+}
+
+Coordinate Positioner::getSource()
+{
+    return mSource;
+}
+
+Coordinate Positioner::getDestination()
+{
+    return mDestination;
 }

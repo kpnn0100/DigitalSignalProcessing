@@ -26,7 +26,7 @@ private:
     Gain mDryGain;
     Gain mWetGain;
     PositionSimulator mMainSource;
-    Gain mOffsetGainForReflect;
+    Gain mOffsetGainForReflect[2];
     Block mEffectBlock[2];
     Block mReflectorContainer[2];
     double mDryMix=1.0;

@@ -24,15 +24,14 @@ RoomSimulation::RoomSimulation()
         numberOfBounce = ((mDepth - 1) * 2 + 1) * ((mDepth - 1) * 2 + 1) * ((mDepth - 1) * 2 + 1) - 1 + 6;
     }
     mBounceSource.resize(numberOfBounce);
-    mMainSource.addGainListener([this]() {
-        this->updateGain();
-        });
     mRoomSize = Coordinate(1.0, 1.0, 1.0);
+
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
+        mOffsetGainForReflect[i].setSmoothEnable(true);
         mMainFilter[i].setIsParallel(true);
         mMainFilter[i].setNeedAverage(false);
-        mEffectBlock[i].add(&mOffsetGainForReflect);
+        mEffectBlock[i].add(&mOffsetGainForReflect[i]);
         mEffectBlock[i].add(&mWetGain);
         mReflectorContainer[i].setIsParallel(true);
         mReflectorContainer[i].setNeedAverage(false);
@@ -132,7 +131,8 @@ void RoomSimulation::updateReflector()
 
 void RoomSimulation::updateGain()
 {
-    mOffsetGainForReflect.setGain(mMainSource.getCurrentGain());
+    for (int i = 0; i<CHANNEL_COUNT; i ++)
+        mOffsetGainForReflect[i].setGain(mMainSource.getCurrentGain());
 }
 
 void RoomSimulation::setDestination(Coordinate destination)
