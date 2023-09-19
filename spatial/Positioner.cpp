@@ -7,7 +7,7 @@ Positioner::Positioner()
 {
     // Initialize the Delay and Block filters for processing
     setSmoothEnable(true);
-    mDelayFilter = Delay();
+    mDelayFilter = Delay(5000);
     mDelayFilter.setSmoothEnable(false);
     mSyncTarget = nullptr;
     mBlockFilter.add(&mDelayFilter);

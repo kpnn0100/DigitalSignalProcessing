@@ -72,7 +72,6 @@ double Block::process(double in)
                 out += delaySyncMachine[i].out(processorList[i]->out(in))
                     / (double)processorList.size();
             }
-            
             else
             {
                 out += delaySyncMachine[i].out(processorList[i]->out(in));

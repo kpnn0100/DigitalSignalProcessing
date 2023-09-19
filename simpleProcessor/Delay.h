@@ -66,7 +66,7 @@ public:
      * @param delay The delay value in samples.
      * @param maxDelay The maximum allowable delay value.
      */
-    Delay(double delay, double maxDelay);
+    Delay(double delay, int maxDelay);
 
     /**
      * @brief Sets the delay for the Delay module.

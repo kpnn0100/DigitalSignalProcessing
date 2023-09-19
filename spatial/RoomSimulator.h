@@ -10,13 +10,11 @@
 
 #pragma once
 #include "PositionSimulator.h"
-#include "../functional/MultiThreader.h"
 class RoomSimulation : public IPropertyChangeListener
 {
 private:
     static const int CHANNEL_COUNT = 2;
-    int mDepth = 2;
-    MultiThreader mMainWorker;
+    int mDepth = 1;
     std::vector<std::function<void()>> mReflectCalculatorList;
     Coordinate mRoomSize;
     Coordinate mSource;
@@ -34,7 +32,7 @@ private:
     std::vector<PositionSimulator> mBounceSource;
     void updateSingleReflector(int x, int y, int z, int index);
     void updateReflector();
-    int getIndex(int x, int y, int z);
+    int getIndex(int x, int y, int z) const;
 public:
     RoomSimulation();
     void prepare();

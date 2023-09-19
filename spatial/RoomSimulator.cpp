@@ -12,7 +12,6 @@
 
 RoomSimulation::RoomSimulation()
 {
-    mMainWorker.start();
     //make a square surround main room
     int numberOfBounce;
     if (mDepth == 0)
@@ -21,7 +20,7 @@ RoomSimulation::RoomSimulation()
     }
     else
     {
-        numberOfBounce = ((mDepth - 1) * 2 + 1) * ((mDepth - 1) * 2 + 1) * ((mDepth - 1) * 2 + 1) - 1 + 6;
+        numberOfBounce = (mDepth * 2 + 1) * (mDepth * 2 + 1) * (mDepth * 2 + 1) - 1;
     }
     mBounceSource.resize(numberOfBounce);
     mRoomSize = Coordinate(1.0, 1.0, 1.0);
@@ -70,10 +69,10 @@ SignalProcessor& RoomSimulation::getFilter(int channel)
 {
     return mMainFilter[channel];
 }
-inline int RoomSimulation::getIndex(int x, int y, int z)
+int RoomSimulation::getIndex(int x, int y, int z) const
 {
     int index = (x+ mDepth) + (y+ mDepth)*3 + (z+ mDepth)*3*3;
-    if (x + y + z > 0)
+    if (index > mDepth + mDepth*3 + mDepth*3*3)
     {
         index -= 1;
     }
@@ -105,7 +104,6 @@ void RoomSimulation::updateSingleReflector(int x, int y, int z,int index)
 
 void RoomSimulation::updateReflector()
 {
-    int index = 0;
     for (int i = -mDepth; i < mDepth +1; i++)
     {
         for (int j = -mDepth; j < mDepth + 1; j++)
@@ -116,11 +114,7 @@ void RoomSimulation::updateReflector()
                 {
                     continue;
                 }
-                if (abs(i) + abs(j) + abs(k) <= mDepth)
-                {
-                    updateSingleReflector(k, j, i, index);
-                    index++;
-                }
+                updateSingleReflector(k, j, i, getIndex(k,j,i));
             }
         }
     }

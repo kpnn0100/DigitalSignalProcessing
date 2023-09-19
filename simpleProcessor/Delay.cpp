@@ -1,24 +1,23 @@
 #include "Delay.h"
 
-Delay::Delay()
+Delay::Delay() : Delay(0.0,0.0)
 {
-    setSampleDelay(0); // Initialize the sample delay
-    setDelay(0); // Set the delay to zero
-    setSmoothEnable(false);
+    
 }
 
-Delay::Delay(double delay)
+Delay::Delay(double delay) : Delay(delay,(int)delay)
 {
-    setSampleDelay(0); // Initialize the sample delay
-    setMaxDelay(delay); // Set the maximum allowable delay
-    setDelay(delay); // Set the delay
+
 }
 
-Delay::Delay(double delay, double maxDelay)
+Delay::Delay(double delay, int maxDelay)
 {
+    mOldDelay = 0;
+    mCurrentDelay = 0;
     setSampleDelay(0); // Initialize the sample delay
     setMaxDelay(maxDelay); // Set the maximum allowable delay
     setDelay(delay); // Set the delay
+    setSmoothEnable(false);
 }
 
 void Delay::setDelay(double newDelay)
@@ -37,19 +36,25 @@ void Delay::setDelay(double newDelay)
 
 double Delay::process(double in)
 {
-    if (mCurrentDelay > 0)
+    if (mCurrentDelay > 2)
     {
+        //std::cout << this << std::endl;
+        //std::cout << "before delay" << std::endl;
         // Calculate the indices and ratio for interpolation
         double index1 = floor(mCurrentDelay);
         double index2 = floor(mCurrentDelay+1);
         double ratio = 1 - ((mCurrentDelay) - index1);
 
         // Interpolate between delay samples
+        //std::cout << mCurrentDelay << std::endl;
+        //std::cout << "before access" << std::endl;
+        //std::cout << delayBuffer.size() << std::endl;
+        //std::cout << int(index1) << std::endl;
         double sample1 = delayBuffer[int(index1)];
         double sample2 = delayBuffer[int(index2)] ;
         double outSample = sample1 * ratio + sample2 * (1 - ratio);
-
         delayBuffer.push_front_and_pop_back(in); // Update the delay buffer
+        //std::cout << "after delay" << std::endl;
         return outSample; // Return the interpolated output sample
     }
     else
@@ -61,6 +66,7 @@ double Delay::process(double in)
 inline void Delay::setMaxDelay(int maxDelay)
 {
     mMaxDelay = maxDelay; // Set the maximum allowable delay
+    //std::cout << this << std::endl;
     delayBuffer = CircularList<double>(maxDelay,0.0); // Initialize the delay buffer
 }
 
