@@ -33,7 +33,7 @@ void Delay::setDelay(double newDelay)
     }
     if (mSmoothEnable)
     {
-        smoothUpdate(0.0);
+        callUpdate();
     }
     else
     {

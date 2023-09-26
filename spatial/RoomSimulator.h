@@ -21,8 +21,9 @@ private:
     Coordinate mRoomSize;
     Coordinate mSource;
     Coordinate mDestination;
-    double maxDelay = 0.0, secondMaxDelay = 0.0;
-    Reverb mReverb[2];
+    double maxDelay = 0.0;
+    double secondMaxDelay = 0.0;
+    gyrus_space::Reverb mReverb[2];
     Block mMainFilter[2];
     Block mMainSourceWithMix[2];
     Gain mDryGain;
