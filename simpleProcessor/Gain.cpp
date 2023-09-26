@@ -11,6 +11,7 @@ Gain::~Gain()
 
 Gain::Gain(double newGain)
 {
+    mCurrentGain = 1.0;
     mSmoothEnable = false;
     mOldGain = 1.0;
     mGainFactor = newGain;
@@ -22,12 +23,14 @@ void Gain::setGain(double gain)
     {
         mOldGain = mCurrentGain;
         mGainFactor = gain;
+        callUpdate();
     }
     else
     {
         mGainFactor = gain;
         mOldGain = gain;
         mCurrentGain = gain;
+        callUpdate();
     }
     
 }
@@ -39,6 +42,6 @@ void Gain::smoothUpdate(double ratio)
 
 double Gain::process(double in)
 {
-    return in * mGainFactor;
+    return in * mCurrentGain;
 }
 

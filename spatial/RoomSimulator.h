@@ -10,15 +10,19 @@
 
 #pragma once
 #include "PositionSimulator.h"
+#include "../reverb/Reverb.h"
 class RoomSimulation : public IPropertyChangeListener
 {
 private:
     static const int CHANNEL_COUNT = 2;
-    int mDepth = 1;
+    int mDepth = 0;
+    std::vector<std::vector<int>> bounceIndexList;
     std::vector<std::function<void()>> mReflectCalculatorList;
     Coordinate mRoomSize;
     Coordinate mSource;
     Coordinate mDestination;
+    double maxDelay = 0.0, secondMaxDelay = 0.0;
+    Reverb mReverb[2];
     Block mMainFilter[2];
     Block mMainSourceWithMix[2];
     Gain mDryGain;
@@ -32,7 +36,6 @@ private:
     std::vector<PositionSimulator> mBounceSource;
     void updateSingleReflector(int x, int y, int z, int index);
     void updateReflector();
-    int getIndex(int x, int y, int z) const;
 public:
     RoomSimulation();
     void prepare();

@@ -99,7 +99,7 @@ public:
      * @return The current distance value.
      */
     double getDistance();
-
+    double getDelayInMs();
     /**
      * @brief Gets the current gain adjustment factor.
      *

@@ -17,7 +17,7 @@ Delay::Delay(double delay, int maxDelay)
     setSampleDelay(0); // Initialize the sample delay
     setMaxDelay(maxDelay); // Set the maximum allowable delay
     setDelay(delay); // Set the delay
-    setSmoothEnable(false);
+    setSmoothEnable(true);
 }
 
 void Delay::setDelay(double newDelay)
@@ -31,7 +31,14 @@ void Delay::setDelay(double newDelay)
     {
         mainDelay = newDelay; // Set the delay to the specified value
     }
-    smoothUpdate(1.0);
+    if (mSmoothEnable)
+    {
+        smoothUpdate(0.0);
+    }
+    else
+    {
+        smoothUpdate(1.0);
+    }
 }
 
 double Delay::process(double in)
@@ -73,4 +80,9 @@ inline void Delay::setMaxDelay(int maxDelay)
 void Delay::smoothUpdate(double currentRatio)
 {
     mCurrentDelay = mOldDelay * (1 - currentRatio) + mainDelay * currentRatio;
+}
+
+void Delay::update()
+{
+    
 }

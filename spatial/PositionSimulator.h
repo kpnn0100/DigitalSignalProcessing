@@ -91,6 +91,7 @@ public:
     void updateGain();
     void onPropertyChange() override;
     double getCurrentGain();
+    double getCurrentDelayInMs(int channel);
     void addGainListener(std::function<void()> callback);
     void setKeepGain(bool keepGain);
 };

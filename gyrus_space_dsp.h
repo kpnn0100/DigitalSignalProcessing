@@ -12,9 +12,13 @@
 #include "spatial/Positioner.h"
 #include "spatial/PositionSimulator.h"
 #include "spatial/RoomSimulator.h"
+
 //Equalizer
 #include "equalizer/LowPassFilter.h"
 #include "equalizer/LowPassFilterThirdOrder.h"
 #include "equalizer/LowPassFilterSixthOrder.h"
+
+//Reverb
+#include "reverb/Reverb.h"
 
 #include "util/Util.h"

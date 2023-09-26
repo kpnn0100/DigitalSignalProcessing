@@ -14,15 +14,8 @@ RoomSimulation::RoomSimulation()
 {
     //make a square surround main room
     int numberOfBounce;
-    if (mDepth == 0)
-    {
-        numberOfBounce = 0;
-    }
-    else
-    {
-        numberOfBounce = (mDepth * 2 + 1) * (mDepth * 2 + 1) * (mDepth * 2 + 1) - 1;
-    }
-    mBounceSource.resize(numberOfBounce);
+    setDepth(1);
+    mBounceSource.resize(bounceIndexList.size());
     mRoomSize = Coordinate(1.0, 1.0, 1.0);
 
     for (int i = 0; i < CHANNEL_COUNT; i++)
@@ -32,6 +25,7 @@ RoomSimulation::RoomSimulation()
         mMainFilter[i].setNeedAverage(false);
         mEffectBlock[i].add(&mOffsetGainForReflect[i]);
         mEffectBlock[i].add(&mWetGain);
+        mEffectBlock[i].add(&mReverb[i]);
         mReflectorContainer[i].setIsParallel(true);
         mReflectorContainer[i].setNeedAverage(false);
         mEffectBlock[i].add(&mReflectorContainer[i]);
@@ -41,8 +35,8 @@ RoomSimulation::RoomSimulation()
             mReflectorContainer[i].add(&bounceSource.getFilter(i));
         }
         mMainSourceWithMix[i].setIsParallel(false);
-        mMainSourceWithMix[i].add(&mMainSource.getFilter(i));
         mMainSourceWithMix[i].add(&mDryGain);
+        mMainSourceWithMix[i].add(&mMainSource.getFilter(i));
         mMainFilter[i].add(&mMainSourceWithMix[i]);
         mMainFilter[i].add(&mEffectBlock[i]);
     }
@@ -62,21 +56,20 @@ void RoomSimulation::update()
 {
     updateGain();
     updateReflector();
+    if (mBounceSource.size() > 1)
+    {
+        for (int i = 0; i < CHANNEL_COUNT; i++)
+        {
+            mReverb[i].setAbsorb(0.3);
+            mReverb[i].setDelayInMs(maxDelay - secondMaxDelay);
+        }
+    }
     onPropertyChange();
 }
 
 SignalProcessor& RoomSimulation::getFilter(int channel)
 {
     return mMainFilter[channel];
-}
-int RoomSimulation::getIndex(int x, int y, int z) const
-{
-    int index = (x+ mDepth) + (y+ mDepth)*3 + (z+ mDepth)*3*3;
-    if (index > mDepth + mDepth*3 + mDepth*3*3)
-    {
-        index -= 1;
-    }
-    return index;
 }
 void RoomSimulation::updateSingleReflector(int x, int y, int z,int index)
 {
@@ -100,23 +93,27 @@ void RoomSimulation::updateSingleReflector(int x, int y, int z,int index)
         }    
     }
     mBounceSource[index].setDestination(destination);
+    for (int i = 0; i < CHANNEL_COUNT;i++)
+    {
+        double delay = mBounceSource[index].getCurrentDelayInMs(i);
+        if (maxDelay < delay)
+        {
+            secondMaxDelay = maxDelay;
+            maxDelay = delay;
+        }
+        else if (delay >secondMaxDelay)
+        {
+            secondMaxDelay = delay;
+        }
+    }
+
 }
 
 void RoomSimulation::updateReflector()
 {
-    for (int i = -mDepth; i < mDepth +1; i++)
+    for (int i = 0; i < bounceIndexList.size(); i++)
     {
-        for (int j = -mDepth; j < mDepth + 1; j++)
-        {
-            for (int k = -mDepth; k < mDepth + 1; k++)
-            {
-                if (i == 0 && j == 0 && k == 0)
-                {
-                    continue;
-                }
-                updateSingleReflector(k, j, i, getIndex(k,j,i));
-            }
-        }
+        updateSingleReflector(bounceIndexList[i][0], bounceIndexList[i][1], bounceIndexList[i][2], i);
     }
     
 }
@@ -179,7 +176,29 @@ void RoomSimulation::setKeepGain(bool keepGain)
 
 void RoomSimulation::setDepth(int depth)
 {
-    mDepth = depth;
+    if (mDepth != depth)
+    {
+        mDepth = depth;
+        bounceIndexList.clear();
+        for (int i = -mDepth; i < mDepth + 1; i++)
+        {
+            for (int j = -mDepth; j < mDepth + 1; j++)
+            {
+                for (int k = -mDepth; k < mDepth + 1; k++)
+                {
+                    if (i == 0 && j == 0 && k == 0)
+                    {
+                        continue;
+                    }
+                    if (abs(i) + abs(j) + abs(k) > mDepth)
+                    {
+                        continue;
+                    }
+                    bounceIndexList.push_back({ k,j,i });
+                }
+            }
+        }
+    }
 }
 
 void RoomSimulation::onPropertyChange()

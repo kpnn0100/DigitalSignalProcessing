@@ -171,6 +171,11 @@ double PositionSimulator::getCurrentGain()
     return mCurrentGain;
 }
 
+double PositionSimulator::getCurrentDelayInMs(int channel)
+{
+    return mPositioner[channel].getDelayInMs();
+}
+
 void PositionSimulator::setKeepGain(bool keepGain)
 {
     if (keepGain != mKeepGain)

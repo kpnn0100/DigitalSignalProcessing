@@ -82,4 +82,5 @@ public:
      */
     void setMaxDelay(int maxDelay);
     void smoothUpdate(double currentRatio) override;
+    void update() override;
 };
