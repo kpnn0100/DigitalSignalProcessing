@@ -1,6 +1,6 @@
 #pragma once
 
-#include "base/SignalProcessor.h"
+#include "../base/SignalProcessor.h"
 class LowPassFilterBase : public SignalProcessor {
 protected:
     double alpha; // Smoothing factor
