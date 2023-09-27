@@ -26,8 +26,13 @@ namespace gyrus_space
         Block mFilter;
         Delay mMainDelayBlock;
         Block mFeedBackBlock;
+        Block mDiffuseBlock;
         Delay mFeedBackDelay;
-        std::vector<Delay> diffuserList;
+
+        std::vector<Block> diffuserList;
+        std::vector<Delay> delayOfDiffuseList;
+        std::vector<Gain> gainOfDiffuse;
+        void updateDiffuser();
     public:
         Reverb();
         void setDelayInMs(float msDelay);

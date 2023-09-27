@@ -17,6 +17,7 @@
 #include "equalizer/LowPassFilter.h"
 #include "equalizer/LowPassFilterThirdOrder.h"
 #include "equalizer/LowPassFilterSixthOrder.h"
+#include "equalizer/SchroederAllpass.h"
 
 //Reverb
 #include "reverb/Reverb.h"

@@ -3,13 +3,15 @@
 #include <sndfile.h>
 #include "gyrus_space_dsp.h"
 using namespace gyrus_space;
-std::vector<float> readWavToVector(const char* filename) {
+std::vector<float> readWavToVector(const char *filename)
+{
     std::vector<float> samples;
 
     SF_INFO sfinfo;
-    SNDFILE* file = sf_open(filename, SFM_READ, &sfinfo);
+    SNDFILE *file = sf_open(filename, SFM_READ, &sfinfo);
 
-    if (!file) {
+    if (!file)
+    {
         std::cerr << "Error: Failed to open the WAV file." << std::endl;
         return samples;
     }
@@ -28,15 +30,17 @@ std::vector<float> readWavToVector(const char* filename) {
 
     return samples;
 }
-bool writeVectorToWav(const char* filename, const std::vector<float>& samples, int sampleRate) {
+bool writeVectorToWav(const char *filename, const std::vector<float> &samples, int sampleRate)
+{
     SF_INFO sfinfo;
     sfinfo.samplerate = sampleRate;
-    sfinfo.channels = 1; // Change this to the number of audio channels (e.g., 2 for stereo).
+    sfinfo.channels = 1;                             // Change this to the number of audio channels (e.g., 2 for stereo).
     sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT; // Use floating-point format.
 
-    SNDFILE* file = sf_open(filename, SFM_WRITE, &sfinfo);
+    SNDFILE *file = sf_open(filename, SFM_WRITE, &sfinfo);
 
-    if (!file) {
+    if (!file)
+    {
         std::cerr << "Error: Failed to open the output WAV file." << std::endl;
         return false;
     }
@@ -49,33 +53,49 @@ bool writeVectorToWav(const char* filename, const std::vector<float>& samples, i
 
     return true;
 }
-int main() {
-    const char* filename = "sample.wav";
-    const char* outputFile = "output.wav";
+int main()
+{
+    const char *filename = "sample.wav";
+    const char *outputFile = "output.wav";
     Reverb mReverb;
     int sampleRate = 44100;
     mReverb.setSampleRate(44100);
-    mReverb.setAbsorb(0.9);
-    mReverb.setDelayInMs(10);
+    mReverb.setAbsorb(0.90);
+    mReverb.setDelayInMs(40);
+
+    int allPassSize = 8;
+    SchroederAllpass allPass[allPassSize];
+    for (int j = 0; j < allPassSize; j++)
+    {
+        allPass[j].setDelayInMs(8.0);
+    }
     std::vector<float> audioSamples = readWavToVector(filename);
 
-    if (audioSamples.empty()) {
+    if (audioSamples.empty())
+    {
         std::cerr << "Error reading WAV file." << std::endl;
         return 1;
     }
-    for (int i = 0 ; i< sampleRate * 2; i++)
+    for (int i = 0; i < sampleRate * 2; i++)
     {
         audioSamples.push_back(0.0);
     }
-    for (int i = 0; i <audioSamples.size();i++)
+    for (int i = 0; i < audioSamples.size(); i++)
     {
+        for (int j = 0; j < allPassSize; j++)
+        {
+            audioSamples[i] = allPass[j].out(audioSamples[i]);
+        }
         audioSamples[i] = mReverb.out(audioSamples[i]);
     }
     // Now you can work with the audio samples stored in the vector
     // For example, you can iterate through the vector or perform various operations.
-    if (writeVectorToWav(outputFile, audioSamples, sampleRate)) {
+    if (writeVectorToWav(outputFile, audioSamples, sampleRate))
+    {
         std::cout << "WAV file successfully written." << std::endl;
-    } else {
+    }
+    else
+    {
         std::cerr << "Error writing WAV file." << std::endl;
         return 1;
     }
