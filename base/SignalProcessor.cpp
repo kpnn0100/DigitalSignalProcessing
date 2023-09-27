@@ -1,6 +1,7 @@
 #include "SignalProcessor.h"
 double SignalProcessor::mSampleRate = 48000;
 int SignalProcessor::mBufferSize = 128;
+std::vector<SignalProcessor*> SignalProcessor::signalProcessorInstanceList;
 void SignalProcessor::notifyPropertyListener()
 {
     for (auto listener : mPropertyListenerList)
@@ -14,6 +15,7 @@ void SignalProcessor::smoothUpdate(double currentRatio)
 
 SignalProcessor::SignalProcessor()
 {
+    signalProcessorInstanceList.push_back(this);
     setSampleDelay(0);
     callUpdate();
 }
@@ -63,6 +65,13 @@ inline void SignalProcessor::performSmoothUpdate(double ratio)
 {
     smoothUpdate(ratio);
 }
+void SignalProcessor::notifyAllSignalProcessor()
+{
+    for (auto processor : signalProcessorInstanceList)
+    {
+        processor->callUpdate();
+    }
+}
 inline void SignalProcessor::callUpdate()
 {
     mBufferCounter = 0;
@@ -73,6 +82,7 @@ inline void SignalProcessor::callUpdate()
 void SignalProcessor::setSampleRate(double sampleRate)
 {
     SignalProcessor::mSampleRate = sampleRate;
+    notifyAllSignalProcessor();
 }
 
 void SignalProcessor::setParent(SignalProcessor* parent)
@@ -135,5 +145,13 @@ void SignalProcessor::setBypass(bool bypass)
 
 SignalProcessor::~SignalProcessor()
 {
+    for (int i = 0; i < signalProcessorInstanceList.size(); i++)
+    {
+        if (signalProcessorInstanceList[i] == this)
+        {
+            signalProcessorInstanceList.erase(signalProcessorInstanceList.begin() + i);
+        }
+    }
+    
     // Destructor implementation, if needed
 }

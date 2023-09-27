@@ -34,6 +34,7 @@ class SignalProcessor
 {
 private:
     /**< Pointer to the parent SignalProcessor, if any. */
+    static std::vector<SignalProcessor*> signalProcessorInstanceList;
     SignalProcessor* mParent = nullptr;
     bool mBypass = false;
     // Helper methods for smoothing and buffer management
@@ -41,7 +42,7 @@ private:
     bool shouldSmoothUpdate();
     double calculateSmoothRatio();
     void performSmoothUpdate(double ratio);
-
+    static void notifyAllSignalProcessor();
 protected:
     std::vector<IPropertyChangeListener*> mPropertyListenerList;
     bool mSmoothEnable = true;

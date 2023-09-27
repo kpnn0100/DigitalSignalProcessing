@@ -13,6 +13,11 @@ SchroederAllpass::SchroederAllpass(double initialDelayInMilliseconds)
     setDelayInMs(initialDelayInMilliseconds);
 }
 
+void SchroederAllpass::update()
+{
+    setDelayInMs(mDelayInMs);
+}
+
 double SchroederAllpass::process(double in)
 {
     double sum1 = last + in;
@@ -27,6 +32,7 @@ double SchroederAllpass::process(double in)
 void SchroederAllpass::setDelayInMs(double delayInMilliseconds)
 {
     // Calculate the desired delay in samples based on the given delay in milliseconds
+    mDelayInMs = delayInMilliseconds;
     float desiredDelayInSamples = delayInMilliseconds * mSampleRate / 1000.0;
 
     mMainDelay.setDelay(desiredDelayInSamples);

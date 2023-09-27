@@ -14,11 +14,13 @@
 #include "../base/Block.h"
 #include "../base/SignalProcessor.h"
 #include "../util/Util.h"
+#include "../equalizer/SchroederAllpass.h"
 namespace gyrus_space
 {
     class Reverb : public SignalProcessor
     {
     private:
+        const static int diffuseCount = 8;
         float mDelay;
         float mAbsorb;
         float mLastOutput = 0.0;
@@ -26,12 +28,9 @@ namespace gyrus_space
         Block mFilter;
         Delay mMainDelayBlock;
         Block mFeedBackBlock;
-        Block mDiffuseBlock;
         Delay mFeedBackDelay;
-
-        std::vector<Block> diffuserList;
-        std::vector<Delay> delayOfDiffuseList;
-        std::vector<Gain> gainOfDiffuse;
+        
+        SchroederAllpass allPass[diffuseCount];
         void updateDiffuser();
     public:
         Reverb();
