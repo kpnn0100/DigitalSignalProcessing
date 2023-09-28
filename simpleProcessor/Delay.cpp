@@ -31,14 +31,7 @@ void Delay::setDelay(double newDelay)
     {
         mainDelay = newDelay; // Set the delay to the specified value
     }
-    if (mSmoothEnable)
-    {
-        callUpdate();
-    }
-    else
-    {
-        smoothUpdate(1.0);
-    }
+    callUpdate();
 }
 
 double Delay::process(double in)
@@ -48,8 +41,8 @@ double Delay::process(double in)
         //std::cout << this << std::endl;
         //std::cout << "before delay" << std::endl;
         // Calculate the indices and ratio for interpolation
-        double index1 = floor(mCurrentDelay);
-        double index2 = floor(mCurrentDelay+1);
+        double index1 = floor(mCurrentDelay-1);
+        double index2 = floor(mCurrentDelay);
         double ratio = 1 - ((mCurrentDelay) - index1);
 
         // Interpolate between delay samples
@@ -74,7 +67,7 @@ inline void Delay::setMaxDelay(int maxDelay)
 {
     mMaxDelay = maxDelay; // Set the maximum allowable delay
     //std::cout << this << std::endl;
-    delayBuffer = CircularList<double>(maxDelay,0.0); // Initialize the delay buffer
+    delayBuffer = CircularList<double>(maxDelay+1,0.0); // Initialize the delay buffer
 }
 
 void Delay::smoothUpdate(double currentRatio)

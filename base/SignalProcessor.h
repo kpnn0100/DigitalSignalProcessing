@@ -167,6 +167,7 @@ public:
      */
     void setBypass(bool bypass);
     void callRecursiveUpdate();
+    virtual void onSampleRateChanged();
     /**
      * @brief Destructor for the SignalProcessor class.
      *

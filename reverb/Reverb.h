@@ -14,23 +14,26 @@
 #include "../base/Block.h"
 #include "../base/SignalProcessor.h"
 #include "../util/Util.h"
-#include "../equalizer/SchroederAllpass.h"
+#include "../diffuser/SchroederAllPass.h"
+#include "../equalizer/LowPassFilter.h"
+#include "../base/FeedbackBlock.h"
 namespace gyrus_space
 {
     class Reverb : public SignalProcessor
     {
     private:
-        const static int diffuseCount = 8;
+        const static int diffuseCount = 10;
         float mDelay;
         float mAbsorb;
         float mLastOutput = 0.0;
         int mDiffusion;
+        LowPassFilter mLowPassFilter;
         Block mFilter;
         Delay mMainDelayBlock;
         Block mFeedBackBlock;
         Delay mFeedBackDelay;
-        
-        SchroederAllpass allPass[diffuseCount];
+        FeedbackBlock mLoopbackBlock;
+        SchroederAllPass allPass[diffuseCount];
         void updateDiffuser();
     public:
         Reverb();

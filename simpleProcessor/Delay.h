@@ -27,7 +27,7 @@
  */
 class Delay : public SignalProcessor
 {
-private:
+protected:
     CircularList<double> delayBuffer; /**< Circular buffer to store delayed samples. */
     double mainDelay; /**< The main delay value for the input signal. */
     int mMaxDelay; /**< The maximum allowable delay value. */

@@ -13,7 +13,12 @@ namespace gyrus_space
 {
     void Reverb::updateDiffuser()
     {
-
+        for (int i = 0; i < diffuseCount; i++)
+        {
+            allPass[i].setDelayInMs(i+10);
+            allPass[i].setFeedbackGain(0.66);
+            mFilter.add(allPass + i);
+        }
     }
 
     Reverb::Reverb()
@@ -22,16 +27,14 @@ namespace gyrus_space
         mAbsorb = 0;
         mDiffusion = 0;
         mFilter.setIsParallel(false);
-        for (int i = 0; i < diffuseCount; i++)
-        {
-            allPass[i].setDelayInMs(i%3+2);
-            mFilter.add(allPass + i);
-        }
-        mFilter.add(&mMainDelayBlock);
+        mLowPassFilter.setCutoffFrequency(1000);
+
+        mFilter.add(&mLoopbackBlock);
+        mFilter.add(&mLowPassFilter);
+        mLoopbackBlock.setForwardProcessor(&mMainDelayBlock);
+        mLoopbackBlock.setFeedbackProcessor(&mFeedBackBlock);
+
         mMainDelayBlock.setSmoothEnable(true);
-
-
-
         mFeedBackBlock.setIsParallel(false);
         // mFeedBackBlock.add(&mFeedBackDelay);
 
@@ -55,8 +58,6 @@ namespace gyrus_space
 
             mMainDelayBlock.setDelay(delay);
             mFeedBackDelay.setDelay(delay);
-
-            updateDiffuser();
             callUpdate();
         }
 
@@ -75,6 +76,7 @@ namespace gyrus_space
     {
         if (mAbsorb != absorb)
         {
+            mLoopbackBlock.setFeedbackGain(absorb);
             mAbsorb = absorb;
             callUpdate();
         }
@@ -82,13 +84,11 @@ namespace gyrus_space
 
     void Reverb::update()
     {
-
+        updateDiffuser();  
     }
 
     double Reverb::process(double in)
     {
-        double output = mMainDelayBlock.out(in + mAbsorb * mFeedBackBlock.out(mLastOutput));
-        mLastOutput = output;
-        return output;
+        return mFilter.out(in);
     }
 }

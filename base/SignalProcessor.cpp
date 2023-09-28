@@ -17,7 +17,6 @@ SignalProcessor::SignalProcessor()
 {
     signalProcessorInstanceList.push_back(this);
     setSampleDelay(0);
-    callUpdate();
 }
 void SignalProcessor::setBufferSize(double bufferSize)
 {
@@ -30,6 +29,9 @@ void SignalProcessor::callRecursiveUpdate()
     {
         mParent->callRecursiveUpdate();
     }
+}
+void SignalProcessor::onSampleRateChanged()
+{
 }
 void SignalProcessor::setSampleDelay(double newSampleDelay)
 {
@@ -67,14 +69,22 @@ inline void SignalProcessor::performSmoothUpdate(double ratio)
 }
 void SignalProcessor::notifyAllSignalProcessor()
 {
-    for (auto processor : signalProcessorInstanceList)
+    for (int i =0 ; i< signalProcessorInstanceList.size();i++)
     {
-        processor->callUpdate();
+        signalProcessorInstanceList[i]->onSampleRateChanged();
     }
 }
 inline void SignalProcessor::callUpdate()
 {
     mBufferCounter = 0;
+    if (shouldSmoothUpdate())
+    {
+        smoothUpdate(0.0);
+    }
+    else
+    {
+        smoothUpdate(1.0);
+    }
     update();
     notifyPropertyListener();
 }
