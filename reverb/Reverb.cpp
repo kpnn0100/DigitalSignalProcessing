@@ -15,8 +15,9 @@ namespace gyrus_space
     {
         for (int i = 0; i < diffuseCount; i++)
         {
-            allPass[i].setDelayInMs(i+10);
-            allPass[i].setFeedbackGain(0.66);
+            allPass[i].setMaxDelay(48000);
+            allPass[i].setDelayInMs(20.0*i);
+            allPass[i].setChannelCount(8);
             mFilter.add(allPass + i);
         }
     }
@@ -28,7 +29,7 @@ namespace gyrus_space
         mDiffusion = 0;
         mFilter.setIsParallel(false);
         mLowPassFilter.setCutoffFrequency(1000);
-
+        updateDiffuser();  
         mFilter.add(&mLoopbackBlock);
         mFilter.add(&mLowPassFilter);
         mLoopbackBlock.setForwardProcessor(&mMainDelayBlock);
@@ -36,12 +37,12 @@ namespace gyrus_space
 
         mMainDelayBlock.setSmoothEnable(true);
         mFeedBackBlock.setIsParallel(false);
-        // mFeedBackBlock.add(&mFeedBackDelay);
+
 
         mFeedBackDelay.setSmoothEnable(true);
         mMainDelayBlock.setMaxDelay(mSampleRate);
         mFeedBackDelay.setMaxDelay(mSampleRate);
-        callUpdate();
+
     }
 
     void Reverb::setDelayInMs(float msDelay)

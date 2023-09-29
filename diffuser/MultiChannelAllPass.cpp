@@ -24,7 +24,7 @@ double MultiChannelAllPass::process(double in)
         double sampleRatio =(double)mChannelCount;
         for (int i = 0; i<mChannelCount;i++)
         {
-            double delayOfThis = (mCurrentDelay-1)/mChannelCount*i;
+            double delayOfThis = (mCurrentDelay-1)/mChannelCount*(i+1);
             double index1 = floor(delayOfThis);
             double index2 = floor(delayOfThis+1);
             double ratio = 1 - ((delayOfThis) - index1);
@@ -32,10 +32,10 @@ double MultiChannelAllPass::process(double in)
             double sample1 = delayBuffer[int(index1)];
             double sample2 = delayBuffer[int(index2)] ;
             double thisOut = sample1 * ratio + sample2 * (1 - ratio);
-            double invert = -1.0 + (i+1)%2 * 2.0;
-            if (thisOut > 0.0)
+            double invert =-1.0;
+            if (i%3==1)
             {
-                int breakhere = 2;
+                invert = 1.0;
             }
             outSample += (thisOut/sampleRatio)*invert;
         }

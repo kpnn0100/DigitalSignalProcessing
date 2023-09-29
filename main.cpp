@@ -57,23 +57,23 @@ int main()
 {
     const char *filename = "sample.wav";
     const char *outputFile = "output.wav";
-    int numberOfAllpass = 1;
+    int numberOfAllpass = 5;
     double baseDelay = 48.0;
     SignalProcessor::setBufferSize(0);
     Reverb mReverb;
     MultiChannelAllPass mAllPass[numberOfAllpass];
     int sampleRate = 44100;
     mReverb.setSampleRate(44100);
-    mReverb.setAbsorb(0.96);
-    mReverb.setDelayInMs(20);
+    mReverb.setAbsorb(0.80);
+    mReverb.setDelayInMs(100);
 
     
     for (int i = 0; i < numberOfAllpass; i++)
     {
-        mAllPass[i].setChannelCount(2);
+        mAllPass[i].setChannelCount(8);
         mAllPass[i].setMaxDelay(sampleRate);
         mAllPass[i].setDelayInMs(baseDelay);
-        baseDelay *= 2.0;
+        // baseDelay *= 2.0;
     }
     std::vector<float> audioSamples = readWavToVector(filename);
 
@@ -88,16 +88,17 @@ int main()
     }
     for (int i = 0; i < audioSamples.size(); i++)
     {
+        
         double data = audioSamples[i];
-        // audioSamples[i] = data +  mReverb.out(data);
-        if (data >0.0)
+        audioSamples[i] = mReverb.out(data)*3;//+data;
+        if (i>44100)
         {
             int breakhere = 2;
         }
-        for (int j = 0; j < numberOfAllpass; j++)
-        {   
-            audioSamples[i] = mAllPass[j].out(audioSamples[i]);
-        }
+        // for (int j = 0; j < numberOfAllpass; j++)
+        // {   
+        //     audioSamples[i] = mAllPass[j].out(audioSamples[i]);
+        // }
     }
     // Now you can work with the audio samples stored in the vector
     // For example, you can iterate through the vector or perform various operations.
