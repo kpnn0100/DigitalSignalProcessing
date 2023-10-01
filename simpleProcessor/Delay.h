@@ -82,5 +82,8 @@ public:
      */
     void setMaxDelay(int maxDelay);
     void smoothUpdate(double currentRatio) override;
+    void write(double sample);
+    double read(double delay);
+    double getCurrentDelay();
     void update() override;
 };

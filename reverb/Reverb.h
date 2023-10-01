@@ -17,31 +17,44 @@
 #include "../diffuser/MultiChannelAllPass.h"
 #include "../equalizer/LowPassFilter.h"
 #include "../base/FeedbackBlock.h"
+#include "ClassForReverb.h"
 namespace gyrus_space
 {
     class Reverb : public SignalProcessor
     {
     private:
-        const static int diffuseCount = 2;
-        float mDelay;
-        float mAbsorb;
-        float mLastOutput = 0.0;
+        const static int diffuseCount = 8;
+		const static int stepCount = 4;
+		using Array = std::array<double, diffuseCount>;
+        double mDelay;
+        double mAbsorb;
+
+		double mDelayInMs;
+        double mLastDelayInMs;
+        double mCurrentDelayInMs;
+
+
+		double mDecayGain;
+
+		double mDecayInMs;
+        double mLastDecayInMs;
+        double mCurrentDecayInMs;
+
+        double mLastOutput = 0.0;
         int mDiffusion;
-        LowPassFilter mLowPassFilter;
-        Block mFilter;
-        Delay mMainDelayBlock;
-        Block mFeedBackBlock;
-        Delay mFeedBackDelay;
-        FeedbackBlock mLoopbackBlock;
-        MultiChannelAllPass allPass[diffuseCount];
+		Delay mFeedback[diffuseCount];
+		BasicReverb<diffuseCount,stepCount> bsReverb;
         void updateDiffuser();
     public:
         Reverb();
-        void setDelayInMs(float msDelay);
-        void setDelay(float delay);
+        void setDelayInMs(double msDelay);
+        void setDelay(double delay);
+		void setDecayInMs(double decay);
         void setDiffusion(int diff);
         void setAbsorb(double absorb);
         void update() override;
+		void onSampleRateChanged();
         double process(double in) override;
+        void smoothUpdate(double ratio) override;
     };
 }

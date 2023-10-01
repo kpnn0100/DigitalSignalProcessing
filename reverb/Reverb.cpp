@@ -9,59 +9,72 @@
 */
 
 #include "Reverb.h"
+double randomInRange(double low, double high)
+{
+    // There are better randoms than this, and you should use them instead 😛
+    double unitRand = rand() / double(RAND_MAX);
+    return low + unitRand * (high - low);
+}
 namespace gyrus_space
 {
     void Reverb::updateDiffuser()
     {
-        for (int i = 0; i < diffuseCount; i++)
-        {
-            allPass[i].setMaxDelay(48000);
-            allPass[i].setDelayInMs(20.0*i);
-            allPass[i].setChannelCount(8);
-            mFilter.add(allPass + i);
-        }
     }
 
-    Reverb::Reverb()
+    Reverb::Reverb() : bsReverb(50.0, 5)
     {
         mDelay = 0;
         mAbsorb = 0;
         mDiffusion = 0;
-        mFilter.setIsParallel(false);
-        mLowPassFilter.setCutoffFrequency(1000);
-        updateDiffuser();  
-        mFilter.add(&mLoopbackBlock);
-        mFilter.add(&mLowPassFilter);
-        mLoopbackBlock.setForwardProcessor(&mMainDelayBlock);
-        mLoopbackBlock.setFeedbackProcessor(&mFeedBackBlock);
-
-        mMainDelayBlock.setSmoothEnable(true);
-        mFeedBackBlock.setIsParallel(false);
-
-
-        mFeedBackDelay.setSmoothEnable(true);
-        mMainDelayBlock.setMaxDelay(mSampleRate);
-        mFeedBackDelay.setMaxDelay(mSampleRate);
-
+        mCurrentDelayInMs = 50.0;
+        mLastDelayInMs = 50.0;
+        setDecayInMs(500.0);
+        setDelayInMs(100.0);
+        bsReverb.configure(44100);
+        onSampleRateChanged();
+        updateDiffuser();
+        setSmoothEnable(true);
     }
 
-    void Reverb::setDelayInMs(float msDelay)
+    void Reverb::setDelayInMs(double msDelay)
     {
-        setDelay(msDelay / 1000 * mSampleRate);
+        if (mDelayInMs != msDelay)
+        {
+            mDelayInMs = msDelay;
+            mLastDelayInMs = mCurrentDelayInMs;
+            callUpdate();
+        }
+
+        
+        // bsReverb.setDelayInMs(msDelay);
+        // setDelay(msDelay / 1000 * mSampleRate);
     }
 
-    inline void Reverb::setDelay(float delay)
+    inline void Reverb::setDelay(double delay)
     {
         if (mDelay != delay)
         {
             mDelay = delay;
-
-
-            mMainDelayBlock.setDelay(delay);
-            mFeedBackDelay.setDelay(delay);
+            for (int c = 0; c < diffuseCount; ++c)
+            {
+                double r = c * 1.0 / diffuseCount;
+                mFeedback[c].setDelay( std::pow(2, r) * delay);
+            }
             callUpdate();
         }
+    }
 
+    void Reverb::setDecayInMs(double decay)
+    {
+        if (mDecayInMs != decay)
+        {
+            mDecayInMs = decay;
+            mLastDecayInMs = mCurrentDecayInMs;
+
+
+            // bsReverb.setDecayInMs(decay);
+            callUpdate();
+        }
     }
 
     inline void Reverb::setDiffusion(int diff)
@@ -77,7 +90,6 @@ namespace gyrus_space
     {
         if (mAbsorb != absorb)
         {
-            mLoopbackBlock.setFeedbackGain(absorb);
             mAbsorb = absorb;
             callUpdate();
         }
@@ -85,11 +97,65 @@ namespace gyrus_space
 
     void Reverb::update()
     {
-        updateDiffuser();  
+
+		// How long does our signal take to go around the feedback loop?
+		double typicalLoopMs = mDelayInMs*1.5;
+		// How many times will it do that during our RT60 period?
+		double loopsPerRt60 = mDecayInMs/typicalLoopMs;
+		// This tells us how many dB to reduce per loop
+		double dbPerCycle = -60/loopsPerRt60;
+
+		mDecayGain = std::pow(10, dbPerCycle*0.05);
+        updateDiffuser();
+    }
+
+    void Reverb::onSampleRateChanged()
+    {
+        bsReverb.configure(mSampleRate);
+        for (int i = 0; i < diffuseCount; i++)
+        {
+            mFeedback[i].setMaxDelay(mSampleRate);
+        }
+        setDelayInMs(mDelayInMs);
     }
 
     double Reverb::process(double in)
     {
-        return mFilter.out(in);
+        // return mFilter.out(in);
+        Array input;
+        for (int i = 0; i < diffuseCount; i++)
+        {
+            input[i] = in;
+        }
+        input = bsReverb.process(input);
+        double out = 0.0;
+        for (int i = 0; i < diffuseCount; i++)
+        {
+            out += input[i]/(double)diffuseCount/4.0;
+        }
+        return out;
     }
+
+    void Reverb::smoothUpdate(double ratio)
+    {
+        mCurrentDelayInMs = mLastDelayInMs * (1 - ratio) + mDelayInMs * ratio;
+        if (mBufferCounter == mBufferSize)
+        {
+            mLastDelayInMs = mDelayInMs;
+        }
+        bsReverb.mDelay = mCurrentDelayInMs;
+
+
+        mCurrentDecayInMs = mLastDecayInMs * (1 - ratio) + mDecayInMs * ratio;
+        if (mBufferCounter == mBufferSize)
+        {
+            mLastDecayInMs = mDecayInMs;
+        }
+        bsReverb.mRt60 = mCurrentDecayInMs / 1000.0;
+
+
+        bsReverb.configure(mSampleRate);
+
+    }
+  
 }

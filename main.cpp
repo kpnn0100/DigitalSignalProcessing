@@ -66,7 +66,7 @@ int main()
     mReverb.setSampleRate(44100);
     mReverb.setAbsorb(0.80);
     mReverb.setDelayInMs(100);
-
+    mReverb.setDecayInMs(2000.0);
     
     for (int i = 0; i < numberOfAllpass; i++)
     {
@@ -82,7 +82,7 @@ int main()
         std::cerr << "Error reading WAV file." << std::endl;
         return 1;
     }
-    for (int i = 0; i < sampleRate * 2; i++)
+    for (int i = 0; i < sampleRate * 4; i++)
     {
         audioSamples.push_back(0.0);
     }
@@ -90,7 +90,7 @@ int main()
     {
         
         double data = audioSamples[i];
-        audioSamples[i] = mReverb.out(data)*3;//+data;
+        audioSamples[i] = mReverb.out(data);//+data;
         if (i>44100)
         {
             int breakhere = 2;

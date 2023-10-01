@@ -114,7 +114,7 @@ double Positioner::getDistance()
 
 double Positioner::getDelayInMs()
 {
-    return (mSource.distanceTo(mDestination)+mOffsetDistance)/SPEED_OF_SOUND;
+    return (mSource.distanceTo(mDestination)+mOffsetDistance)/SPEED_OF_SOUND * 1000.0;
 }
 
 void Positioner::updateGain(double currentRatio)

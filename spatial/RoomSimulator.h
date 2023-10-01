@@ -22,14 +22,17 @@ private:
     Coordinate mSource;
     Coordinate mDestination;
     double maxDelay = 0.0;
-    double secondMaxDelay = 0.0;
+    double minDelay = 0.0;
     gyrus_space::Reverb mReverb[2];
+    Block mReverbBlock[2];
     Block mMainFilter[2];
     Block mMainSourceWithMix[2];
     Gain mDryGain;
     Gain mWetGain;
+    Gain mReverbGain;
     PositionSimulator mMainSource;
     Gain mOffsetGainForReflect[2];
+    
     Block mEffectBlock[2];
     Block mReflectorContainer[2];
     double mDryMix=1.0;
@@ -49,6 +52,8 @@ public:
     void setMaxDistance(double maxDistance);
     void setKeepGain(bool keepGain);
     void setDepth(int depth);
+    void setDecayInMs(double decay);
+    void setReverbWet(double wet);
     virtual void onPropertyChange() override;
     void setDryMix(double dryMix);
     void setWetMix(double wetMix);

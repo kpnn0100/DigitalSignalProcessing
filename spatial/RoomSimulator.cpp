@@ -20,15 +20,19 @@ RoomSimulation::RoomSimulation()
 
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
+        mReverb[i].setDecayInMs(500.0);
         mOffsetGainForReflect[i].setSmoothEnable(true);
+        mReverbBlock[i].setIsParallel(false);
         mMainFilter[i].setIsParallel(true);
         mMainFilter[i].setNeedAverage(false);
         mEffectBlock[i].add(&mOffsetGainForReflect[i]);
         mEffectBlock[i].add(&mWetGain);
-        mEffectBlock[i].add(&mReverb[i]);
         mReflectorContainer[i].setIsParallel(true);
         mReflectorContainer[i].setNeedAverage(false);
         mEffectBlock[i].add(&mReflectorContainer[i]);
+        mReverbBlock[i].add(&mReverb[i]);
+        mReverbBlock[i].add(&mOffsetGainForReflect[i]);
+        mReverbBlock[i].add(&mReverbGain);
         for (auto& bounceSource : mBounceSource)
         {
             bounceSource.setKeepGain(false);
@@ -37,6 +41,7 @@ RoomSimulation::RoomSimulation()
         mMainSourceWithMix[i].setIsParallel(false);
         mMainSourceWithMix[i].add(&mDryGain);
         mMainSourceWithMix[i].add(&mMainSource.getFilter(i));
+        mMainFilter[i].add(&mReverbBlock[i]);
         mMainFilter[i].add(&mMainSourceWithMix[i]);
         mMainFilter[i].add(&mEffectBlock[i]);
     }
@@ -60,8 +65,7 @@ void RoomSimulation::update()
     {
         for (int i = 0; i < CHANNEL_COUNT; i++)
         {
-            mReverb[i].setAbsorb(0.3);
-            mReverb[i].setDelayInMs(maxDelay - secondMaxDelay);
+            mReverb[i].setDelayInMs(maxDelay);
         }
     }
     onPropertyChange();
@@ -93,17 +97,18 @@ void RoomSimulation::updateSingleReflector(int x, int y, int z,int index)
         }    
     }
     mBounceSource[index].setDestination(destination);
+    minDelay = 99999999.0;
+    maxDelay = 0.0;
     for (int i = 0; i < CHANNEL_COUNT;i++)
     {
         double delay = mBounceSource[index].getCurrentDelayInMs(i);
         if (maxDelay < delay)
         {
-            secondMaxDelay = maxDelay;
             maxDelay = delay;
         }
-        else if (delay >secondMaxDelay)
+        if (minDelay > delay)
         {
-            secondMaxDelay = delay;
+            minDelay = delay;
         }
     }
 
@@ -199,6 +204,19 @@ void RoomSimulation::setDepth(int depth)
             }
         }
     }
+}
+
+void RoomSimulation::setDecayInMs(double decay)
+{
+    for (int i = 0; i < CHANNEL_COUNT; i++)
+    {
+        mReverb[i].setDecayInMs(decay);
+    }
+}
+
+void RoomSimulation::setReverbWet(double wet)
+{
+    mReverbGain.setGain(wet);
 }
 
 void RoomSimulation::onPropertyChange()

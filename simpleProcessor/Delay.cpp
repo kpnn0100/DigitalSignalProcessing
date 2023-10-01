@@ -38,22 +38,9 @@ double Delay::process(double in)
 {
     if (mCurrentDelay > 2)
     {
-        //std::cout << this << std::endl;
-        //std::cout << "before delay" << std::endl;
-        // Calculate the indices and ratio for interpolation
-        double index1 = floor(mCurrentDelay-1);
-        double index2 = floor(mCurrentDelay);
-        double ratio = 1 - ((mCurrentDelay) - index1);
 
-        // Interpolate between delay samples
-        //std::cout << mCurrentDelay << std::endl;
-        //std::cout << "before access" << std::endl;
-        //std::cout << delayBuffer.size() << std::endl;
-        //std::cout << int(index1) << std::endl;
-        double sample1 = delayBuffer[int(index1)];
-        double sample2 = delayBuffer[int(index2)] ;
-        double outSample = sample1 * ratio + sample2 * (1 - ratio);
-        delayBuffer.push_front_and_pop_back(in); // Update the delay buffer
+        double outSample = read(mCurrentDelay);
+        write(in);
         //std::cout << "after delay" << std::endl;
         return outSample; // Return the interpolated output sample
     }
@@ -62,12 +49,49 @@ double Delay::process(double in)
         return in; // No delay applied, return the input as is
     }
 }
+double Delay::read(double delay)
+{
 
+        double index1 = floor(delay-1);
+        double index2 = floor(delay);
+        double ratio = 1 - ((delay) - index1);
+        double sample1 = delayBuffer[int(index1)];
+        double sample2 = delayBuffer[int(index2)] ;
+        double outSample = sample1 * ratio + sample2 * (1 - ratio);
+        return outSample;
+}
+double Delay::getCurrentDelay()
+{
+        return mCurrentDelay;
+}
+void Delay::write(double sample)
+{
+    delayBuffer.push_front_and_pop_back(sample); // Update the delay buffer
+}
 inline void Delay::setMaxDelay(int maxDelay)
 {
+    if (mMaxDelay == maxDelay)
+    {
+        return;
+    }
+    if (mMaxDelay == 0)
+    {
+        delayBuffer = CircularList<double>(maxDelay+1,0.0); // Initialize the delay buffer
+    }
+    else
+    {
+        while (delayBuffer.size()<maxDelay)
+        {
+            delayBuffer.push_back(0.0);
+        }
+        while (delayBuffer.size()>maxDelay)
+        {
+            delayBuffer.pop_back();
+        }
+    }
     mMaxDelay = maxDelay; // Set the maximum allowable delay
     //std::cout << this << std::endl;
-    delayBuffer = CircularList<double>(maxDelay+1,0.0); // Initialize the delay buffer
+    
 }
 
 void Delay::smoothUpdate(double currentRatio)
