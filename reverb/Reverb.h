@@ -23,7 +23,7 @@ namespace gyrus_space
     class Reverb : public SignalProcessor
     {
     private:
-        const static int diffuseCount = 8;
+        const static int diffuseCount = 4;
 		const static int stepCount = 4;
 		using Array = std::array<double, diffuseCount>;
         double mDelay;
