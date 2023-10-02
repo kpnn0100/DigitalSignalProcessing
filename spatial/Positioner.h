@@ -43,7 +43,8 @@ private:
         offsetDistanceId,
         propertyCount
     };
-
+    Coordinate mSource;
+    Coordinate mDestination;
     double mDelaySample; /**< The delay sample value. */
     double mMaxDistance; /**< The maximum distance for delay calculation. */
     static const double SPEED_OF_SOUND; /**< The speed of sound in the medium. */

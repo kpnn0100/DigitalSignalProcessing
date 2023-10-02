@@ -14,6 +14,15 @@ PositionSimulator::PositionSimulator()
 {
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
+        if (i % 2 == 0)
+        {
+            mMainFilter[i].setName("PositionSimulator Left");
+        }
+        else
+        {
+            mMainFilter[i].setName("PositionSimulator Right");
+        }
+        
         mMainFilter[i].setIsParallel(false);
         mOffsetGain[i].setSmoothEnable(true);
         mMainFilter[i].add(mOffsetGain + i);

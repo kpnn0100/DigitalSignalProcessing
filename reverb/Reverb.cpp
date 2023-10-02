@@ -42,15 +42,7 @@ namespace gyrus_space
 
     inline void Reverb::setDelay(double delay)
     {
-        if (mDelay != delay)
-        {
-            mDelay = delay;
-            for (int c = 0; c < diffuseCount; ++c)
-            {
-                double r = c * 1.0 / diffuseCount;
-                mFeedback[c].setDelay( std::pow(2, r) * delay);
-            }
-        }
+
     }
 
     void Reverb::setDecayInMs(double decay)
@@ -74,10 +66,6 @@ namespace gyrus_space
     void Reverb::onSampleRateChanged()
     {
         bsReverb.configure(mSampleRate);
-        for (int i = 0; i < diffuseCount; i++)
-        {
-            mFeedback[i].setMaxDelay(mSampleRate);
-        }
         setDelayInMs(getProperty(delayID));
     }
 

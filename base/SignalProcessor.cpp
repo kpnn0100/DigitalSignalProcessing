@@ -9,6 +9,7 @@ SignalProcessor::SignalProcessor(int propertyCount)
 {
     mPropertyList.resize(propertyCount);
     signalProcessorInstanceList.push_back(this);
+    mBufferCounter = 0;
     setSampleDelay(0);
 }
 
@@ -75,9 +76,15 @@ void SignalProcessor::callRecursiveUpdate()
 }
 void SignalProcessor::setProperty(int propertyId, double value)
 {
-    mPropertyList[propertyId].last = mPropertyList[propertyId].current;
-    mPropertyList[propertyId].target = value;
-    callUpdate();
+    if (mPropertyList[propertyId].target != value)
+    {
+        savePropertyState();
+        mPropertyList[propertyId].target = value;
+        
+        //reset state for other property
+        callUpdate();
+    }
+
 }
 double SignalProcessor::getProperty(int propertyId)
 {
@@ -115,6 +122,19 @@ bool SignalProcessor::shouldSmoothUpdate()
     return mSmoothEnable && mBufferSize > 0;
 }
 
+void SignalProcessor::savePropertyState()
+{
+    for (int i = 0; i < mPropertyList.size(); i++)
+    {
+        mPropertyList[i].last = mPropertyList[i].current;
+    }
+}
+
+void SignalProcessor::setName(std::string name)
+{
+    nameOfFilter = name;
+}
+
 inline double SignalProcessor::calculateSmoothRatio()
 {
     return static_cast<double>(mBufferCounter) / static_cast<double>(mBufferSize);
@@ -137,11 +157,13 @@ inline void SignalProcessor::callUpdate()
     mBufferCounter = 0;
     if (shouldSmoothUpdate())
     {
+        propertyInterpolation(0.0);
         smoothUpdate(0.0);
     }
     else
     {
         mBufferCounter = mBufferSize;
+        propertyInterpolation(1.0);
         smoothUpdate(1.0);
     }
     update();
@@ -187,9 +209,17 @@ double SignalProcessor::out(double in)
     {
         if (updateBufferCounter())
         {
+            if (mBufferCounter == 479)
+            {
+                int break_here = 2;
+            }
             double ratio = calculateSmoothRatio();
             performSmoothUpdate(ratio);
             notifyPropertyListener();
+        }
+        else
+        {
+            int breakHere = 2;
         }
     }
     if (mBypass)

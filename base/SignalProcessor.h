@@ -23,6 +23,7 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <cmath>
+#include <string>
 
  /**
   * @brief A base signal processing module
@@ -36,6 +37,7 @@ class SignalProcessor
 private:
     /**< Pointer to the parent SignalProcessor, if any. */
     static std::vector<SignalProcessor*> signalProcessorInstanceList;
+    std::string nameOfFilter;
     SignalProcessor* mParent = nullptr;
     bool mBypass = false;
     // Helper methods for smoothing and buffer management
@@ -175,6 +177,8 @@ public:
     double getProperty(int propertyId);
     double getPropertyTargetValue(int propertyId);
     bool shouldSmoothUpdate();
+    void savePropertyState();
+    void setName(std::string name);
     virtual void onSampleRateChanged();
     /**
      * @brief Destructor for the SignalProcessor class.

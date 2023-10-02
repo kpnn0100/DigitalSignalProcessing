@@ -20,6 +20,15 @@ RoomSimulation::RoomSimulation()
 
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
+        if (i % 2 == 0)
+        {
+            mMainFilter[i].setName("Room Left");
+        }
+        else
+        {
+            mMainFilter[i].setName("Room Right");
+        }
+        mOffsetGainForReflect[i].setName("offsetGain " + char(i + '0'));
         mReverb[i].setDecayInMs(500.0);
         mOffsetGainForReflect[i].setSmoothEnable(true);
         mReverbBlock[i].setIsParallel(false);
@@ -41,10 +50,16 @@ RoomSimulation::RoomSimulation()
         mMainSourceWithMix[i].setIsParallel(false);
         mMainSourceWithMix[i].add(&mDryGain);
         mMainSourceWithMix[i].add(&mMainSource.getFilter(i));
+        mMainSource.getFilter(i).setName("PositionSimulator of main");
+        mReverbBlock[i].setName("Reverb gain block of Room");
         mMainFilter[i].add(&mReverbBlock[i]);
         mMainFilter[i].add(&mMainSourceWithMix[i]);
         mMainFilter[i].add(&mEffectBlock[i]);
     }
+    mReverbGain.setName("Reverb gain of Room");
+    mWetGain.setName("wet gain of room");
+    mDryGain.setName("Dry gain of Room");
+
 
 }
 
