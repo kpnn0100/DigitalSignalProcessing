@@ -3,13 +3,12 @@ const double Positioner::SPEED_OF_SOUND = 343.0; // Speed of sound in the medium
 
 const double Positioner::STANDARD_DISTANCE = 1.0; // Standard reference distance for gain calculation (in meters)
 
-Positioner::Positioner()
+Positioner::Positioner() : SignalProcessor(propertyCount)
 {
     // Initialize the Delay and Block filters for processing
     setSmoothEnable(true);
     mDelayFilter = Delay(5000);
     mDelayFilter.setSmoothEnable(false);
-    mSyncTarget = nullptr;
     mBlockFilter.add(&mDelayFilter);
     mBlockFilter.add(&mGainFilter);
     mBlockFilter.setIsParallel(false); // Set the block to process filters serially
@@ -33,46 +32,30 @@ void Positioner::setKeepGain(bool keepGain)
 
 void Positioner::smoothUpdate(double currentRatio)
 {
-    updateDelaySample(currentRatio);
-    updateGain(currentRatio);
+    updateDelaySample();
+    updateGain();
 }
 
 
-void Positioner::saveProperty()
-{
-    mOldOffsetDistance = mCurrentOffsetDistance;
-    mOldDestination = mCurrentDestination;
-    mOldSource = mCurrentSource;
-}
 void Positioner::setOffsetDistance(double offsetDistance)
 {
-    if (mOffsetDistance == offsetDistance)
-        return;
-    saveProperty();
-    mOffsetDistance = offsetDistance;
-    callUpdate();
+    setProperty(offsetDistanceId, offsetDistance);
 }
 
 void Positioner::setDestination(Coordinate destination)
 {
-    if (mDestination == destination)
+    for (int i = 0 ; i<3; i ++)
     {
-        return;
+        setProperty(destinationXId+ i, destination.get(i));
     }
-    saveProperty();
-    mDestination = destination; // Set the new destination
-    callUpdate();
 }
 
 void Positioner::setSource(Coordinate source)
 {
-    if (mSource == source)
+    for (int i = 0 ; i<3; i ++)
     {
-        return;
+        setProperty(sourceXId+ i, source.get(i));
     }
-    saveProperty();
-    mSource = source; // Set the new source
-    callUpdate();
 }
 
 void Positioner::setMaxDistance(double maxDistance)
@@ -82,23 +65,19 @@ void Positioner::setMaxDistance(double maxDistance)
     mDelayFilter.setMaxDelay((int)(maxDistance / SPEED_OF_SOUND * mSampleRate));
 }
 
-void Positioner::updateDelaySample(double currentRatio)
+void Positioner::updateDelaySample()
 {
     // Calculate expected positions during transition
-    mCurrentSource = mOldSource * (1 - currentRatio) + mSource * currentRatio;
-    mCurrentDestination = mOldDestination * (1 - currentRatio) + mDestination * currentRatio;
+    Coordinate source;
+    Coordinate destination;
+    for (int i = 0 ; i< 3; i++)
+    {
+        source.set(i, getProperty(sourceXId+i));
+        destination.set(i, getProperty(destinationXId+i));
+    }
     double distanceToDelay;
     double distance;
-
-    // Calculate the distance for delay and gain adjustment
-    if (mSmoothEnable)
-    {
-        distance = mCurrentSource.distanceTo(mCurrentDestination); // Smooth transition
-    }
-    else
-    {
-        distance = mSource.distanceTo(mDestination); // Abrupt transition
-    }
+     distance = source.distanceTo(destination); // Smooth transition
 
     // Calculate the distance to delay conversion and update the delay filter
     distanceToDelay = distance / SPEED_OF_SOUND * mSampleRate;
@@ -109,17 +88,30 @@ void Positioner::updateDelaySample(double currentRatio)
 
 double Positioner::getDistance()
 {
-    return mSource.distanceTo(mDestination); // Return the current distance
+    Coordinate source;
+    Coordinate destination;
+    for (int i = 0 ; i< 3; i++)
+    {
+        source.set(i, getProperty(sourceXId+i));
+        destination.set(i, getProperty(destinationXId+i));
+    }
+    return source.distanceTo(destination); // Return the current distance
 }
 
 double Positioner::getDelayInMs()
 {
-    return (mSource.distanceTo(mDestination)+mOffsetDistance)/SPEED_OF_SOUND * 1000.0;
+    Coordinate source;
+    Coordinate destination;
+    for (int i = 0 ; i< 3; i++)
+    {
+        source.set(i, getProperty(sourceXId+i));
+        destination.set(i, getProperty(destinationXId+i));
+    }
+    return (source.distanceTo(destination)+getProperty(offsetDistanceId))/SPEED_OF_SOUND * 1000.0;
 }
 
-void Positioner::updateGain(double currentRatio)
+void Positioner::updateGain()
 {
-    mCurrentOffsetDistance = mOldOffsetDistance * (1 - currentRatio) + mOffsetDistance * currentRatio;
     if (mKeepGain)
     {
         mCurrentGain = 1.0;
@@ -133,7 +125,7 @@ void Positioner::updateGain(double currentRatio)
     }
     else
     {
-        mCurrentGain = STANDARD_DISTANCE / (mCurrentDistance+ mCurrentOffsetDistance); // Calculate the gain adjustment
+        mCurrentGain = STANDARD_DISTANCE / (mCurrentDistance+ getProperty(offsetDistanceId)); // Calculate the gain adjustment
         mGainFilter.setGain(mCurrentGain); // Update the gain filter with the new gain
     }
 
@@ -147,45 +139,65 @@ double Positioner::getGain()
 
 void Positioner::update()
 {
-    if (mSmoothEnable)
-    {
-        smoothUpdate(0.0);
-    }
-    else
-    {
-        smoothUpdate(1.0);
-    }
+
 }
 
 double Positioner::getTargetGain()
 {
+    Coordinate source;
+    Coordinate destination;
+    for (int i = 0 ; i< 3; i++)
+    {
+        source.set(i, getPropertyTargetValue(sourceXId+i));
+        destination.set(i, getPropertyTargetValue(destinationXId+i));
+    }
     if (mKeepGain)
     {
         return 1.0;
     }
     else
     {
-        return STANDARD_DISTANCE / (mSource.distanceTo(mDestination) + mOffsetDistance);
+        return STANDARD_DISTANCE / (source.distanceTo(destination) + getPropertyTargetValue(offsetDistanceId));
         
      }
 }
 
 Coordinate Positioner::getCurrentSource()
 {
-    return mCurrentSource;
+    Coordinate source;
+    for (int i = 0 ; i< 3; i++)
+    {
+        source.set(i, getProperty(sourceXId+i));
+    }
+    return source;
 }
 
 Coordinate Positioner::getCurrentDestination()
 {
-    return mCurrentDestination;
+    Coordinate destination;
+    for (int i = 0 ; i< 3; i++)
+    {
+        destination.set(i, getProperty(destinationXId+i));
+    }
+    return destination;
 }
 
 Coordinate Positioner::getSource()
 {
-    return mSource;
+    Coordinate source;
+    for (int i = 0 ; i< 3; i++)
+    {
+        source.set(i, getPropertyTargetValue(sourceXId+i));
+    }
+    return source;
 }
 
 Coordinate Positioner::getDestination()
 {
-    return mDestination;
+    Coordinate destination;
+    for (int i = 0 ; i< 3; i++)
+    {
+        destination.set(i, getPropertyTargetValue(destinationXId+i));
+    }
+    return destination;
 }

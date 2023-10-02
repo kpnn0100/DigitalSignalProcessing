@@ -15,12 +15,6 @@
 
 //Equalizer
 #include "equalizer/LowPassFilter.h"
-#include "equalizer/LowPassFilterThirdOrder.h"
-#include "equalizer/LowPassFilterSixthOrder.h"
-
-//diffuser
-#include "diffuser/SchroederAllPass.h"
-#include "diffuser/MultiChannelAllPass.h"
 
 //Reverb
 #include "reverb/Reverb.h"

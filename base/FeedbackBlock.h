@@ -35,6 +35,9 @@ public:
 private:
     SignalProcessor* mForwardProcessor;
     SignalProcessor* mFeedbackProcessor;
-    double mFeedbackGain;
+    enum PropertyIndex {
+        feedbackGainID,
+        propertyCount
+    };
     double lastOutput;
 };

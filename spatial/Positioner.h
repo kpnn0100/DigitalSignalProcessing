@@ -33,12 +33,16 @@
 class Positioner : public SignalProcessor
 {
 private:
-    Coordinate mSource; /**< The current source position in space. */
-    Coordinate mDestination; /**< The destination position in space. */
-    Coordinate mOldSource; /**< The previous source position used for smooth transition. */
-    Coordinate mOldDestination; /**< The previous destination position used for smooth transition. */
-    Coordinate mCurrentSource;
-    Coordinate mCurrentDestination;
+    enum PropertyIndex {
+        sourceXId,
+        sourceYId,
+        sourceZId,
+        destinationXId,
+        destinationYId,
+        destinationZId,
+        offsetDistanceId,
+        propertyCount
+    };
 
     double mDelaySample; /**< The delay sample value. */
     double mMaxDistance; /**< The maximum distance for delay calculation. */
@@ -49,11 +53,7 @@ private:
     Block mBlockFilter; /**< Block for managing delay and gain filters. */
     Delay mDelayFilter; /**< Delay filter for adjusting sound delay. */
     Gain mGainFilter; /**< Gain filter for adjusting sound gain. */
-    double mOffsetDistance = 0.0;
-    double mOldOffsetDistance = 0.0;
-    double mCurrentOffsetDistance = 0.0;
     bool mKeepGain = false;
-    Positioner* mSyncTarget;
     /**
      * @brief Processes the input signal while simulating sound source movement.
      *
@@ -61,7 +61,6 @@ private:
      * @return The processed output signal value.
      */
     double process(double in) override;
-    void saveProperty();
 public:
     void setOffsetDistance(double offsetDistance);
     void setKeepGain(bool keepGain);
@@ -110,12 +109,12 @@ public:
     /**
      * @brief Updates the delay sample and delay filter settings.
      */
-    void updateDelaySample(double currentRatio);
+    void updateDelaySample();
 
     /**
      * @brief Updates the gain adjustment factor.
      */
-    void updateGain(double currentRatio);
+    void updateGain();
 
     /**
      * @brief Overrides the base class update method.

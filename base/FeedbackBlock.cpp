@@ -1,7 +1,7 @@
 #include "FeedbackBlock.h"
 
-FeedbackBlock::FeedbackBlock()
-    : mForwardProcessor(nullptr), mFeedbackProcessor(nullptr), mFeedbackGain(1.0), lastOutput(0.0)
+FeedbackBlock::FeedbackBlock() : SignalProcessor(propertyCount)
+    , mForwardProcessor(nullptr), mFeedbackProcessor(nullptr), lastOutput(0.0)
 {
 }
 
@@ -41,7 +41,7 @@ void FeedbackBlock::setFeedbackProcessor(SignalProcessor* feedbackProcessor)
 
 void FeedbackBlock::setFeedbackGain(double gain)
 {
-    mFeedbackGain = gain;
+    setProperty(feedbackGainID, gain);
 }
 
 double FeedbackBlock::process(double in)
@@ -51,7 +51,7 @@ double FeedbackBlock::process(double in)
         return in;
     }
 
-    double preinput = in + mFeedbackGain * mFeedbackProcessor->out(lastOutput);
+    double preinput = in + getProperty(feedbackGainID) * mFeedbackProcessor->out(lastOutput);
     lastOutput = mForwardProcessor->out(preinput);
     return lastOutput;
 }

@@ -2,6 +2,27 @@
 double SignalProcessor::mSampleRate = 48000;
 int SignalProcessor::mBufferSize = 128;
 std::vector<SignalProcessor*> SignalProcessor::signalProcessorInstanceList;
+SignalProcessor::SignalProcessor() : SignalProcessor(0)
+{
+}
+SignalProcessor::SignalProcessor(int propertyCount)
+{
+    mPropertyList.resize(propertyCount);
+    signalProcessorInstanceList.push_back(this);
+    setSampleDelay(0);
+}
+
+SignalProcessor::~SignalProcessor()
+{
+    for (int i = 0; i < signalProcessorInstanceList.size(); i++)
+    {
+        if (signalProcessorInstanceList[i] == this)
+        {
+            signalProcessorInstanceList.erase(signalProcessorInstanceList.begin() + i);
+        }
+    }
+}
+
 void SignalProcessor::notifyPropertyListener()
 {
     for (auto listener : mPropertyListenerList)
@@ -9,15 +30,37 @@ void SignalProcessor::notifyPropertyListener()
         listener->onPropertyChange();
     }
 }
+
 void SignalProcessor::smoothUpdate(double currentRatio)
 {
+
+
 }
 
-SignalProcessor::SignalProcessor()
+void SignalProcessor::propertyInterpolation(double currentRatio)
 {
-    signalProcessorInstanceList.push_back(this);
-    setSampleDelay(0);
+    if (mBufferSize == mBufferCounter)
+    {
+        for (int i = 0; i< mPropertyList.size();i++)
+        {
+            mPropertyList[i].last = mPropertyList[i].target;
+            mPropertyList[i].current = mPropertyList[i].target;
+        }
+        return;
+    }
+    for (int i = 0; i< mPropertyList.size();i++)
+    {
+        mPropertyList[i].current =mPropertyList[i].last*(1-currentRatio) +  currentRatio*mPropertyList[i].target;
+    }
 }
+
+void SignalProcessor::initProperty(int propertyId, double value)
+{
+    mPropertyList[propertyId].current = value;
+    mPropertyList[propertyId].last = value;
+    mPropertyList[propertyId].target = value;
+}
+
 void SignalProcessor::setBufferSize(double bufferSize)
 {
     mBufferSize = bufferSize;
@@ -29,6 +72,20 @@ void SignalProcessor::callRecursiveUpdate()
     {
         mParent->callRecursiveUpdate();
     }
+}
+void SignalProcessor::setProperty(int propertyId, double value)
+{
+    mPropertyList[propertyId].last = mPropertyList[propertyId].current;
+    mPropertyList[propertyId].target = value;
+    callUpdate();
+}
+double SignalProcessor::getProperty(int propertyId)
+{
+    return mPropertyList[propertyId].current;
+}
+double SignalProcessor::getPropertyTargetValue(int propertyId)
+{
+    return mPropertyList[propertyId].target;
 }
 void SignalProcessor::onSampleRateChanged()
 {
@@ -65,6 +122,7 @@ inline double SignalProcessor::calculateSmoothRatio()
 
 inline void SignalProcessor::performSmoothUpdate(double ratio)
 {
+    propertyInterpolation(ratio);
     smoothUpdate(ratio);
 }
 void SignalProcessor::notifyAllSignalProcessor()
@@ -83,6 +141,7 @@ inline void SignalProcessor::callUpdate()
     }
     else
     {
+        mBufferCounter = mBufferSize;
         smoothUpdate(1.0);
     }
     update();
@@ -153,15 +212,4 @@ void SignalProcessor::setBypass(bool bypass)
     mBypass = bypass;
 }
 
-SignalProcessor::~SignalProcessor()
-{
-    for (int i = 0; i < signalProcessorInstanceList.size(); i++)
-    {
-        if (signalProcessorInstanceList[i] == this)
-        {
-            signalProcessorInstanceList.erase(signalProcessorInstanceList.begin() + i);
-        }
-    }
-    
-    // Destructor implementation, if needed
-}
+

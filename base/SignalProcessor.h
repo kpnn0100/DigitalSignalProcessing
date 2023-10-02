@@ -17,6 +17,7 @@
 #pragma once
 
 #include "CircularList.h"
+#include "../util/Property.h"
 #include "../util/IPropertyChangeListener.h"
 #include <vector>
 #define _USE_MATH_DEFINES
@@ -39,12 +40,13 @@ private:
     bool mBypass = false;
     // Helper methods for smoothing and buffer management
     bool updateBufferCounter();
-    bool shouldSmoothUpdate();
+    
     double calculateSmoothRatio();
     void performSmoothUpdate(double ratio);
     static void notifyAllSignalProcessor();
 protected:
     std::vector<IPropertyChangeListener*> mPropertyListenerList;
+    std::vector<Property> mPropertyList;
     bool mSmoothEnable = true;
     /**< The sample delay for the signal processor.
         This is for synchronizing the delay when using parallel processors.
@@ -89,14 +91,16 @@ protected:
      * @param currentRatio The current ratio used for smoothing the update.
      */
     virtual void smoothUpdate(double currentRatio);
-
+    void propertyInterpolation(double currentRatio);
+    void initProperty(int propertyId, double value);
 public:
+    SignalProcessor();
     /**
-     * @brief Default constructor for the SignalProcessor class.
-     *
+     * @brief constructor for the SignalProcessor class.
+     * @param number of property in derived class
      * Initializes the signal processor and calls the update method.
      */
-    SignalProcessor();
+    SignalProcessor(int propertyCount);
 
     /**
      * @brief Sets the buffer size for the signal processor and triggers an update.
@@ -167,6 +171,10 @@ public:
      */
     void setBypass(bool bypass);
     void callRecursiveUpdate();
+    void setProperty(int propertyId, double value);
+    double getProperty(int propertyId);
+    double getPropertyTargetValue(int propertyId);
+    bool shouldSmoothUpdate();
     virtual void onSampleRateChanged();
     /**
      * @brief Destructor for the SignalProcessor class.

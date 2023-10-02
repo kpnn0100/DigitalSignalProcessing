@@ -61,20 +61,11 @@ int main()
     double baseDelay = 48.0;
     SignalProcessor::setBufferSize(0);
     Reverb mReverb;
-    MultiChannelAllPass mAllPass[numberOfAllpass];
     int sampleRate = 44100;
     mReverb.setSampleRate(44100);
-    mReverb.setAbsorb(0.80);
     mReverb.setDelayInMs(100);
     mReverb.setDecayInMs(2000.0);
     
-    for (int i = 0; i < numberOfAllpass; i++)
-    {
-        mAllPass[i].setChannelCount(8);
-        mAllPass[i].setMaxDelay(sampleRate);
-        mAllPass[i].setDelayInMs(baseDelay);
-        // baseDelay *= 2.0;
-    }
     std::vector<float> audioSamples = readWavToVector(filename);
 
     if (audioSamples.empty())

@@ -14,7 +14,6 @@
 #include "../base/Block.h"
 #include "../base/SignalProcessor.h"
 #include "../util/Util.h"
-#include "../diffuser/MultiChannelAllPass.h"
 #include "../equalizer/LowPassFilter.h"
 #include "../base/FeedbackBlock.h"
 #include "ClassForReverb.h"
@@ -28,30 +27,23 @@ namespace gyrus_space
 		using Array = std::array<double, diffuseCount>;
         double mDelay;
         double mAbsorb;
-
-		double mDelayInMs;
-        double mLastDelayInMs;
-        double mCurrentDelayInMs;
-
-
-		double mDecayGain;
-
-		double mDecayInMs;
-        double mLastDecayInMs;
-        double mCurrentDecayInMs;
-
+        enum PropertyIndex {
+            delayID,
+            decayID,
+            propertyCount
+        };
+        double mDecayGain;
         double mLastOutput = 0.0;
         int mDiffusion;
 		Delay mFeedback[diffuseCount];
 		BasicReverb<diffuseCount,stepCount> bsReverb;
         void updateDiffuser();
+        void setDelay(double delay);
     public:
         Reverb();
         void setDelayInMs(double msDelay);
-        void setDelay(double delay);
 		void setDecayInMs(double decay);
         void setDiffusion(int diff);
-        void setAbsorb(double absorb);
         void update() override;
 		void onSampleRateChanged();
         double process(double in) override;

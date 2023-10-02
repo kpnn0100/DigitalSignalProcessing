@@ -29,10 +29,12 @@ class Delay : public SignalProcessor
 {
 protected:
     CircularList<double> delayBuffer; /**< Circular buffer to store delayed samples. */
-    double mainDelay; /**< The main delay value for the input signal. */
+        enum PropertyIndex {
+        delayID,
+        propertyCount
+    };
     int mMaxDelay; /**< The maximum allowable delay value. */
-    double mOldDelay;
-    double mCurrentDelay;
+    
     /**
      * @brief Processes the input signal with the applied delay.
      *
@@ -81,7 +83,6 @@ public:
      * @param maxDelay The maximum delay value in samples.
      */
     void setMaxDelay(int maxDelay);
-    void smoothUpdate(double currentRatio) override;
     void write(double sample);
     double read(double delay);
     double getCurrentDelay();

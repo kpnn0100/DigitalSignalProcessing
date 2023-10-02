@@ -10,36 +10,26 @@ Delay::Delay(double delay) : Delay(delay,(int)delay)
 
 }
 
-Delay::Delay(double delay, int maxDelay)
+Delay::Delay(double delay, int maxDelay) : SignalProcessor(propertyCount)
 {
-    mOldDelay = 0;
-    mCurrentDelay = 0;
+
     setSampleDelay(0); // Initialize the sample delay
     setMaxDelay(maxDelay); // Set the maximum allowable delay
-    setDelay(delay); // Set the delay
+    initProperty(delayID,delay);
     setSmoothEnable(true);
 }
 
 void Delay::setDelay(double newDelay)
 {
-    mOldDelay = mCurrentDelay;
-    if (newDelay > (double)mMaxDelay)
-    {
-        mainDelay = mMaxDelay; // Cap the delay at the maximum allowable value
-    }
-    else
-    {
-        mainDelay = newDelay; // Set the delay to the specified value
-    }
-    callUpdate();
+    setProperty(delayID, newDelay);
 }
 
 double Delay::process(double in)
 {
-    if (mCurrentDelay > 2)
+    if (getProperty(delayID) > 2)
     {
 
-        double outSample = read(mCurrentDelay);
+        double outSample = read(getProperty(delayID));
         write(in);
         //std::cout << "after delay" << std::endl;
         return outSample; // Return the interpolated output sample
@@ -51,7 +41,6 @@ double Delay::process(double in)
 }
 double Delay::read(double delay)
 {
-
         double index1 = floor(delay-1);
         double index2 = floor(delay);
         double ratio = 1 - ((delay) - index1);
@@ -62,7 +51,7 @@ double Delay::read(double delay)
 }
 double Delay::getCurrentDelay()
 {
-        return mCurrentDelay;
+        return getProperty(delayID);
 }
 void Delay::write(double sample)
 {
@@ -92,11 +81,6 @@ inline void Delay::setMaxDelay(int maxDelay)
     mMaxDelay = maxDelay; // Set the maximum allowable delay
     //std::cout << this << std::endl;
     
-}
-
-void Delay::smoothUpdate(double currentRatio)
-{
-    mCurrentDelay = mOldDelay * (1 - currentRatio) + mainDelay * currentRatio;
 }
 
 void Delay::update()
