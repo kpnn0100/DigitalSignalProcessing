@@ -17,11 +17,7 @@ double randomInRange(double low, double high)
 }
 namespace gyrus_space
 {
-    void Reverb::updateDiffuser()
-    {
-    }
-
-    Reverb::Reverb() : SignalProcessor(propertyCount), bsReverb(50.0, 5)
+        Reverb::Reverb() : SignalProcessor(propertyCount), bsReverb(50.0, 5)
     {
         mDelay = 0;
         mAbsorb = 0;
@@ -34,6 +30,11 @@ namespace gyrus_space
         updateDiffuser();
         setSmoothEnable(true);
     }
+
+    void Reverb::updateDiffuser()
+    {
+    }
+
 
     void Reverb::setDelayInMs(double msDelay)
     {

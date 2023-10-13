@@ -62,11 +62,11 @@ public:
      */
     void add(SignalProcessor* newProcessor);
     /**
-     * @brief Adds a SignalProcessor to the begin of the block and sets this as its parent.
+     * @brief Removes a SignalProcessor from the block and ubsets this as its parent.
      *
-     * @param newProcessor Pointer to the SignalProcessor to be added.
+     * @param newProcessor Pointer to the SignalProcessor to be removed.
      */
-    void addFront(SignalProcessor* newProcessor);
+    void remove(SignalProcessor* processor);
     /**
      * @brief Set whether parallel processing need to get average output or not
      *

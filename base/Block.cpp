@@ -46,18 +46,31 @@ void Block::setIsParallel(bool newState)
     isParallel = newState; // Set the parallel processing mode
 }
 
-void Block::add(SignalProcessor* newProcessor)
+void Block::add(SignalProcessor *newProcessor)
 {
     processorList.push_back(newProcessor); // Add a new processor to the list
-    newProcessor->setParent(this); // Set the parent of the new processor to this block
-    callUpdate(); // Update the block's state
+    newProcessor->setParent(this);         // Set the parent of the new processor to this block
+    callUpdate();                          // Update the block's state
 }
-void Block::addFront(SignalProcessor* newProcessor)
+
+void Block::remove(SignalProcessor *processor)
 {
-    processorList.insert(processorList.begin(), newProcessor); // Add a new processor to the list
-    newProcessor->setParent(this); // Set the parent of the new processor to this block
-    callUpdate(); // Update the block's state
+    SignalProcessor *rmProcessor = nullptr;
+    for (int i = 0; i < processorList.size(); i++)
+    {
+        if (processorList[i] == processor)
+        {
+            rmProcessor = processor;
+            processorList.erase(processorList.begin() + i);
+            break;
+        }
+    }
+    if (rmProcessor == nullptr)
+    {
+        std::cout<<"There no processor in the list matched"<<std::endl;
+    }
 }
+
 void Block::setNeedAverage(bool needAverage)
 {
     mNeedAverage = needAverage;
@@ -66,24 +79,25 @@ double Block::process(double in)
 {
     double out = isParallel ? 0.0 : in;
     for (int i = 0; i < processorList.size(); i++)
-        if (isParallel) {
+        if (isParallel)
+        {
             if (mNeedAverage)
             {
-                out += delaySyncMachine[i].out(processorList[i]->out(in))
-                    / (double)processorList.size();
+                out += delaySyncMachine[i].out(processorList[i]->out(in)) / (double)processorList.size();
             }
             else
             {
                 out += delaySyncMachine[i].out(processorList[i]->out(in));
             }
         }
-        else {
+        else
+        {
             out = processorList[i]->out(out);
         }
-    //if (out < OUTPUT_MIN)
-    //    return OUTPUT_MIN;
-    //else if (out > OUTPUT_MAX)
-    //    return OUTPUT_MAX;
-    //else
-        return out;
+    // if (out < OUTPUT_MIN)
+    //     return OUTPUT_MIN;
+    // else if (out > OUTPUT_MAX)
+    //     return OUTPUT_MAX;
+    // else
+    return out;
 }

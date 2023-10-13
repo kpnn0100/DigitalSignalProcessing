@@ -16,6 +16,8 @@
 
 Welcome to the Gyrus Space DSP Library, an open-source Digital Signal Processing (DSP) library developed by Gyrus Space. This library provides various functions and utilities for processing digital signals and audio data. It is designed to be flexible, modular, and easy to use in a variety of applications.
 
+The best thing about this library is that all processor modules can smoothly change their properties when a new property is set based on their buffer size. This feature can be easily implemented in a derived class by defining a property count. The best example to see how this feature is useful is dynamic delay, where the delay can be smoothly changed, resulting in the Doppler effect.
+
 ## Getting Started
 
 To use the Gyrus Space DSP Library in your project, follow these simple steps:
@@ -60,13 +62,52 @@ int main() {
 
 ## Contributing
 
-We welcome contributions to the Gyrus Space DSP Library! If you'd like to contribute, please follow these steps:
+**We welcome contributions to the Gyrus Space DSP Library! If you'd like to contribute, please follow these steps:**
 
-1. Fork the [GitHub repository](https://github.com/kpnn0100/DigitalSignalProcessing).
-2. Create a new branch for your feature or bug fix.
-3. Make your changes and write tests if applicable.
-4. Ensure that your code passes all tests.
-5. Submit a pull request to the `main` branch of the original repository.
+1. **Fork the [GitHub repository](https://github.com/kpnn0100/DigitalSignalProcessing).**
+
+2. **Create a new branch for your feature or bug fix.**
+
+3. **Make your changes and write tests if applicable.**
+
+4. **Ensure that your code passes all tests.**
+
+5. **Submit a pull request to the `main` branch of the original repository.**
+
+---
+
+**When creating a new class based on this library, please make sure to follow these guidelines:**
+
+1. **Inherit from the `SignalProcessor` class.**
+
+2. **Define a property list by defining an enumeration, like this:**
+   ```cpp
+   enum PropertyIndex {
+       delayID,
+       decayID,
+       propertyCount
+   };
+   ```
+
+3. **Call the constructor of the base class with an integer argument to define the number of properties, as follows:**
+   ```cpp
+   Reverb::Reverb() : SignalProcessor(propertyCount) {
+   ```
+
+4. **Create a wrapper for getting and setting properties if you want (recommended), like this:**
+   ```cpp
+   void Reverb::setDecayInMs(double decay) {
+       setProperty(decayID, decay);
+   }
+   ```
+
+5. **Override the `update()` method, which will be called if a property changes. This is where you update the state of the processor.**
+
+6. **Override the `double process(double in)` method, which is the main processor for data.**
+
+---
+
+By following these guidelines, you can contribute effectively to the Gyrus Space DSP Library and create new classes that seamlessly integrate with the existing architecture while maintaining code quality and consistency.
 
 ## License
 
