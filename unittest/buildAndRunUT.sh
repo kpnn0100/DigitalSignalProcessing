@@ -10,15 +10,13 @@ SOURCE_FILES=(
   ../**/*.cpp          # Include all .cpp files in the src directory
 )
 SOURCE_FILES=(${SOURCE_FILES[@]/src\/main\.cpp}) # Exclude main.cpp
-
-TEST_FILES=(
-  *.cpp
-  # Add more test files as needed
-)
+echo "About to build"
+for file in "${SOURCE_FILES[@]}"; do
+  echo "$file"
+done
 
 # Build the test executable
-$CXX_COMPILER $COMPILE_FLAGS "${SOURCE_FILES[@]}" "${TEST_FILES[@]}" $LINKER_FLAGS -o unit_tests
-
+$CXX_COMPILER $COMPILE_FLAGS -Wall -g -pthread "${SOURCE_FILES[@]}" $LINKER_FLAGS -o unit_tests
 # Run the tests
 ./unit_tests
 
