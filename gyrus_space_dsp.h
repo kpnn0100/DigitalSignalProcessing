@@ -4,6 +4,9 @@
 #include "base/Block.h"
 #include "base/SignalProcessor.h"
 
+//functional
+#include "functional/ProcessorRepeater.h"
+
 //Simple processor classes
 #include "simpleProcessor/Delay.h"
 #include "simpleProcessor/Gain.h"
@@ -15,6 +18,7 @@
 
 //Equalizer
 #include "equalizer/LowPassFilter.h"
+#include "equalizer/HighPassFilter.h"
 
 //Reverb
 #include "reverb/Reverb.h"

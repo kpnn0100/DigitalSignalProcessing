@@ -37,6 +37,8 @@ protected:
     static constexpr double OUTPUT_MIN = -1.0;
     static constexpr double OUTPUT_MAX = 1.0;
 public:
+    Block();
+    virtual ~Block();
     /**
      * @brief Prepare the block and its contained processors before taking input.
      */
@@ -80,5 +82,7 @@ public:
      * @return The processed output signal value.
      */
     virtual double process(double in) override;
+
+    vector<SignalProcessor*> &getProcessorList();
 };
 

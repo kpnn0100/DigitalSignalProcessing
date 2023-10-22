@@ -26,4 +26,5 @@ private:
     void reset() override;
 public:
     using LowPassFilterBase::LowPassFilterBase;
+    LowPassFilter();
 };

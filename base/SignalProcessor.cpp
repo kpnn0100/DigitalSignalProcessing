@@ -32,6 +32,10 @@ void SignalProcessor::notifyPropertyListener()
     }
 }
 
+void SignalProcessor::onPropertyChanged(int propertyID,double value)
+{
+}
+
 void SignalProcessor::smoothUpdate(double currentRatio)
 {
 
@@ -83,6 +87,7 @@ void SignalProcessor::setProperty(int propertyId, double value)
         
         //reset state for other property
         callUpdate();
+        onPropertyChanged(propertyId, value);
     }
 
 }
@@ -144,6 +149,7 @@ inline void SignalProcessor::performSmoothUpdate(double ratio)
 {
     propertyInterpolation(ratio);
     smoothUpdate(ratio);
+    update();
 }
 void SignalProcessor::notifyAllSignalProcessor()
 {
@@ -157,14 +163,12 @@ inline void SignalProcessor::callUpdate()
     mBufferCounter = 0;
     if (shouldSmoothUpdate())
     {
-        propertyInterpolation(0.0);
-        smoothUpdate(0.0);
+        performSmoothUpdate(0.0);
     }
     else
     {
         mBufferCounter = mBufferSize;
-        propertyInterpolation(1.0);
-        smoothUpdate(1.0);
+        performSmoothUpdate(1.0);
     }
     update();
     notifyPropertyListener();

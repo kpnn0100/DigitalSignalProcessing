@@ -87,6 +87,8 @@ protected:
      */
     void notifyPropertyListener();
 
+    virtual void onPropertyChanged(int propertyID, double value);
+
     /**
      * @brief Performs a smooth update of the signal processor's state.
      *
@@ -133,7 +135,7 @@ public:
     void addPropertyListener(IPropertyChangeListener* listener);
 
     /**
-     * @brief Virtual method to update the state of the signal processor.
+     * @brief Virtual method to update to apply the change of property.
      *
      * This method should be overridden by subclasses to perform specific update operations.
      */

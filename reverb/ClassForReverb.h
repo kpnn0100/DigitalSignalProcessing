@@ -1,6 +1,8 @@
 // Reference here https://signalsmith-audio.co.uk/writing/2021/lets-write-a-reverb/
 #pragma once
 #include "../simpleProcessor/Delay.h"
+#include "../equalizer/HighPassFilter.h"
+#include "../equalizer/LowPassFilter.h"
 #include <array>
 #include <cstdlib>
 #include <cmath>
@@ -133,10 +135,22 @@ struct MultiChannelMixedFeedback {
 	using Array = std::array<double, channels>;
 	double delayMs = 150;
 	double decayGain = 0.85;
-
+	HighPassFilter mLowCutFilter[channels];
+	LowPassFilter mHighCutFilter[channels];
 	std::array<int, channels> delaySamples;
 	std::array<Delay, channels> delays;
-	
+	void setLowCutFrequency(double frequency)
+	{
+		for (int c = 0; c < channels; ++c) {
+			mLowCutFilter[c].setCutoffFrequency(frequency);
+		}
+	}
+	void setHighCutFrequency(double frequency)
+	{
+		for (int c = 0; c < channels; ++c) {
+			mHighCutFilter[c].setCutoffFrequency(frequency);
+		}
+	}
 	void configure(double sampleRate) {
 		double delaySamplesBase = delayMs*0.001*sampleRate;
 		for (int c = 0; c < channels; ++c) {
@@ -152,7 +166,10 @@ struct MultiChannelMixedFeedback {
 		for (int c = 0; c < channels; ++c) {
 			delayed[c] = delays[c].read(delaySamples[c]);
 		}
-		
+		for (int c = 0; c < channels; ++c) {
+			delayed[c] = mLowCutFilter[c].out(delayed[c]);
+			delayed[c] = mHighCutFilter[c].out(delayed[c]);
+		}
 		// Mix using a Householder matrix
 		Array mixed = delayed;
 		Householder<double, channels>::inPlace(mixed.data());
@@ -178,7 +195,14 @@ struct BasicReverb {
 		mDelay = roomSizeMs;
         mRt60 = rt60;
 	}
-	
+	void setLowCutFrequency(double frequency)
+	{
+		feedback.setLowCutFrequency(frequency);
+	}
+	void setHighCutFrequency(double frequency)
+	{
+		feedback.setHighCutFrequency(frequency);
+	}
 	void configure(double sampleRate) {
         feedback.delayMs = mDelay;
 

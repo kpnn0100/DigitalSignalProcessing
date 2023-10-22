@@ -18,6 +18,8 @@
 #pragma once
 #include "PositionSimulator.h"
 #include "../reverb/Reverb.h"
+#include "../equalizer/HighPassFilter.h"
+#include "../equalizer/LowPassFilter.h"
 class RoomSimulation : public IPropertyChangeListener
 {
 private:
@@ -39,7 +41,8 @@ private:
     Gain mReverbGain;
     PositionSimulator mMainSource;
     Gain mOffsetGainForReflect[2];
-    
+    LowPassFilter wetHighCut[2];
+    HighPassFilter wetLowCut[2];
     Block mEffectBlock[2];
     Block mReflectorContainer[2];
     double mDryMix=1.0;
@@ -64,4 +67,6 @@ public:
     virtual void onPropertyChange() override;
     void setDryMix(double dryMix);
     void setWetMix(double wetMix);
+    void setLowCutFrequency(double frequency);
+    void setHighCutFrequency(double frequency);
 };

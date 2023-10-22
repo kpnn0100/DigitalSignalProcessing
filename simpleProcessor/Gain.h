@@ -26,10 +26,7 @@
 class Gain : public SignalProcessor
 {
 protected:
-    enum PropertyIndex {
-        gainID,
-        propertyCount
-    };
+
     /**
      * @brief Processes the input signal by applying the gain factor.
      *
@@ -38,6 +35,10 @@ protected:
      */
     virtual double process(double in) override;
 public:
+    enum PropertyIndex {
+        gainID,
+        propertyCount
+    };
     /**
      * @brief Default constructor for the Gain class.
      *

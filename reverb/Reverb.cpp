@@ -62,12 +62,14 @@ namespace gyrus_space
 
     void Reverb::update()
     {
+        bsReverb.mDelay = getProperty(delayID);
+        bsReverb.mRt60 = getProperty(decayID) / 1000.0;
+        bsReverb.configure(mSampleRate);
     }
 
     void Reverb::onSampleRateChanged()
     {
         bsReverb.configure(mSampleRate);
-        setDelayInMs(getProperty(delayID));
     }
 
     double Reverb::process(double in)
@@ -89,9 +91,17 @@ namespace gyrus_space
 
     void Reverb::smoothUpdate(double ratio)
     {
-        bsReverb.mDelay = getProperty(delayID);
-        bsReverb.mRt60 = getProperty(decayID) / 1000.0;
-        bsReverb.configure(mSampleRate);
+
+    }
+
+    void Reverb::setLowCutFrequency(double frequency)
+    {
+        bsReverb.setLowCutFrequency(frequency);
+    }
+
+    void Reverb::setHighCutFrequency(double frequency)
+    {
+        bsReverb.setHighCutFrequency(frequency);
     }
   
 }

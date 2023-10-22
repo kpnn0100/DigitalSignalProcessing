@@ -17,7 +17,6 @@ RoomSimulation::RoomSimulation()
     setDepth(1);
     mBounceSource.resize(bounceIndexList.size());
     mRoomSize = Coordinate(1.0, 1.0, 1.0);
-
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
         if (i % 2 == 0)
@@ -39,6 +38,8 @@ RoomSimulation::RoomSimulation()
         mReflectorContainer[i].setIsParallel(true);
         mReflectorContainer[i].setNeedAverage(false);
         mEffectBlock[i].add(&mReflectorContainer[i]);
+        mEffectBlock[i].add(&wetLowCut[i]);
+        mEffectBlock[i].add(&wetHighCut[i]);
         mReverbBlock[i].add(&mReverb[i]);
         mReverbBlock[i].add(&mOffsetGainForReflect[i]);
         mReverbBlock[i].add(&mReverbGain);
@@ -80,7 +81,7 @@ void RoomSimulation::update()
     {
         for (int i = 0; i < CHANNEL_COUNT; i++)
         {
-            mReverb[i].setDelayInMs(maxDelay);
+            mReverb[i].setDelayInMs(maxDelay + (maxDelay -minDelay));
         }
     }
     onPropertyChange();
@@ -192,6 +193,7 @@ void RoomSimulation::setMaxDistance(double maxDistance)
 void RoomSimulation::setKeepGain(bool keepGain)
 {
     mMainSource.setKeepGain(keepGain);
+    updateGain();
 }
 
 void RoomSimulation::setDepth(int depth)
@@ -249,4 +251,23 @@ void RoomSimulation::setWetMix(double wetMix)
 {
     mWetMix = wetMix;
     mWetGain.setGain(wetMix);
+}
+
+void RoomSimulation::setLowCutFrequency(double frequency)
+{
+    for (int i = 0; i < CHANNEL_COUNT; i++)
+    {
+        wetLowCut[i].setCutoffFrequency(frequency);
+        mReverb[i].setLowCutFrequency(frequency);
+    }
+
+}
+
+void RoomSimulation::setHighCutFrequency(double frequency)
+{
+    for (int i = 0; i < CHANNEL_COUNT; i++)
+    {
+        wetHighCut[i].setCutoffFrequency(frequency);
+        mReverb[i].setHighCutFrequency(frequency);
+    }
 }

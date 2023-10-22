@@ -16,7 +16,7 @@ Positioner::Positioner() : SignalProcessor(propertyCount)
     mBlockFilter.setIsParallel(false); // Set the block to process filters serially
     mDelaySample = 0.0;
 
-    smoothUpdate(1.0);
+    callUpdate();
 }
 
 double Positioner::process(double in)
@@ -34,8 +34,7 @@ void Positioner::setKeepGain(bool keepGain)
 
 void Positioner::smoothUpdate(double currentRatio)
 {
-    updateDelaySample();
-    updateGain();
+
 }
 
 
@@ -47,13 +46,13 @@ void Positioner::setOffsetDistance(double offsetDistance)
 void Positioner::setDestination(Coordinate destination)
 {
     mDestination = destination;
-    smoothUpdate(1.0);
+    callUpdate();
 }
 
 void Positioner::setSource(Coordinate source)
 {
     mSource = source;
-    smoothUpdate(1.0);
+    callUpdate();
 }
 
 void Positioner::setMaxDistance(double maxDistance)
@@ -117,7 +116,8 @@ double Positioner::getGain()
 
 void Positioner::update()
 {
-
+    updateDelaySample();
+    updateGain();
 }
 
 double Positioner::getTargetGain()

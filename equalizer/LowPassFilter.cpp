@@ -4,12 +4,16 @@ void LowPassFilter::reset()
 {
     filteredValue = 0.0;
 }
+LowPassFilter::LowPassFilter()
+{
+    reset();
+}
 void LowPassFilter::update() {
     double dt = 1.0 / mSampleRate;
     double RC = 1.0 / (2.0 * M_PI * getProperty(cutoffFreqID));
     // Calculate the smoothing factor (alpha) for the filter
     alpha = dt / (RC + dt);
-    setSampleDelay(calculatePhaseDelay());
+    //setSampleDelay(calculatePhaseDelay());
     if (isnan(alpha) || isinf(alpha))
     {
         alpha = 1.0;

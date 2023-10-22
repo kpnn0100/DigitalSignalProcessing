@@ -1,5 +1,9 @@
 #include "Delay.h"
 
+Delay::~Delay()
+{
+}
+
 Delay::Delay() : Delay(0.0,0.0)
 {
     

@@ -1,5 +1,14 @@
 #include "Block.h"
 
+Block::Block()
+{
+    setSmoothEnable(false);
+}
+
+Block::~Block()
+{
+}
+
 void Block::prepare()
 {
     for (auto processor : processorList)
@@ -100,4 +109,9 @@ double Block::process(double in)
     //     return OUTPUT_MAX;
     // else
     return out;
+}
+
+vector<SignalProcessor*> &Block::getProcessorList()
+{
+    return processorList;
 }

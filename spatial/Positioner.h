@@ -33,16 +33,7 @@
 class Positioner : public SignalProcessor
 {
 private:
-    enum PropertyIndex {
-        sourceXId,
-        sourceYId,
-        sourceZId,
-        destinationXId,
-        destinationYId,
-        destinationZId,
-        offsetDistanceId,
-        propertyCount
-    };
+
     Coordinate mSource;
     Coordinate mDestination;
     double mDelaySample; /**< The delay sample value. */
@@ -63,6 +54,16 @@ private:
      */
     double process(double in) override;
 public:
+    enum PropertyIndex {
+        sourceXId,
+        sourceYId,
+        sourceZId,
+        destinationXId,
+        destinationYId,
+        destinationZId,
+        offsetDistanceId,
+        propertyCount
+    };
     void setOffsetDistance(double offsetDistance);
     void setKeepGain(bool keepGain);
     void smoothUpdate(double currentRatio) override;

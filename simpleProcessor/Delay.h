@@ -29,10 +29,7 @@ class Delay : public SignalProcessor
 {
 protected:
     CircularList<double> delayBuffer; /**< Circular buffer to store delayed samples. */
-        enum PropertyIndex {
-        delayID,
-        propertyCount
-    };
+
     int mMaxDelay; /**< The maximum allowable delay value. */
     
     /**
@@ -42,7 +39,13 @@ protected:
      * @return The output signal value after applying the delay.
      */
     double process(double in) override;
+
 public:
+    enum PropertyIndex {
+        delayID,
+        propertyCount
+    };
+    virtual ~Delay();
     /**
      * @brief Default constructor for the Delay class.
      *

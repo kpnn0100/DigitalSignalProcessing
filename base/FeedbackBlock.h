@@ -38,7 +38,7 @@ class FeedbackBlock : public SignalProcessor
 {
 public:
     FeedbackBlock();
-    ~FeedbackBlock();
+    virtual ~FeedbackBlock();
     void prepare() override;
     void update();
     void setForwardProcessor(SignalProcessor* forwardProcessor);

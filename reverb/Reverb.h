@@ -23,6 +23,7 @@
 #include "../util/Util.h"
 #include "../equalizer/LowPassFilter.h"
 #include "../base/FeedbackBlock.h"
+#include "../equalizer/HighPassFilter.h"
 #include "ClassForReverb.h"
 namespace gyrus_space
 {
@@ -34,11 +35,6 @@ namespace gyrus_space
 		using Array = std::array<double, diffuseCount>;
         double mDelay;
         double mAbsorb;
-        enum PropertyIndex {
-            delayID,
-            decayID,
-            propertyCount
-        };
         double mDecayGain;
         double mLastOutput = 0.0;
         int mDiffusion;
@@ -47,6 +43,11 @@ namespace gyrus_space
         void updateDiffuser();
         void setDelay(double delay);
     public:
+        enum PropertyIndex {
+            delayID,
+            decayID,
+            propertyCount
+        };
         Reverb();
         void setDelayInMs(double msDelay);
 		void setDecayInMs(double decay);
@@ -55,5 +56,7 @@ namespace gyrus_space
 		void onSampleRateChanged();
         double process(double in) override;
         void smoothUpdate(double ratio) override;
+        void setLowCutFrequency(double frequency);
+        void setHighCutFrequency(double frequency);
     };
 }

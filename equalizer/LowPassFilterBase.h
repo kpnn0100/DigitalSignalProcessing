@@ -20,14 +20,15 @@
 class LowPassFilterBase : public SignalProcessor {
 protected:
     double alpha; // Smoothing factor
-    double filteredValue;
-        enum PropertyIndex {
-        cutoffFreqID,
-        propertyCount
-    };
+
     virtual double calculatePhaseDelay() = 0;
     virtual void reset() = 0;
 public:
+    double filteredValue;
+    enum PropertyIndex {
+        cutoffFreqID,
+        propertyCount
+    };
     LowPassFilterBase();
     explicit LowPassFilterBase(double cutoffFrequency);
     void setCutoffFrequency(double freq);
