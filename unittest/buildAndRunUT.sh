@@ -9,6 +9,9 @@ LINKER_FLAGS="-lgtest -lgtest_main -lpthread"
 SOURCE_FILES=(
   ../**/*.cpp          # Include all .cpp files in the src directory
 )
+SOURCE_FILES+=(
+  */*.cpp
+)
 SOURCE_FILES=(${SOURCE_FILES[@]/src\/main\.cpp}) # Exclude main.cpp
 echo "About to build"
 for file in "${SOURCE_FILES[@]}"; do
