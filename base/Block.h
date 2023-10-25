@@ -14,6 +14,11 @@
  *  Disclaimer: This library is provided as-is without any warranties. The author and organization
  *  shall not be held liable for any damages or liabilities arising from the use of this library.
  */
+
+/*
+ *  Created by kpnn0100
+ *  Version 1.0: stable parallel and serial block
+ */
 #pragma once
 #include "CircularList.h"
 #include "SignalProcessor.h"
