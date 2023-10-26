@@ -89,5 +89,5 @@ public:
     void write(double sample);
     double read(double delay);
     double getCurrentDelay();
-    void update() override;
+    void onPropertyUpdated() override;
 };

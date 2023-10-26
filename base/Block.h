@@ -47,13 +47,13 @@ public:
     /**
      * @brief Prepare the block and its contained processors before taking input.
      */
-    void prepare() override;
+    void onInit() override;
     /**
      * @brief Updates the state of the block and its contained processors.
      *
      * Update the delay machine for all children processor
      */
-    void update();
+    void onPropertyUpdated();
 
     /**
      * @brief Sets the parallel processing mode of the block.

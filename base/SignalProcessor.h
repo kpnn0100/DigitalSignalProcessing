@@ -24,6 +24,7 @@
 #include "CircularList.h"
 #include "../util/Property.h"
 #include "../util/IPropertyChangeListener.h"
+#include "IStateEvent.h"
 #include <vector>
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -37,7 +38,7 @@
   * It provides functionality for processing digital signals and audio data with support for
   * buffer size, sample rate, and smoothing updates.
   */
-class SignalProcessor
+class SignalProcessor : public IStateEvent
 {
 private:
     /**< Pointer to the parent SignalProcessor, if any. */
@@ -63,7 +64,7 @@ protected:
     static double mSampleRate;
     /**< The global BufferSize for all signal processors. */
     static int mBufferSize;
-    /**< Buffer counter for smooth change of update */
+    /**< Buffer counter for smooth change of onPropertyUpdated */
     int mBufferCounter;
     /**
      * @brief Sets the sample delay for the signal processor.
@@ -73,7 +74,7 @@ protected:
     void setSampleDelay(double newSampleDelay);
 
     /**
-     * @brief Calls the update method of the signal processor and its parent.
+     * @brief Calls the onPropertyUpdated method of the signal processor and its parent.
      * This should be called when something affects its parent, for example, changing sampleDelay.
      */
     void callUpdate();
@@ -95,9 +96,9 @@ protected:
     virtual void onPropertyChanged(int propertyID, double value);
 
     /**
-     * @brief Performs a smooth update of the signal processor's state.
+     * @brief Performs a smooth onPropertyUpdated of the signal processor's state.
      *
-     * @param currentRatio The current ratio used for smoothing the update.
+     * @param currentRatio The current ratio used for smoothing the onPropertyUpdated.
      */
     virtual void smoothUpdate(double currentRatio);
     void propertyInterpolation(double currentRatio);
@@ -107,19 +108,19 @@ public:
     /**
      * @brief constructor for the SignalProcessor class.
      * @param number of property in derived class
-     * Initializes the signal processor and calls the update method.
+     * Initializes the signal processor and calls the onPropertyUpdated method.
      */
     SignalProcessor(int propertyCount);
 
     /**
-     * @brief Sets the buffer size for the signal processor and triggers an update.
+     * @brief Sets the buffer size for the signal processor and triggers an onPropertyUpdated.
      *
      * @param bufferSize The new buffer size to be set.
      */
     static void setBufferSize(double bufferSize);
 
     /**
-     * @brief Sets the sample rate for the signal processor and triggers an update.
+     * @brief Sets the sample rate for the signal processor and triggers an onPropertyUpdated.
      *
      * @param sampleRate The new sample rate to be set.
      */
@@ -140,17 +141,17 @@ public:
     void addPropertyListener(IPropertyChangeListener* listener);
 
     /**
-     * @brief Virtual method to update to apply the change of property.
+     * @brief Virtual method to onPropertyUpdated to apply the change of property.
      *
-     * This method should be overridden by subclasses to perform specific update operations.
+     * This method should be overridden by subclasses to perform specific onPropertyUpdated operations.
      */
-    virtual void update();
+    virtual void onPropertyUpdated();
     /**
      * @brief Prepare the processor before getting into processing
      *
-     * This method should be overridden by subclasses to perform specific prepare operations.
+     * This method should be overridden by subclasses to perform specific onInit operations.
      */
-    virtual void prepare();
+    virtual void onInit();
     /**
      * @brief Processes an input signal and produces an output signal.
      *

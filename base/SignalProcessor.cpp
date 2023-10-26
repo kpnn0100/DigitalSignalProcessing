@@ -149,7 +149,7 @@ inline void SignalProcessor::performSmoothUpdate(double ratio)
 {
     propertyInterpolation(ratio);
     smoothUpdate(ratio);
-    update();
+    onPropertyUpdated();
 }
 void SignalProcessor::notifyAllSignalProcessor()
 {
@@ -170,7 +170,7 @@ inline void SignalProcessor::callUpdate()
         mBufferCounter = mBufferSize;
         performSmoothUpdate(1.0);
     }
-    update();
+    onPropertyUpdated();
     notifyPropertyListener();
 }
 
@@ -190,7 +190,7 @@ void SignalProcessor::addPropertyListener(IPropertyChangeListener* listener)
     mPropertyListenerList.push_back(listener);
 }
 
-void SignalProcessor::update()
+void SignalProcessor::onPropertyUpdated()
 {
     // Default implementation, can be overridden by subclasses
 }
@@ -198,10 +198,10 @@ void SignalProcessor::update()
 /**
 * @brief Prepare the processor before get into processing;
 *
-* This method should be overridden by subclasses to perform specific update operations.
+* This method should be overridden by subclasses to perform specific onPropertyUpdated operations.
 */
 
-inline void SignalProcessor::prepare()
+inline void SignalProcessor::onInit()
 {
 
 }

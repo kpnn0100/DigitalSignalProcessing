@@ -8,7 +8,7 @@ LowPassFilter::LowPassFilter()
 {
     reset();
 }
-void LowPassFilter::update() {
+void LowPassFilter::onPropertyUpdated() {
     double dt = 1.0 / mSampleRate;
     double RC = 1.0 / (2.0 * M_PI * getProperty(cutoffFreqID));
     // Calculate the smoothing factor (alpha) for the filter
@@ -33,7 +33,7 @@ double LowPassFilter::calculatePhaseDelay()
     return averagePhaseDelaySamples;
 }
 
-void LowPassFilter::prepare()
+void LowPassFilter::onInit()
 {
     reset();
 }

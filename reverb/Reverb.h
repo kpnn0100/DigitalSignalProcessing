@@ -52,7 +52,7 @@ namespace gyrus_space
         void setDelayInMs(double msDelay);
 		void setDecayInMs(double decay);
         void setDiffusion(int diff);
-        void update() override;
+        void onPropertyUpdated() override;
 		void onSampleRateChanged();
         double process(double in) override;
         void smoothUpdate(double ratio) override;

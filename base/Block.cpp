@@ -9,15 +9,15 @@ Block::~Block()
 {
 }
 
-void Block::prepare()
+void Block::onInit()
 {
     for (auto processor : processorList)
     {
-        processor->prepare();
+        processor->onInit();
     }
 }
 
-void Block::update()
+void Block::onPropertyUpdated()
 {
     if (isParallel)
     {

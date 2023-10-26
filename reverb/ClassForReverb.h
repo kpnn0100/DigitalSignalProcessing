@@ -79,7 +79,7 @@ struct SingleChannelFeedback {
 	void configure(double sampleRate) {
 		delaySamples = delayMs*0.001*sampleRate;
 		delay.setMaxDelay(delaySamples + 1);
-		delay.prepare(); // Start with all 0s
+		delay.onInit(); // Start with all 0s
 	}
 	
 	double process(double input) {
@@ -111,7 +111,7 @@ struct MultiChannelFeedback {
 			delaySamples[c] = std::pow(2, r)*delaySamplesBase;
 			
 			delays[c].setMaxDelay(delaySamples[c] + 1);
-			delays[c].prepare();
+			delays[c].onInit();
 		}
 	}
 	
@@ -157,7 +157,7 @@ struct MultiChannelMixedFeedback {
 			double r = c*1.0/channels;
 			delaySamples[c] = std::pow(2, r)*delaySamplesBase;
 			delays[c].setMaxDelay(sampleRate);
-			delays[c].prepare();
+			delays[c].onInit();
 		}
 	}
 	

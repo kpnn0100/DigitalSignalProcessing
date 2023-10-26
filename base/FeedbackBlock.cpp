@@ -9,22 +9,22 @@ FeedbackBlock::~FeedbackBlock()
 {
 }
 
-void FeedbackBlock::prepare()
+void FeedbackBlock::onInit()
 {
     lastOutput = 0.0;
     if (mForwardProcessor != nullptr)
     {
-        mForwardProcessor->prepare();
+        mForwardProcessor->onInit();
     }
     if (mFeedbackProcessor != nullptr)
     {
-        mFeedbackProcessor->prepare();
+        mFeedbackProcessor->onInit();
     }
 }
 
-void FeedbackBlock::update()
+void FeedbackBlock::onPropertyUpdated()
 {
-    // Add any update logic here if needed
+    // Add any onPropertyUpdated logic here if needed
 }
 
 void FeedbackBlock::setForwardProcessor(SignalProcessor* forwardProcessor)

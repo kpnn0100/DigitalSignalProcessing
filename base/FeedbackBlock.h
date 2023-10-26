@@ -39,8 +39,8 @@ class FeedbackBlock : public SignalProcessor
 public:
     FeedbackBlock();
     virtual ~FeedbackBlock();
-    void prepare() override;
-    void update();
+    void onInit() override;
+    void onPropertyUpdated();
     void setForwardProcessor(SignalProcessor* forwardProcessor);
     void setFeedbackProcessor(SignalProcessor* feedbackProcessor);
     void setFeedbackGain(double gain);

@@ -8,6 +8,6 @@ private:
     double process(double in) override;
 public:
     using LowPassFilter::LowPassFilter;
-    void prepare() override;
+    void onInit() override;
     HighPassFilter();
 };

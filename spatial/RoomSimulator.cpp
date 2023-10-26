@@ -64,16 +64,16 @@ RoomSimulation::RoomSimulation()
 
 }
 
-void RoomSimulation::prepare()
+void RoomSimulation::onInit()
 {
-    mMainSource.prepare();
+    mMainSource.onInit();
     for (auto& bounceSource : mBounceSource)
     {
-        bounceSource.prepare();
+        bounceSource.onInit();
     }
 }
 
-void RoomSimulation::update()
+void RoomSimulation::onPropertyUpdated()
 {
     updateGain();
     updateReflector();
@@ -153,7 +153,7 @@ void RoomSimulation::setDestination(Coordinate destination)
     {
         mDestination = destination;
         mMainSource.setDestination(destination);
-        update();
+        onPropertyUpdated();
 
     }
     
@@ -165,7 +165,7 @@ void RoomSimulation::setSource(Coordinate source)
     {
         mSource = source;
         mMainSource.setSource(source);
-        update();
+        onPropertyUpdated();
     }   
 }
 
@@ -174,7 +174,7 @@ void RoomSimulation::setRoomSize(int dimension, double value)
     if (mRoomSize.get(dimension) != value)
     {
         mRoomSize.set(dimension, value);
-        update();
+        onPropertyUpdated();
     }
     
 }

@@ -101,7 +101,7 @@ int main() {
    }
    ```
 
-5. **Override the `update()` method, which will be called if a property changes. This is where you update the state of the processor.**
+5. **Override the `onPropertyUpdated()` method, which will be called if a property changes. This is where you onPropertyUpdated the state of the processor.**
 
 6. **Override the `double process(double in)` method, which is the main processor for data.**
 

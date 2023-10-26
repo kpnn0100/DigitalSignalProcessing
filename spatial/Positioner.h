@@ -119,11 +119,11 @@ public:
     void updateGain();
 
     /**
-     * @brief Overrides the base class update method.
+     * @brief Overrides the base class onPropertyUpdated method.
      *
-     * This method is called to reset position update parameters.
+     * This method is called to reset position onPropertyUpdated parameters.
      */
-    void update() override;
+    void onPropertyUpdated() override;
     double getTargetGain();
     Coordinate getCurrentSource();
     Coordinate getCurrentDestination();

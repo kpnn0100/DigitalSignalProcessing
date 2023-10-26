@@ -70,7 +70,7 @@ void Positioner::updateDelaySample()
     double distance;
      distance = mSource.distanceTo(mDestination); // Smooth transition
 
-    // Calculate the distance to delay conversion and update the delay filter
+    // Calculate the distance to delay conversion and onPropertyUpdated the delay filter
     distanceToDelay = distance / SPEED_OF_SOUND * mSampleRate;
     mCurrentDistance = distance;
     mDelayFilter.setDelay(distanceToDelay);
@@ -114,7 +114,7 @@ double Positioner::getGain()
     return mCurrentGain; // Return the current gain adjustment
 }
 
-void Positioner::update()
+void Positioner::onPropertyUpdated()
 {
     updateDelaySample();
     updateGain();

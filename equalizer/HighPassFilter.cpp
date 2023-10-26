@@ -11,7 +11,7 @@ double HighPassFilter::process(double in) {
     return output;
 }
 
-void HighPassFilter::prepare()
+void HighPassFilter::onInit()
 {
     previousInput = 0.0;
     previousOutput = 0.0;
@@ -19,7 +19,7 @@ void HighPassFilter::prepare()
 
 HighPassFilter::HighPassFilter()
 {
-    prepare();
+    onInit();
 }
 
 

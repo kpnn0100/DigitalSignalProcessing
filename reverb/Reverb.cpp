@@ -60,7 +60,7 @@ namespace gyrus_space
         }
     }
 
-    void Reverb::update()
+    void Reverb::onPropertyUpdated()
     {
         bsReverb.mDelay = getProperty(delayID);
         bsReverb.mRt60 = getProperty(decayID) / 1000.0;

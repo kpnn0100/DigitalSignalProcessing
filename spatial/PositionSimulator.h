@@ -60,7 +60,7 @@ private:
 public:
     PositionSimulator();
     void setOffsetDistance(double offsetDistance);
-    void prepare();
+    void onInit();
 	SignalProcessor& getFilter(int channel);
     /**
      * @brief Sets the destination position in space.

@@ -48,11 +48,11 @@ void PositionSimulator::setOffsetDistance(double offsetDistance)
         positioner.setOffsetDistance(mOffsetDistance);
     }
 }
-void PositionSimulator::prepare()
+void PositionSimulator::onInit()
 {
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
-        mMainFilter[i].prepare();
+        mMainFilter[i].onInit();
     }
 }
 double PositionSimulator::degreeToRatio(double degree, int channel)

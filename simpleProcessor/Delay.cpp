@@ -87,7 +87,7 @@ inline void Delay::setMaxDelay(int maxDelay)
     
 }
 
-void Delay::update()
+void Delay::onPropertyUpdated()
 {
     
 }

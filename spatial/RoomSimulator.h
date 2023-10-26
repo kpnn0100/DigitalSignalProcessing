@@ -52,8 +52,8 @@ private:
     void updateReflector();
 public:
     RoomSimulation();
-    void prepare();
-    void update();
+    void onInit();
+    void onPropertyUpdated();
     SignalProcessor& getFilter(int channel);
     void updateGain();
     void setDestination(Coordinate destination);
