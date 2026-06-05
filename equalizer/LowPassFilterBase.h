@@ -19,18 +19,18 @@
 #include "../base/SignalProcessor.h"
 class LowPassFilterBase : public SignalProcessor {
 protected:
-    double alpha; // Smoothing factor
+    Sample alpha = 1.0; // filter coefficient (safe default until a cutoff is set)
 
-    virtual double calculatePhaseDelay() = 0;
+    virtual Sample calculatePhaseDelay() = 0;
     virtual void reset() = 0;
 public:
-    double filteredValue;
+    Sample filteredValue;
     enum PropertyIndex {
         cutoffFreqID,
         propertyCount
     };
     LowPassFilterBase();
-    explicit LowPassFilterBase(double cutoffFrequency);
-    void setCutoffFrequency(double freq);
+    explicit LowPassFilterBase(Sample cutoffFrequency);
+    void setCutoffFrequency(Sample freq);
 
 };

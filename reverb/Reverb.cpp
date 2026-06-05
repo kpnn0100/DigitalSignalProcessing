@@ -5,53 +5,76 @@
     Created: 26 Sep 2023 7:12:53pm
     Author:  PC
 
+    ESP32DigitalSynth: migrated to the channel-aware base. One BasicReverb
+    network is held per channel so left/right reverberate independently (no bleed).
   ==============================================================================
 */
 
 #include "Reverb.h"
-double randomInRange(double low, double high)
+#include "../base/AudioConfig.h"
+Sample randomInRange(Sample low, Sample high)
 {
     // There are better randoms than this, and you should use them instead 😛
-    double unitRand = rand() / double(RAND_MAX);
+    Sample unitRand = rand() / Sample(RAND_MAX);
     return low + unitRand * (high - low);
 }
 namespace gyrus_space
 {
-        Reverb::Reverb() : SignalProcessor(propertyCount), bsReverb(50.0, 5)
+    Reverb::Reverb() : SignalProcessor(propertyCount)
     {
         mDelay = 0;
         mAbsorb = 0;
         mDiffusion = 0;
-        initProperty(delayID, 50.0);
-        setDecayInMs(500.0);
-        setDelayInMs(100.0);
-        bsReverb.configure(44100);
-        onSampleRateChanged();
-        updateDiffuser();
-        setSmoothEnable(true);
+        initProperty(delayID, 100.0);
+        initProperty(decayID, 500.0);
+        ensureChannels();
+        update();
+        setSmoothEnable(false);
+    }
+
+    void Reverb::ensureChannels()
+    {
+        int n = AudioConfig::instance().channelCount();
+        if ((int)bsReverb.size() == n)
+            return;
+        bsReverb.clear();
+        for (int c = 0; c < n; ++c)
+            bsReverb.emplace_back(50.0, 5.0);
+        update();
+    }
+
+    void Reverb::onChannelCountChanged()
+    {
+        ensureChannels();
     }
 
     void Reverb::updateDiffuser()
     {
     }
 
-
-    void Reverb::setDelayInMs(double msDelay)
+    void Reverb::setDelayInMs(Sample msDelay)
     {
-        setProperty(delayID,msDelay);
+        setProperty(delayID, msDelay);
     }
 
-    inline void Reverb::setDelay(double delay)
+    void Reverb::setDelay(Sample delay)
     {
-
     }
 
-    void Reverb::setDecayInMs(double decay)
+    void Reverb::setDecayInMs(Sample decay)
     {
         setProperty(decayID, decay);
     }
 
-    inline void Reverb::setDiffusion(int diff)
+    void Reverb::setMix(Sample wet)
+    {
+        if (wet < 0.0) wet = 0.0;
+        if (wet > 1.0) wet = 1.0;
+        mWet = wet;
+        mDry = 1.0 - wet;
+    }
+
+    void Reverb::setDiffusion(int diff)
     {
         if (mDiffusion != diff)
         {
@@ -62,46 +85,52 @@ namespace gyrus_space
 
     void Reverb::update()
     {
-        bsReverb.mDelay = getProperty(delayID);
-        bsReverb.mRt60 = getProperty(decayID) / 1000.0;
-        bsReverb.configure(mSampleRate);
+        Sample sr = AudioConfig::instance().sampleRate();
+        for (auto &r : bsReverb)
+        {
+            r.mDelay = getProperty(delayID);
+            r.mRt60 = getProperty(decayID) / 1000.0;
+            r.configure(sr);
+        }
     }
 
     void Reverb::onSampleRateChanged()
     {
-        bsReverb.configure(mSampleRate);
+        Sample sr = AudioConfig::instance().sampleRate();
+        for (auto &r : bsReverb)
+            r.configure(sr);
     }
 
-    double Reverb::process(double in)
+    Sample Reverb::process(Sample in, int channel)
     {
-        // return mFilter.out(in);
+        if (channel < 0 || channel >= (int)bsReverb.size())
+            return in;
         Array input;
         for (int i = 0; i < diffuseCount; i++)
-        {
             input[i] = in;
-        }
-        input = bsReverb.process(input);
-        double out = 0.0;
+        input = bsReverb[channel].process(input);
+        // Average the diffuse channels to get the wet reverb signal, then mix
+        // with the full-level dry signal at this level (BasicReverb stays wet).
+        Sample wet = 0.0;
         for (int i = 0; i < diffuseCount; i++)
-        {
-            out += input[i]/(double)diffuseCount/4.0;
-        }
-        return out;
+            wet += input[i];
+        wet /= (Sample)diffuseCount;
+        return mDry * in + mWet * wet;
     }
 
-    void Reverb::smoothUpdate(double ratio)
+    void Reverb::smoothUpdate(Sample ratio)
     {
-
     }
 
-    void Reverb::setLowCutFrequency(double frequency)
+    void Reverb::setLowCutFrequency(Sample frequency)
     {
-        bsReverb.setLowCutFrequency(frequency);
+        for (auto &r : bsReverb)
+            r.setLowCutFrequency(frequency);
     }
 
-    void Reverb::setHighCutFrequency(double frequency)
+    void Reverb::setHighCutFrequency(Sample frequency)
     {
-        bsReverb.setHighCutFrequency(frequency);
+        for (auto &r : bsReverb)
+            r.setHighCutFrequency(frequency);
     }
-  
 }

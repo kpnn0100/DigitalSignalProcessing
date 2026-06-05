@@ -1,14 +1,14 @@
 #include "HighPassFilter.h"
 
-double HighPassFilter::process(double in) {
+Sample HighPassFilter::process(Sample in, int /*channel*/) {
     // High-pass filter equation
-    double output = in - previousInput + (1.0-alpha) * previousOutput;
+    Sample output = in - previousInput + (1.0-alpha) * previousOutput;
 
-    // Update the previous input and output
+    // Update the previous input and output (flush denormals on decay)
     previousInput = in;
-    previousOutput = output;
+    previousOutput = gsFlush(output);
 
-    return output;
+    return previousOutput;
 }
 
 void HighPassFilter::prepare()

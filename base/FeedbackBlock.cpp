@@ -1,30 +1,40 @@
 #include "FeedbackBlock.h"
+#include "AudioConfig.h"
 
 FeedbackBlock::FeedbackBlock() : SignalProcessor(propertyCount)
-    , mForwardProcessor(nullptr), mFeedbackProcessor(nullptr), lastOutput(0.0)
+    , mForwardProcessor(nullptr), mFeedbackProcessor(nullptr)
 {
+    ensureChannels();
 }
 
 FeedbackBlock::~FeedbackBlock()
 {
 }
 
+void FeedbackBlock::ensureChannels()
+{
+    int n = gyrus_space::AudioConfig::instance().channelCount();
+    if ((int)lastOutput.size() != n)
+        lastOutput.assign(n, 0.0);
+}
+
+void FeedbackBlock::onChannelCountChanged()
+{
+    ensureChannels();
+}
+
 void FeedbackBlock::prepare()
 {
-    lastOutput = 0.0;
+    for (auto &v : lastOutput)
+        v = 0.0;
     if (mForwardProcessor != nullptr)
-    {
         mForwardProcessor->prepare();
-    }
     if (mFeedbackProcessor != nullptr)
-    {
         mFeedbackProcessor->prepare();
-    }
 }
 
 void FeedbackBlock::update()
 {
-    // Add any update logic here if needed
 }
 
 void FeedbackBlock::setForwardProcessor(SignalProcessor* forwardProcessor)
@@ -39,19 +49,20 @@ void FeedbackBlock::setFeedbackProcessor(SignalProcessor* feedbackProcessor)
     mFeedbackProcessor->setParent(this);
 }
 
-void FeedbackBlock::setFeedbackGain(double gain)
+void FeedbackBlock::setFeedbackGain(Sample gain)
 {
     setProperty(feedbackGainID, gain);
 }
 
-double FeedbackBlock::process(double in)
+Sample FeedbackBlock::process(Sample in, int channel)
 {
     if (mForwardProcessor == nullptr || mFeedbackProcessor == nullptr)
-    {
         return in;
-    }
+    if (channel < 0 || channel >= (int)lastOutput.size())
+        return in;
 
-    double preinput = in + getProperty(feedbackGainID) * mFeedbackProcessor->out(lastOutput);
-    lastOutput = mForwardProcessor->out(preinput);
-    return lastOutput;
+    Sample preinput = in + getProperty(feedbackGainID) *
+                               mFeedbackProcessor->out(lastOutput[channel], channel);
+    lastOutput[channel] = mForwardProcessor->out(preinput, channel);
+    return lastOutput[channel];
 }

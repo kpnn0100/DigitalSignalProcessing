@@ -9,19 +9,19 @@ Gain::~Gain()
 {
 }
 
-Gain::Gain(double newGain) : SignalProcessor(propertyCount)
+Gain::Gain(Sample newGain) : SignalProcessor(propertyCount)
 {
     mSmoothEnable = false;
     initProperty(gainID, newGain);
 }
 
-void Gain::setGain(double gain)
+void Gain::setGain(Sample gain)
 {
     setProperty(gainID,gain);
     
 }
 
-double Gain::process(double in)
+Sample Gain::process(Sample in, int /*channel*/)
 {
     return in * getProperty(gainID);
 }

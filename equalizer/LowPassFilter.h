@@ -19,8 +19,8 @@
 #include "LowPassFilterBase.h"
 class LowPassFilter : public LowPassFilterBase {
 private:
-    double process(double in) override;
-    double calculatePhaseDelay();
+    Sample process(Sample in, int channel) override;
+    Sample calculatePhaseDelay();
     void prepare() override;
     void update() override;
     void reset() override;

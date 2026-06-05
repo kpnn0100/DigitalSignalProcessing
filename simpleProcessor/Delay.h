@@ -28,7 +28,7 @@
 class Delay : public SignalProcessor
 {
 protected:
-    CircularList<double> delayBuffer; /**< Circular buffer to store delayed samples. */
+    CircularList<Sample> delayBuffer; /**< Circular buffer to store delayed samples. */
 
     int mMaxDelay; /**< The maximum allowable delay value. */
     
@@ -38,7 +38,10 @@ protected:
      * @param in The input signal value.
      * @return The output signal value after applying the delay.
      */
-    double process(double in) override;
+    // Delay is a single-stream processor (one delay line). For stereo, hold one
+    // Delay per channel (the synth effects do this) — the channel arg is accepted
+    // for API conformance but the single internal line is used.
+    Sample process(Sample in, int channel) override;
 
 public:
     enum PropertyIndex {
@@ -60,7 +63,7 @@ public:
      *
      * @param delay The delay value in samples.
      */
-    Delay(double delay);
+    Delay(Sample delay);
 
     /**
      * @brief Constructor for the Delay class with a specified delay and maximum delay.
@@ -71,14 +74,14 @@ public:
      * @param delay The delay value in samples.
      * @param maxDelay The maximum allowable delay value.
      */
-    Delay(double delay, int maxDelay);
+    Delay(Sample delay, int maxDelay);
 
     /**
      * @brief Sets the delay for the Delay module.
      *
      * @param newDelay The new delay value in samples.
      */
-    void setDelay(double newDelay);
+    void setDelay(Sample newDelay);
 
     /**
      * @brief Sets the maximum allowable delay value.
@@ -86,8 +89,8 @@ public:
      * @param maxDelay The maximum delay value in samples.
      */
     void setMaxDelay(int maxDelay);
-    void write(double sample);
-    double read(double delay);
-    double getCurrentDelay();
+    void write(Sample sample);
+    Sample read(Sample delay);
+    Sample getCurrentDelay();
     void update() override;
 };

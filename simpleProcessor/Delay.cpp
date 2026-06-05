@@ -9,12 +9,12 @@ Delay::Delay() : Delay(0.0,0.0)
     
 }
 
-Delay::Delay(double delay) : Delay(delay,(int)delay)
+Delay::Delay(Sample delay) : Delay(delay,(int)delay)
 {
 
 }
 
-Delay::Delay(double delay, int maxDelay) : SignalProcessor(propertyCount)
+Delay::Delay(Sample delay, int maxDelay) : SignalProcessor(propertyCount)
 {
 
     setSampleDelay(0); // Initialize the sample delay
@@ -23,17 +23,17 @@ Delay::Delay(double delay, int maxDelay) : SignalProcessor(propertyCount)
     setSmoothEnable(true);
 }
 
-void Delay::setDelay(double newDelay)
+void Delay::setDelay(Sample newDelay)
 {
     setProperty(delayID, newDelay);
 }
 
-double Delay::process(double in)
+Sample Delay::process(Sample in, int /*channel*/)
 {
     if (getProperty(delayID) > 2)
     {
 
-        double outSample = read(getProperty(delayID));
+        Sample outSample = read(getProperty(delayID));
         write(in);
         //std::cout << "after delay" << std::endl;
         return outSample; // Return the interpolated output sample
@@ -43,25 +43,26 @@ double Delay::process(double in)
         return in; // No delay applied, return the input as is
     }
 }
-double Delay::read(double delay)
+Sample Delay::read(Sample delay)
 {
-        double index1 = floor(delay-1);
-        double index2 = floor(delay);
-        double ratio = 1 - ((delay) - index1);
-        double sample1 = delayBuffer[int(index1)];
-        double sample2 = delayBuffer[int(index2)] ;
-        double outSample = sample1 * ratio + sample2 * (1 - ratio);
+        Sample index1 = floor(delay-1);
+        Sample index2 = floor(delay);
+        Sample ratio = 1 - ((delay) - index1);
+        Sample sample1 = delayBuffer[int(index1)];
+        Sample sample2 = delayBuffer[int(index2)] ;
+        Sample outSample = sample1 * ratio + sample2 * (1 - ratio);
         return outSample;
 }
-double Delay::getCurrentDelay()
+Sample Delay::getCurrentDelay()
 {
         return getProperty(delayID);
 }
-void Delay::write(double sample)
+void Delay::write(Sample sample)
 {
-    delayBuffer.push_front_and_pop_back(sample); // Update the delay buffer
+    // Flush denormals so decaying feedback tails stay in the fast normal range.
+    delayBuffer.push_front_and_pop_back(gsFlush(sample));
 }
-inline void Delay::setMaxDelay(int maxDelay)
+void Delay::setMaxDelay(int maxDelay)
 {
     if (mMaxDelay == maxDelay)
     {
@@ -69,7 +70,7 @@ inline void Delay::setMaxDelay(int maxDelay)
     }
     if (mMaxDelay == 0)
     {
-        delayBuffer = CircularList<double>(maxDelay+1,0.0); // Initialize the delay buffer
+        delayBuffer = CircularList<Sample>(maxDelay+1,0.0); // Initialize the delay buffer
     }
     else
     {

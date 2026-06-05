@@ -1,5 +1,5 @@
 #include "SignalProcessor.h"
-double SignalProcessor::mSampleRate = 48000;
+Sample SignalProcessor::mSampleRate = 48000;
 int SignalProcessor::mBufferSize = 128;
 std::vector<SignalProcessor*> SignalProcessor::signalProcessorInstanceList;
 SignalProcessor::SignalProcessor() : SignalProcessor(0)
@@ -32,17 +32,17 @@ void SignalProcessor::notifyPropertyListener()
     }
 }
 
-void SignalProcessor::onPropertyChanged(int propertyID,double value)
+void SignalProcessor::onPropertyChanged(int propertyID,Sample value)
 {
 }
 
-void SignalProcessor::smoothUpdate(double currentRatio)
+void SignalProcessor::smoothUpdate(Sample currentRatio)
 {
 
 
 }
 
-void SignalProcessor::propertyInterpolation(double currentRatio)
+void SignalProcessor::propertyInterpolation(Sample currentRatio)
 {
     if (mBufferSize == mBufferCounter)
     {
@@ -59,14 +59,14 @@ void SignalProcessor::propertyInterpolation(double currentRatio)
     }
 }
 
-void SignalProcessor::initProperty(int propertyId, double value)
+void SignalProcessor::initProperty(int propertyId, Sample value)
 {
     mPropertyList[propertyId].current = value;
     mPropertyList[propertyId].last = value;
     mPropertyList[propertyId].target = value;
 }
 
-void SignalProcessor::setBufferSize(double bufferSize)
+void SignalProcessor::setBufferSize(Sample bufferSize)
 {
     mBufferSize = bufferSize;
 }
@@ -78,7 +78,7 @@ void SignalProcessor::callRecursiveUpdate()
         mParent->callRecursiveUpdate();
     }
 }
-void SignalProcessor::setProperty(int propertyId, double value)
+void SignalProcessor::setProperty(int propertyId, Sample value)
 {
     if (mPropertyList[propertyId].target != value)
     {
@@ -91,18 +91,28 @@ void SignalProcessor::setProperty(int propertyId, double value)
     }
 
 }
-double SignalProcessor::getProperty(int propertyId)
+Sample SignalProcessor::getProperty(int propertyId)
 {
     return mPropertyList[propertyId].current;
 }
-double SignalProcessor::getPropertyTargetValue(int propertyId)
+Sample SignalProcessor::getPropertyTargetValue(int propertyId)
 {
     return mPropertyList[propertyId].target;
 }
 void SignalProcessor::onSampleRateChanged()
 {
 }
-void SignalProcessor::setSampleDelay(double newSampleDelay)
+void SignalProcessor::onChannelCountChanged()
+{
+}
+void SignalProcessor::notifyChannelCountChanged()
+{
+    for (int i = 0; i < signalProcessorInstanceList.size(); i++)
+    {
+        signalProcessorInstanceList[i]->onChannelCountChanged();
+    }
+}
+void SignalProcessor::setSampleDelay(Sample newSampleDelay)
 {
     mSampleDelay = newSampleDelay;
     if (mParent != nullptr)
@@ -140,12 +150,12 @@ void SignalProcessor::setName(std::string name)
     nameOfFilter = name;
 }
 
-inline double SignalProcessor::calculateSmoothRatio()
+inline Sample SignalProcessor::calculateSmoothRatio()
 {
-    return static_cast<double>(mBufferCounter) / static_cast<double>(mBufferSize);
+    return static_cast<Sample>(mBufferCounter) / static_cast<Sample>(mBufferSize);
 }
 
-inline void SignalProcessor::performSmoothUpdate(double ratio)
+inline void SignalProcessor::performSmoothUpdate(Sample ratio)
 {
     propertyInterpolation(ratio);
     smoothUpdate(ratio);
@@ -158,7 +168,7 @@ void SignalProcessor::notifyAllSignalProcessor()
         signalProcessorInstanceList[i]->onSampleRateChanged();
     }
 }
-inline void SignalProcessor::callUpdate()
+void SignalProcessor::callUpdate()
 {
     mBufferCounter = 0;
     if (shouldSmoothUpdate())
@@ -174,7 +184,7 @@ inline void SignalProcessor::callUpdate()
     notifyPropertyListener();
 }
 
-void SignalProcessor::setSampleRate(double sampleRate)
+void SignalProcessor::setSampleRate(Sample sampleRate)
 {
     SignalProcessor::mSampleRate = sampleRate;
     notifyAllSignalProcessor();
@@ -201,37 +211,38 @@ void SignalProcessor::update()
 * This method should be overridden by subclasses to perform specific update operations.
 */
 
-inline void SignalProcessor::prepare()
+void SignalProcessor::prepare()
 {
 
 }
 
-double SignalProcessor::out(double in)
+void SignalProcessor::processBlock(Sample *buf, int frames, int channel)
 {
-    
-    if (shouldSmoothUpdate())
+    // Default block path: per-sample. Hot modules override for a tight/SIMD loop.
+    for (int i = 0; i < frames; ++i)
+        buf[i] = out(buf[i], channel);
+}
+
+Sample SignalProcessor::out(Sample in, int channel)
+{
+    // Property smoothing advances once per frame: only on channel 0. Every
+    // channel then reads the same smoothed parameter values. Per-channel running
+    // state lives in the subclass and advances on every process() call.
+    if (channel == 0 && shouldSmoothUpdate())
     {
         if (updateBufferCounter())
         {
-            if (mBufferCounter == 479)
-            {
-                int break_here = 2;
-            }
-            double ratio = calculateSmoothRatio();
+            Sample ratio = calculateSmoothRatio();
             performSmoothUpdate(ratio);
             notifyPropertyListener();
-        }
-        else
-        {
-            int breakHere = 2;
         }
     }
     if (mBypass)
         return in;
-    return process(in);
+    return process(in, channel);
 }
 
-double SignalProcessor::getSampleDelay()
+Sample SignalProcessor::getSampleDelay()
 {
     return mSampleDelay;
 }

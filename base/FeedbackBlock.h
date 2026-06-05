@@ -34,6 +34,7 @@ input----------->| + |---->----|mForwardProcessor|--------------> output
 */
 #pragma once
 #include "SignalProcessor.h"
+#include <vector>
 class FeedbackBlock : public SignalProcessor
 {
 public:
@@ -41,16 +42,18 @@ public:
     virtual ~FeedbackBlock();
     void prepare() override;
     void update();
+    void onChannelCountChanged() override;
     void setForwardProcessor(SignalProcessor* forwardProcessor);
     void setFeedbackProcessor(SignalProcessor* feedbackProcessor);
-    void setFeedbackGain(double gain);
-    double process(double in) override;
+    void setFeedbackGain(Sample gain);
+    Sample process(Sample in, int channel) override;
 private:
+    void ensureChannels();
     SignalProcessor* mForwardProcessor;
     SignalProcessor* mFeedbackProcessor;
     enum PropertyIndex {
         feedbackGainID,
         propertyCount
     };
-    double lastOutput;
+    std::vector<Sample> lastOutput; // per channel
 };

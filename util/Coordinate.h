@@ -6,23 +6,23 @@
 class Coordinate
 {
 private:
-    double x;
-    double y;
-    double z;
+    Sample x;
+    Sample y;
+    Sample z;
 
 public:
     Coordinate();
-    Coordinate(double xVal, double yVal, double zVal);
+    Coordinate(Sample xVal, Sample yVal, Sample zVal);
 
-    double get(int dimension) const;
-    void set(int dimension, double value);
+    Sample get(int dimension) const;
+    void set(int dimension, Sample value);
 
-    double distanceTo(const Coordinate& other) const;
-    double angleToOnXZPlane(const Coordinate& other) const;
+    Sample distanceTo(const Coordinate& other) const;
+    Sample angleToOnXZPlane(const Coordinate& other) const;
 
     Coordinate operator+(const Coordinate& other) const;
     Coordinate operator-(const Coordinate& other) const;
-    Coordinate operator*(double scalar) const;
-    Coordinate operator/(double scalar) const;
+    Coordinate operator*(Sample scalar) const;
+    Coordinate operator/(Sample scalar) const;
     bool operator==(const Coordinate& other) const;
 };

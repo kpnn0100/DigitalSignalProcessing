@@ -11,13 +11,13 @@
 #include "LowPassFilterBase.h"
 LowPassFilterBase::LowPassFilterBase() : LowPassFilterBase(10000.0) {}
 
-LowPassFilterBase::LowPassFilterBase(double cutoffFrequency) : SignalProcessor(propertyCount)
+LowPassFilterBase::LowPassFilterBase(Sample cutoffFrequency) : SignalProcessor(propertyCount)
 {
     initProperty(cutoffFreqID,cutoffFrequency);
     mSmoothEnable = false;
     callUpdate();
 }
-void LowPassFilterBase::setCutoffFrequency(double freq)
+void LowPassFilterBase::setCutoffFrequency(Sample freq)
 {
     setProperty(cutoffFreqID, freq);
 }

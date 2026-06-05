@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include <cmath>
 
-// Use like `Householder<double, 8>::inPlace(data)` - size must be ≥ 1
+// Use like `Householder<Sample, 8>::inPlace(data)` - size must be ≥ 1
 template <typename Sample, int size>
 class Householder
 {
@@ -16,7 +16,7 @@ class Householder
 public:
     static void inPlace(Sample *arr)
     {
-        double sum = 0;
+        Sample sum = 0;
         for (int i = 0; i < size; ++i)
         {
             sum += arr[i];
@@ -31,7 +31,7 @@ public:
     };
 };
 
-// Use like `Hadamard<double, 8>::inPlace(data)` - size must be a power of 2
+// Use like `Hadamard<Sample, 8>::inPlace(data)` - size must be a power of 2
 template <typename Sample, int size>
 class Hadamard
 {
@@ -49,8 +49,8 @@ public:
         // Combine the two halves using sum/difference
         for (int i = 0; i < hSize; ++i)
         {
-            double a = data[i];
-            double b = data[i + hSize];
+            Sample a = data[i];
+            Sample b = data[i + hSize];
             data[i] = (a + b);
             data[i + hSize] = (a - b);
         }
@@ -60,32 +60,34 @@ public:
     {
         recursiveUnscaled(data);
 
-        Sample scalingFactor = std::sqrt(1.0 / size);
+        // The scaling factor is constant for a given size — compute once, not
+        // per sample (this used to call sqrt on every Hadamard mix).
+        static const Sample scalingFactor = (Sample)std::sqrt(1.0 / size);
         for (int c = 0; c < size; ++c)
         {
             data[c] *= scalingFactor;
         }
     }
 };
-double randomInRange(double low, double high);
+Sample randomInRange(Sample low, Sample high);
 
 struct SingleChannelFeedback {
-	double delayMs = 80;
-	double decayGain = 0.85;
+	Sample delayMs = 80;
+	Sample decayGain = 0.85;
 
 	int delaySamples;
 	Delay delay;
 	
-	void configure(double sampleRate) {
+	void configure(Sample sampleRate) {
 		delaySamples = delayMs*0.001*sampleRate;
 		delay.setMaxDelay(delaySamples + 1);
 		delay.prepare(); // Start with all 0s
 	}
 	
-	double process(double input) {
-		double delayed = delay.read(delaySamples);
+	Sample process(Sample input) {
+		Sample delayed = delay.read(delaySamples);
 		
-		double sum = input + delayed*decayGain;
+		Sample sum = input + delayed*decayGain;
 		delay.write(sum);
 		
 		return delayed;
@@ -95,19 +97,19 @@ struct SingleChannelFeedback {
 
 template<int channels=8>
 struct MultiChannelFeedback {
-	using Array = std::array<double, channels>;
+	using Array = std::array<Sample, channels>;
 
-	double delayMs = 150;
-	double decayGain = 0.85;
+	Sample delayMs = 150;
+	Sample decayGain = 0.85;
 
 	std::array<int, channels> delaySamples;
 	std::array<Delay, channels> delays;
 	
-	void configure(double sampleRate) {
-		double delaySamplesBase = delayMs*0.001*sampleRate;
+	void configure(Sample sampleRate) {
+		Sample delaySamplesBase = delayMs*0.001*sampleRate;
 		for (int c = 0; c < channels; ++c) {
 			// Distribute delay times exponentially between delayMs and 2*delayMs
-			double r = c*1.0/channels;
+			Sample r = c*1.0/channels;
 			delaySamples[c] = std::pow(2, r)*delaySamplesBase;
 			
 			delays[c].setMaxDelay(delaySamples[c] + 1);
@@ -122,7 +124,7 @@ struct MultiChannelFeedback {
 		}
 		
 		for (int c = 0; c < channels; ++c) {
-			double sum = input[c] + delayed[c]*decayGain;
+			Sample sum = input[c] + delayed[c]*decayGain;
 			delays[c].write(sum);
 		}
 		
@@ -132,32 +134,48 @@ struct MultiChannelFeedback {
 
 template<int channels=8>
 struct MultiChannelMixedFeedback {
-	using Array = std::array<double, channels>;
-	double delayMs = 150;
-	double decayGain = 0.85;
+	using Array = std::array<Sample, channels>;
+	Sample delayMs = 150;
+	Sample decayGain = 0.85;
+	// Default cutoffs. These MUST be applied (configure) so each filter's coeff is
+	// computed: the filter base ctor's update() is dispatched to the base no-op
+	// (virtual-during-construction), leaving the coefficient uninitialized until a
+	// cutoff is set — which made the reverb tail non-deterministic.
+	Sample lowCutHz = 20.0;
+	Sample highCutHz = 18000.0;
 	HighPassFilter mLowCutFilter[channels];
 	LowPassFilter mHighCutFilter[channels];
 	std::array<int, channels> delaySamples;
 	std::array<Delay, channels> delays;
-	void setLowCutFrequency(double frequency)
+	void setLowCutFrequency(Sample frequency)
 	{
+		lowCutHz = frequency;
 		for (int c = 0; c < channels; ++c) {
 			mLowCutFilter[c].setCutoffFrequency(frequency);
 		}
 	}
-	void setHighCutFrequency(double frequency)
+	void setHighCutFrequency(Sample frequency)
 	{
+		highCutHz = frequency;
 		for (int c = 0; c < channels; ++c) {
 			mHighCutFilter[c].setCutoffFrequency(frequency);
 		}
 	}
-	void configure(double sampleRate) {
-		double delaySamplesBase = delayMs*0.001*sampleRate;
+	void configure(Sample sampleRate) {
+		Sample delaySamplesBase = delayMs*0.001*sampleRate;
 		for (int c = 0; c < channels; ++c) {
-			double r = c*1.0/channels;
+			Sample r = c*1.0/channels;
 			delaySamples[c] = std::pow(2, r)*delaySamplesBase;
 			delays[c].setMaxDelay(sampleRate);
 			delays[c].prepare();
+			// Disable per-sample smoothing on the in-loop filters: otherwise every
+			// .out() call re-runs the coefficient update() (divisions + M_PI),
+			// which dominated the reverb cost (8 filters x both channels / sample).
+			mLowCutFilter[c].setSmoothEnable(false);
+			mHighCutFilter[c].setSmoothEnable(false);
+			// Apply cutoffs so the filter coefficients are deterministically set.
+			mLowCutFilter[c].setCutoffFrequency(lowCutHz);
+			mHighCutFilter[c].setCutoffFrequency(highCutHz);
 		}
 	}
 	
@@ -172,10 +190,10 @@ struct MultiChannelMixedFeedback {
 		}
 		// Mix using a Householder matrix
 		Array mixed = delayed;
-		Householder<double, channels>::inPlace(mixed.data());
+		Householder<Sample, channels>::inPlace(mixed.data());
 		
 		for (int c = 0; c < channels; ++c) {
-			double sum = input[c] + mixed[c]*decayGain;
+			Sample sum = input[c] + mixed[c]*decayGain;
 			delays[c].write(sum);
 		}
 		
@@ -185,33 +203,33 @@ struct MultiChannelMixedFeedback {
 
 template<int channels=8, int diffusionSteps=4>
 struct BasicReverb {
-	using Array = std::array<double, channels>;
+	using Array = std::array<Sample, channels>;
 	
 	MultiChannelMixedFeedback<channels> feedback;
-	double dry, wet;
-    double mDelay;
-    double mRt60;
-	BasicReverb(double roomSizeMs, double rt60, double dry=0, double wet=1) : dry(dry), wet(wet) {
+	Sample dry, wet;
+    Sample mDelay;
+    Sample mRt60;
+	BasicReverb(Sample roomSizeMs, Sample rt60, Sample dry=0, Sample wet=1) : dry(dry), wet(wet) {
 		mDelay = roomSizeMs;
         mRt60 = rt60;
 	}
-	void setLowCutFrequency(double frequency)
+	void setLowCutFrequency(Sample frequency)
 	{
 		feedback.setLowCutFrequency(frequency);
 	}
-	void setHighCutFrequency(double frequency)
+	void setHighCutFrequency(Sample frequency)
 	{
 		feedback.setHighCutFrequency(frequency);
 	}
-	void configure(double sampleRate) {
+	void configure(Sample sampleRate) {
         feedback.delayMs = mDelay;
 
 		// How long does our signal take to go around the feedback loop?
-		double typicalLoopMs = mDelay*1.5;
+		Sample typicalLoopMs = mDelay*1.5;
 		// How many times will it do that during our RT60 period?
-		double loopsPerRt60 = mRt60/(typicalLoopMs*0.001);
+		Sample loopsPerRt60 = mRt60/(typicalLoopMs*0.001);
 		// This tells us how many dB to reduce per loop
-		double dbPerCycle = -60/loopsPerRt60;
+		Sample dbPerCycle = -60/loopsPerRt60;
 
 		feedback.decayGain = std::pow(10, dbPerCycle*0.05);
 		feedback.configure(sampleRate);

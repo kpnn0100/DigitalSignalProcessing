@@ -1,7 +1,8 @@
+#include "../base/Sample.h"
 class Property
 {
 public:
-    double last = 0.0;
-    double target = 0.0;
-    double current = 0.0;
+    Sample last = 0.0;
+    Sample target = 0.0;
+    Sample current = 0.0;
 };

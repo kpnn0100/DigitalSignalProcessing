@@ -101,14 +101,14 @@ void RoomSimulation::updateSingleReflector(int x, int y, int z,int index)
     {
         if (coor[i] % 2 == 0)
         {
-            double newValue = destination.get(i) + ((double)coor[i]) * mRoomSize.get(i);
+            Sample newValue = destination.get(i) + ((Sample)coor[i]) * mRoomSize.get(i);
             destination.set(i, newValue);
         }
         else
         {
-            double flipValue = mRoomSize.get(i) - destination.get(i);
-            double newValue = flipValue + ((double)coor[i]) * mRoomSize.get(i);
-            double flipNewValue = mSource.get(i) - (newValue - mSource.get(i));
+            Sample flipValue = mRoomSize.get(i) - destination.get(i);
+            Sample newValue = flipValue + ((Sample)coor[i]) * mRoomSize.get(i);
+            Sample flipNewValue = mSource.get(i) - (newValue - mSource.get(i));
             destination.set(i, flipNewValue);
         }    
     }
@@ -117,7 +117,7 @@ void RoomSimulation::updateSingleReflector(int x, int y, int z,int index)
     maxDelay = 0.0;
     for (int i = 0; i < CHANNEL_COUNT;i++)
     {
-        double delay = mBounceSource[index].getCurrentDelayInMs(i);
+        Sample delay = mBounceSource[index].getCurrentDelayInMs(i);
         if (maxDelay < delay)
         {
             maxDelay = delay;
@@ -169,7 +169,7 @@ void RoomSimulation::setSource(Coordinate source)
     }   
 }
 
-void RoomSimulation::setRoomSize(int dimension, double value)
+void RoomSimulation::setRoomSize(int dimension, Sample value)
 {
     if (mRoomSize.get(dimension) != value)
     {
@@ -179,7 +179,7 @@ void RoomSimulation::setRoomSize(int dimension, double value)
     
 }
 
-void RoomSimulation::setMaxDistance(double maxDistance)
+void RoomSimulation::setMaxDistance(Sample maxDistance)
 {
     mMainSource.setMaxDistance(maxDistance);
 
@@ -223,7 +223,7 @@ void RoomSimulation::setDepth(int depth)
     }
 }
 
-void RoomSimulation::setDecayInMs(double decay)
+void RoomSimulation::setDecayInMs(Sample decay)
 {
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
@@ -231,7 +231,7 @@ void RoomSimulation::setDecayInMs(double decay)
     }
 }
 
-void RoomSimulation::setReverbWet(double wet)
+void RoomSimulation::setReverbWet(Sample wet)
 {
     mReverbGain.setGain(wet);
 }
@@ -241,19 +241,19 @@ void RoomSimulation::onPropertyChange()
 
 }
 
-void RoomSimulation::setDryMix(double dryMix)
+void RoomSimulation::setDryMix(Sample dryMix)
 {
     mDryMix = dryMix;
     mDryGain.setGain(dryMix);
 }
 
-void RoomSimulation::setWetMix(double wetMix)
+void RoomSimulation::setWetMix(Sample wetMix)
 {
     mWetMix = wetMix;
     mWetGain.setGain(wetMix);
 }
 
-void RoomSimulation::setLowCutFrequency(double frequency)
+void RoomSimulation::setLowCutFrequency(Sample frequency)
 {
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
@@ -263,7 +263,7 @@ void RoomSimulation::setLowCutFrequency(double frequency)
 
 }
 
-void RoomSimulation::setHighCutFrequency(double frequency)
+void RoomSimulation::setHighCutFrequency(Sample frequency)
 {
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {

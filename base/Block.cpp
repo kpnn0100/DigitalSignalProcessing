@@ -1,117 +1,132 @@
 #include "Block.h"
+#include "AudioConfig.h"
+#include <iostream>
 
 Block::Block()
 {
     setSmoothEnable(false);
+    ensureChannels();
 }
 
 Block::~Block()
 {
 }
 
+void Block::ensureChannels()
+{
+    int n = gyrus_space::AudioConfig::instance().channelCount();
+    if ((int)mChains.size() < n)
+        mChains.resize(n);
+}
+
+void Block::onChannelCountChanged()
+{
+    ensureChannels();
+}
+
 void Block::prepare()
 {
-    for (auto processor : processorList)
-    {
-        processor->prepare();
-    }
+    for (auto &chain : mChains)
+        for (auto processor : chain)
+            processor->prepare();
 }
 
 void Block::update()
 {
-    if (isParallel)
-    {
-        // Calculate the maximum sample delay among all processors for parallel mode
-        double sampleDelay = 0;
-        for (auto processor : processorList)
-        {
-            if (processor->getSampleDelay() > sampleDelay)
-            {
-                setSampleDelay(processor->getSampleDelay());
-            }
-        }
-    }
-    else
-    {
-        // Calculate the total delay for serial mode
-        double delay = 0;
-        for (auto processor : processorList)
-        {
-            delay += processor->getSampleDelay();
-        }
-        setSampleDelay(delay);
-    }
-
-    // Create Delay instances for each processor to synchronize their sample delays
-    delaySyncMachine = vector<Delay>(processorList.size());
-    for (int i = 0; i < processorList.size(); i++)
-    {
-        delaySyncMachine[i] = Delay(getSampleDelay() - processorList[i]->getSampleDelay());
-    }
+    // Serial sample-delay = sum along channel 0's chain (used for latency sync).
+    if (mChains.empty())
+        return;
+    Sample delay = 0;
+    for (auto processor : mChains[0])
+        delay += processor->getSampleDelay();
+    setSampleDelay(delay);
 }
 
 void Block::setIsParallel(bool newState)
 {
-    isParallel = newState; // Set the parallel processing mode
-}
-
-void Block::add(SignalProcessor *newProcessor)
-{
-    processorList.push_back(newProcessor); // Add a new processor to the list
-    newProcessor->setParent(this);         // Set the parent of the new processor to this block
-    callUpdate();                          // Update the block's state
-}
-
-void Block::remove(SignalProcessor *processor)
-{
-    SignalProcessor *rmProcessor = nullptr;
-    for (int i = 0; i < processorList.size(); i++)
-    {
-        if (processorList[i] == processor)
-        {
-            rmProcessor = processor;
-            processorList.erase(processorList.begin() + i);
-            break;
-        }
-    }
-    if (rmProcessor == nullptr)
-    {
-        std::cout<<"There no processor in the list matched"<<std::endl;
-    }
+    isParallel = newState;
 }
 
 void Block::setNeedAverage(bool needAverage)
 {
     mNeedAverage = needAverage;
 }
-double Block::process(double in)
+
+void Block::add(SignalProcessor *newProcessor)
 {
-    double out = isParallel ? 0.0 : in;
-    for (int i = 0; i < processorList.size(); i++)
+    ensureChannels();
+    for (auto &chain : mChains)
+        chain.push_back(newProcessor);
+    newProcessor->setParent(this);
+    callUpdate();
+}
+
+void Block::add(SignalProcessor *newProcessor, int channel)
+{
+    ensureChannels();
+    if (channel < 0 || channel >= (int)mChains.size())
+        return;
+    mChains[channel].push_back(newProcessor);
+    newProcessor->setParent(this);
+    callUpdate();
+}
+
+void Block::remove(SignalProcessor *processor)
+{
+    bool found = false;
+    for (auto &chain : mChains)
+    {
+        for (int i = 0; i < (int)chain.size(); i++)
+        {
+            if (chain[i] == processor)
+            {
+                chain.erase(chain.begin() + i);
+                found = true;
+                break;
+            }
+        }
+    }
+    if (!found)
+        std::cout << "There no processor in the list matched" << std::endl;
+}
+
+Sample Block::process(Sample in, int channel)
+{
+    if (channel < 0 || channel >= (int)mChains.size())
+        return in;
+    auto &chain = mChains[channel];
+    Sample out = isParallel ? 0.0 : in;
+    for (int i = 0; i < (int)chain.size(); i++)
+    {
         if (isParallel)
         {
-            if (mNeedAverage)
-            {
-                out += delaySyncMachine[i].out(processorList[i]->out(in)) / (double)processorList.size();
-            }
-            else
-            {
-                out += delaySyncMachine[i].out(processorList[i]->out(in));
-            }
+            Sample y = chain[i]->out(in, channel);
+            out += mNeedAverage ? y / (Sample)chain.size() : y;
         }
         else
         {
-            out = processorList[i]->out(out);
+            out = chain[i]->out(out, channel);
         }
-    // if (out < OUTPUT_MIN)
-    //     return OUTPUT_MIN;
-    // else if (out > OUTPUT_MAX)
-    //     return OUTPUT_MAX;
-    // else
+    }
     return out;
 }
 
-vector<SignalProcessor*> &Block::getProcessorList()
+void Block::processBlock(Sample *buf, int frames, int channel)
 {
-    return processorList;
+    if (isParallel)
+    {
+        SignalProcessor::processBlock(buf, frames, channel);
+        return;
+    }
+    if (channel < 0 || channel >= (int)mChains.size())
+        return;
+    for (auto p : mChains[channel])
+        if (!p->isBypassed()) // bypassed nodes are skipped entirely (zero cost)
+            p->processBlock(buf, frames, channel);
+}
+
+vector<SignalProcessor *> &Block::getProcessorList()
+{
+    ensureChannels();
+    return mChains[0];
 }

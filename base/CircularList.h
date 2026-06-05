@@ -15,6 +15,7 @@
  *  shall not be held liable for any damages or liabilities arising from the use of this library.
  */
 #pragma once
+#include "Sample.h"
 #include <iostream>
 using namespace std;
 template <typename T>
@@ -125,7 +126,7 @@ public:
         }
         return *(storage + (head + index) % cap);
     }
-        CircularList operator*(double factor) // overload =: y chang copy luon
+        CircularList operator*(Sample factor) // overload =: y chang copy luon
     {
         CircularList temp = *this;
         for (int i = 0; i < s; ++i)

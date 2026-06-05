@@ -36,12 +36,12 @@ private:
 
     Coordinate mSource;
     Coordinate mDestination;
-    double mDelaySample; /**< The delay sample value. */
-    double mMaxDistance; /**< The maximum distance for delay calculation. */
-    static const double SPEED_OF_SOUND; /**< The speed of sound in the medium. */
-    double mCurrentDistance; /**< The current distance between source and destination. */
-    double mCurrentGain; /**< The current gain adjustment factor. */
-    static const double STANDARD_DISTANCE; /**< The standard reference distance. */
+    Sample mDelaySample; /**< The delay sample value. */
+    Sample mMaxDistance; /**< The maximum distance for delay calculation. */
+    static const Sample SPEED_OF_SOUND; /**< The speed of sound in the medium. */
+    Sample mCurrentDistance; /**< The current distance between source and destination. */
+    Sample mCurrentGain; /**< The current gain adjustment factor. */
+    static const Sample STANDARD_DISTANCE; /**< The standard reference distance. */
     Block mBlockFilter; /**< Block for managing delay and gain filters. */
     Delay mDelayFilter; /**< Delay filter for adjusting sound delay. */
     Gain mGainFilter; /**< Gain filter for adjusting sound gain. */
@@ -52,7 +52,7 @@ private:
      * @param in The input signal value.
      * @return The processed output signal value.
      */
-    double process(double in) override;
+    Sample process(Sample in) override;
 public:
     enum PropertyIndex {
         sourceXId,
@@ -64,9 +64,9 @@ public:
         offsetDistanceId,
         propertyCount
     };
-    void setOffsetDistance(double offsetDistance);
+    void setOffsetDistance(Sample offsetDistance);
     void setKeepGain(bool keepGain);
-    void smoothUpdate(double currentRatio) override;
+    void smoothUpdate(Sample currentRatio) override;
     /**
      * @brief Default constructor for the Positioner class.
      */
@@ -92,21 +92,21 @@ public:
      *
      * @param maxDistance The maximum distance value.
      */
-    void setMaxDistance(double maxDistance);
+    void setMaxDistance(Sample maxDistance);
 
     /**
      * @brief Gets the current distance between the source and destination.
      *
      * @return The current distance value.
      */
-    double getDistance();
-    double getDelayInMs();
+    Sample getDistance();
+    Sample getDelayInMs();
     /**
      * @brief Gets the current gain adjustment factor.
      *
      * @return The current gain factor.
      */
-    double getGain();
+    Sample getGain();
 
     /**
      * @brief Updates the delay sample and delay filter settings.
@@ -124,7 +124,7 @@ public:
      * This method is called to reset position update parameters.
      */
     void update() override;
-    double getTargetGain();
+    Sample getTargetGain();
     Coordinate getCurrentSource();
     Coordinate getCurrentDestination();
 

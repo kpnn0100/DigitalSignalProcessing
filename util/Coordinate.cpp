@@ -16,12 +16,12 @@ Coordinate::Coordinate()
 {
 }
 
-Coordinate::Coordinate(double xVal, double yVal, double zVal)
+Coordinate::Coordinate(Sample xVal, Sample yVal, Sample zVal)
     : x(xVal), y(yVal), z(zVal)
 {
 }
 
-double Coordinate::get(int dimension) const
+Sample Coordinate::get(int dimension) const
 {
     switch (dimension)
     {
@@ -32,7 +32,7 @@ double Coordinate::get(int dimension) const
     }
 }
 
-void Coordinate::set(int dimension, double value)
+void Coordinate::set(int dimension, Sample value)
 {
     switch (dimension)
     {
@@ -43,22 +43,22 @@ void Coordinate::set(int dimension, double value)
     }
 }
 
-double Coordinate::distanceTo(const Coordinate& other) const
+Sample Coordinate::distanceTo(const Coordinate& other) const
 {
-    double dx = x - other.x;
-    double dy = y - other.y;
-    double dz = z - other.z;
+    Sample dx = x - other.x;
+    Sample dy = y - other.y;
+    Sample dz = z - other.z;
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
-double Coordinate::angleToOnXZPlane(const Coordinate& other) const
+Sample Coordinate::angleToOnXZPlane(const Coordinate& other) const
 {
-    double xVector = other.x - x;
-    double yVector = other.z - z;
+    Sample xVector = other.x - x;
+    Sample yVector = other.z - z;
     if (xVector == 0.0 && yVector == 0)
     {
         return 0;
     }
-    double degree = atan2(yVector, xVector) * 180 / M_PI;
+    Sample degree = atan2(yVector, xVector) * 180 / M_PI;
     if (degree < 0.0)
         degree = 360.0 + degree;
     return degree;
@@ -75,12 +75,12 @@ Coordinate Coordinate::operator-(const Coordinate& other) const
     return Coordinate(x - other.x, y - other.y, z - other.z);
 }
 
-Coordinate Coordinate::operator*(double scalar) const
+Coordinate Coordinate::operator*(Sample scalar) const
 {
     return Coordinate(x * scalar, y * scalar, z * scalar);
 }
 
-Coordinate Coordinate::operator/(double scalar) const
+Coordinate Coordinate::operator/(Sample scalar) const
 {
     if (scalar != 0.0)
         return Coordinate(x / scalar, y / scalar, z / scalar);

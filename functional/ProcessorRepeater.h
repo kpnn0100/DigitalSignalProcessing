@@ -32,8 +32,8 @@ private:
 public:
     ProcessorRepeater();
     void setRepeaterCount(int repeaterCount);
-    virtual void onPropertyChanged(int propertyID, double value) override;
-    virtual double process(double in) override;
+    virtual void onPropertyChanged(int propertyID, Sample value) override;
+    virtual Sample process(Sample in, int channel) override;
 };
 template<class ProcessorType>
 ProcessorRepeater<ProcessorType>::ProcessorRepeater()
@@ -58,7 +58,7 @@ void ProcessorRepeater<ProcessorType>::setRepeaterCount(int repeaterCount)
 }
 
 template<class ProcessorType>
-inline void ProcessorRepeater<ProcessorType>::onPropertyChanged(int propertyID, double value)
+inline void ProcessorRepeater<ProcessorType>::onPropertyChanged(int propertyID, Sample value)
 {
     for (auto &filter : filterList)
     {
@@ -67,12 +67,12 @@ inline void ProcessorRepeater<ProcessorType>::onPropertyChanged(int propertyID, 
 }
 
 template<class ProcessorType>
-inline double ProcessorRepeater<ProcessorType>::process(double in)
+inline Sample ProcessorRepeater<ProcessorType>::process(Sample in, int channel)
 {
-    double out = in;
+    Sample out = in;
     for (auto & filter : filterList)
     {
-        out = filter.out(out);
+        out = filter.out(out, channel);
     }
     return out;
 }

@@ -40,7 +40,7 @@ PositionSimulator::PositionSimulator()
         mAcousticShadowFilter[i].callRecursiveUpdate();
     }
 }
-void PositionSimulator::setOffsetDistance(double offsetDistance)
+void PositionSimulator::setOffsetDistance(Sample offsetDistance)
 {
     mOffsetDistance = offsetDistance;
     for (auto & positioner : mPositioner)
@@ -55,9 +55,9 @@ void PositionSimulator::prepare()
         mMainFilter[i].prepare();
     }
 }
-double PositionSimulator::degreeToRatio(double degree, int channel)
+Sample PositionSimulator::degreeToRatio(Sample degree, int channel)
 {
-    double ratio;
+    Sample ratio;
     if (channel == 1)
         degree = 180.0 - MAX_RATIO_DEGREE;
     if (degree <= MAX_RATIO_DEGREE)
@@ -86,7 +86,7 @@ double PositionSimulator::degreeToRatio(double degree, int channel)
     return ratio;
 }
 
-void PositionSimulator::setCurrentGain(double gain)
+void PositionSimulator::setCurrentGain(Sample gain)
 {
     if (gain != mCurrentGain)
     {
@@ -140,7 +140,7 @@ void PositionSimulator::setSource(Coordinate source)
     }
 }
 
-void PositionSimulator::setMaxDistance(double maxDistance)
+void PositionSimulator::setMaxDistance(Sample maxDistance)
 {
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
@@ -151,7 +151,7 @@ void PositionSimulator::setMaxDistance(double maxDistance)
 
 void PositionSimulator::updateGain()
 {
-    double offsetGain = 1.0 / std::max(mPositioner[0].getTargetGain(), mPositioner[1].getTargetGain());
+    Sample offsetGain = 1.0 / std::max(mPositioner[0].getTargetGain(), mPositioner[1].getTargetGain());
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
         if (mKeepGain)
@@ -164,7 +164,7 @@ void PositionSimulator::updateGain()
             (mOffsetGain + i)->setGain(1.0);
             setCurrentGain(1.0);
         }
-        double ratio = degreeToRatio(mPositioner[i].getDestination().angleToOnXZPlane(mPositioner[i].getSource()), i);
+        Sample ratio = degreeToRatio(mPositioner[i].getDestination().angleToOnXZPlane(mPositioner[i].getSource()), i);
         mParallelGainForLowpass[i].setGain(ratio);
         mRatioGainForLowpass[i].setGain((1 - ratio) * 2);
     }
@@ -175,12 +175,12 @@ void PositionSimulator::onPropertyChange()
 
 }
 
-double PositionSimulator::getCurrentGain()
+Sample PositionSimulator::getCurrentGain()
 {
     return mCurrentGain;
 }
 
-double PositionSimulator::getCurrentDelayInMs(int channel)
+Sample PositionSimulator::getCurrentDelayInMs(int channel)
 {
     return mPositioner[channel].getDelayInMs();
 }

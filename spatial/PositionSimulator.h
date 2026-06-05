@@ -33,11 +33,11 @@ class PositionSimulator : public IPropertyChangeListener
 {
 private:
     
-    static constexpr double CUTOFF_FREQUENCY = 500;
-    static constexpr double EAR_DISTANCE = 0.20;
-    static constexpr double MAX_SHADOW_RATIO = 1.0;
-    static constexpr double MIN_SHADOW_RATIO = 0.5;
-    static constexpr double MAX_RATIO_DEGREE = 150.0;
+    static constexpr Sample CUTOFF_FREQUENCY = 500;
+    static constexpr Sample EAR_DISTANCE = 0.20;
+    static constexpr Sample MAX_SHADOW_RATIO = 1.0;
+    static constexpr Sample MIN_SHADOW_RATIO = 0.5;
+    static constexpr Sample MAX_RATIO_DEGREE = 150.0;
     static constexpr int CHANNEL_COUNT = 2;
     bool mKeepGain = false;
     Coordinate mSource, mDestination, mCurrentSource, mCurrentDestination;
@@ -49,17 +49,17 @@ private:
 	LowPassFilter mAcousticShadowFilter[2];
     Gain mRatioGainForLowpass[2];
     Gain mParallelGainForLowpass[2];
-    double mCurrentGain;
-    double mCurrentOffsetGain;
-    double mOffsetDistance;
+    Sample mCurrentGain;
+    Sample mCurrentOffsetGain;
+    Sample mOffsetDistance;
     std::vector < std::function<void()>> mGainListenerList;
-    double degreeToRatio(double degree, int channel);
-    void setCurrentGain(double gain);
+    Sample degreeToRatio(Sample degree, int channel);
+    void setCurrentGain(Sample gain);
 
     void onCurrentGainChanged();
 public:
     PositionSimulator();
-    void setOffsetDistance(double offsetDistance);
+    void setOffsetDistance(Sample offsetDistance);
     void prepare();
 	SignalProcessor& getFilter(int channel);
     /**
@@ -81,7 +81,7 @@ public:
      *
      * @param maxDistance The maximum distance value.
      */
-    void setMaxDistance(double maxDistance);
+    void setMaxDistance(Sample maxDistance);
 
     /**
      * @brief Gets the current distance between the source and destination.
@@ -90,8 +90,8 @@ public:
      */
     void updateGain();
     void onPropertyChange() override;
-    double getCurrentGain();
-    double getCurrentDelayInMs(int channel);
+    Sample getCurrentGain();
+    Sample getCurrentDelayInMs(int channel);
     void addGainListener(std::function<void()> callback);
     void setKeepGain(bool keepGain);
 };

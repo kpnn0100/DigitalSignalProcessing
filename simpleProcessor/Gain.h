@@ -33,7 +33,7 @@ protected:
      * @param in The input signal value.
      * @return The output signal value after applying the gain.
      */
-    virtual double process(double in) override;
+    virtual Sample process(Sample in, int channel) override;
 public:
     enum PropertyIndex {
         gainID,
@@ -56,12 +56,12 @@ public:
      *
      * @param newGain The gain factor to apply to the input signal.
      */
-    Gain(double newGain);
+    Gain(Sample newGain);
 
     /**
      * @brief Sets the gain factor for the Gain module.
      *
      * @param newGain The new gain factor to be set.
      */
-    void setGain(double newGain);
+    void setGain(Sample newGain);
 };

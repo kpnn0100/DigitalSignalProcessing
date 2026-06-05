@@ -25,6 +25,7 @@
 #include "../base/FeedbackBlock.h"
 #include "../equalizer/HighPassFilter.h"
 #include "ClassForReverb.h"
+#include <vector>
 namespace gyrus_space
 {
     class Reverb : public SignalProcessor
@@ -32,16 +33,19 @@ namespace gyrus_space
     private:
         const static int diffuseCount = 4;
 		const static int stepCount = 4;
-		using Array = std::array<double, diffuseCount>;
-        double mDelay;
-        double mAbsorb;
-        double mDecayGain;
-        double mLastOutput = 0.0;
+		using Array = std::array<Sample, diffuseCount>;
+        Sample mDelay;
+        Sample mAbsorb;
+        Sample mDecayGain;
+        Sample mLastOutput = 0.0;
         int mDiffusion;
-		Delay mFeedback[diffuseCount];
-		BasicReverb<diffuseCount,stepCount> bsReverb;
+        Sample mDry = 0.7; // dry/wet handled at this level so the dry path is full level
+        Sample mWet = 0.3;
+		// One independent reverb network per channel (true stereo, no L/R bleed).
+		std::vector<BasicReverb<diffuseCount,stepCount>> bsReverb;
         void updateDiffuser();
-        void setDelay(double delay);
+        void setDelay(Sample delay);
+        void ensureChannels();
     public:
         enum PropertyIndex {
             delayID,
@@ -49,14 +53,16 @@ namespace gyrus_space
             propertyCount
         };
         Reverb();
-        void setDelayInMs(double msDelay);
-		void setDecayInMs(double decay);
+        void setDelayInMs(Sample msDelay);
+		void setDecayInMs(Sample decay);
+        void setMix(Sample wet); // 0 = fully dry, 1 = fully wet
         void setDiffusion(int diff);
         void update() override;
-		void onSampleRateChanged();
-        double process(double in) override;
-        void smoothUpdate(double ratio) override;
-        void setLowCutFrequency(double frequency);
-        void setHighCutFrequency(double frequency);
+		void onSampleRateChanged() override;
+        void onChannelCountChanged() override;
+        Sample process(Sample in, int channel) override;
+        void smoothUpdate(Sample ratio) override;
+        void setLowCutFrequency(Sample frequency);
+        void setHighCutFrequency(Sample frequency);
     };
 }

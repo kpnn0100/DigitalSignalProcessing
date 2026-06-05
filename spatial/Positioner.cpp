@@ -1,7 +1,7 @@
 #include "Positioner.h"
-const double Positioner::SPEED_OF_SOUND = 343.0; // Speed of sound in the medium (assumed in m/s)
+const Sample Positioner::SPEED_OF_SOUND = 343.0; // Speed of sound in the medium (assumed in m/s)
 
-const double Positioner::STANDARD_DISTANCE = 1.0; // Standard reference distance for gain calculation (in meters)
+const Sample Positioner::STANDARD_DISTANCE = 1.0; // Standard reference distance for gain calculation (in meters)
 
 Positioner::Positioner() : SignalProcessor(propertyCount)
 {
@@ -19,7 +19,7 @@ Positioner::Positioner() : SignalProcessor(propertyCount)
     callUpdate();
 }
 
-double Positioner::process(double in)
+Sample Positioner::process(Sample in)
 {
     return mBlockFilter.out(in); // Process the input through the Block filter
 }
@@ -32,13 +32,13 @@ void Positioner::setKeepGain(bool keepGain)
     mKeepGain = keepGain;
 }
 
-void Positioner::smoothUpdate(double currentRatio)
+void Positioner::smoothUpdate(Sample currentRatio)
 {
 
 }
 
 
-void Positioner::setOffsetDistance(double offsetDistance)
+void Positioner::setOffsetDistance(Sample offsetDistance)
 {
     setProperty(offsetDistanceId, offsetDistance);
 }
@@ -55,7 +55,7 @@ void Positioner::setSource(Coordinate source)
     callUpdate();
 }
 
-void Positioner::setMaxDistance(double maxDistance)
+void Positioner::setMaxDistance(Sample maxDistance)
 {
     mMaxDistance = maxDistance; // Set the maximum allowable distance for delay calculation
     // Update the maximum delay for the delay filter based on the maxDistance and sample rate
@@ -66,8 +66,8 @@ void Positioner::updateDelaySample()
 {
     // Calculate expected positions during transition
 
-    double distanceToDelay;
-    double distance;
+    Sample distanceToDelay;
+    Sample distance;
      distance = mSource.distanceTo(mDestination); // Smooth transition
 
     // Calculate the distance to delay conversion and update the delay filter
@@ -77,12 +77,12 @@ void Positioner::updateDelaySample()
 
 }
 
-double Positioner::getDistance()
+Sample Positioner::getDistance()
 {
     return mSource.distanceTo(mDestination); // Return the current distance
 }
 
-double Positioner::getDelayInMs()
+Sample Positioner::getDelayInMs()
 {
     return (mSource.distanceTo(mDestination)+getProperty(offsetDistanceId))/SPEED_OF_SOUND * 1000.0;
 }
@@ -109,7 +109,7 @@ void Positioner::updateGain()
 
 }
 
-double Positioner::getGain()
+Sample Positioner::getGain()
 {
     return mCurrentGain; // Return the current gain adjustment
 }
@@ -120,7 +120,7 @@ void Positioner::update()
     updateGain();
 }
 
-double Positioner::getTargetGain()
+Sample Positioner::getTargetGain()
 {
 
     if (mKeepGain)
