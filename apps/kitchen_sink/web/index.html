@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Arstro Kitchen Sink</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Arstro Kitchen Sink</h1>
+    <button id="start">▶ Start audio</button>
+    <span id="status">loading wasm…</span>
+  </header>
+
+  <main>
+    <section class="panel" id="genPanel">
+      <h2>Signal generator</h2>
+      <div class="row">
+        <label>Waveform
+          <select id="waveform"><option value="0">Saw</option></select>
+        </label>
+        <label>Freq (Hz) <input type="range" id="freq" min="40" max="2000" value="220" step="1" /><output id="freqOut">220</output></label>
+        <label>Voices <input type="range" id="voices" min="1" max="5" value="1" step="1" /><output id="voicesOut">1</output></label>
+        <label>Detune (¢) <input type="range" id="detune" min="0" max="50" value="10" step="1" /><output id="detuneOut">10</output></label>
+      </div>
+      <h3>ADSR envelope</h3>
+      <canvas id="adsr" width="520" height="160"></canvas>
+      <div class="adsrReadout" id="adsrReadout"></div>
+    </section>
+
+    <section class="panel" id="chainPanel">
+      <h2>Effect chain</h2>
+      <div id="palette" class="palette"></div>
+      <ol id="chain" class="chain"></ol>
+    </section>
+
+    <section class="panel" id="scopePanel">
+      <h2>Visualizers</h2>
+      <canvas id="scope" width="520" height="140"></canvas>
+      <canvas id="spectrum" width="520" height="140"></canvas>
+      <p class="hint">Play with the <b>A&nbsp;W&nbsp;S&nbsp;E&nbsp;D&nbsp;F&nbsp;T&nbsp;G&nbsp;Y&nbsp;H&nbsp;U&nbsp;J&nbsp;K</b> keys (one octave from C4).</p>
+    </section>
+  </main>
+
+  <script src="arstro.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

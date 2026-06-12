@@ -1,6 +1,6 @@
-# Gyrus Space DSP Library
+# Arstro DSP Library
 
-![Gyrus Space Logo](https://raw.githubusercontent.com/kpnn0100/DigitalSignalProcessing/main/gyrus_space.png)
+![Arstro Logo](https://raw.githubusercontent.com/kpnn0100/DigitalSignalProcessing/main/arstro.png)
 
 ## Table of Contents
 
@@ -14,30 +14,54 @@
 
 ## Introduction
 
-Welcome to the Gyrus Space DSP Library, an open-source Digital Signal Processing (DSP) library developed by Gyrus Space. This library provides various functions and utilities for processing digital signals and audio data. It is designed to be flexible, modular, and easy to use in a variety of applications.
+Welcome to the Arstro DSP Library, an open-source Digital Signal Processing (DSP) library developed by Arstro. This library provides various functions and utilities for processing digital signals and audio data. It is designed to be flexible, modular, and easy to use in a variety of applications.
 
 The best thing about this library is that all processor modules can smoothly change their properties when a new property is set based on their buffer size. This feature can be easily implemented in a derived class by defining a property count. The best example to see how this feature is useful is dynamic delay, where the delay can be smoothly changed, resulting in the Doppler effect.
 
 ## Getting Started
 
-To use the Gyrus Space DSP Library in your project, follow these simple steps:
+To use the Arstro DSP Library in your project, follow these simple steps:
 
 1. Clone the repository or download the source code from the [GitHub repository](https://github.com/kpnn0100/DigitalSignalProcessing).
 
-2. Include the main header file `gyrus_space_dsp.h` in your C++ code:
+2. Add `src/` to your include path and include the aggregate header. Use
+   `src/synth_dsp.h` (the channel-aware, supported subset) — or the legacy
+   `src/arstro_dsp.h`, which also pulls in the not-yet-migrated `spatial/` modules:
 
 ```cpp
-#include "gyrus_space_dsp.h"
+#include "synth_dsp.h"   // with src/ on the include path
 ```
 
 3. Begin by creating instances of the provided signal processing modules and start using their functionality.
 
+### Project structure
+
+```
+src/        DSP library — one directory per module (base, effects, equalizer, …)
+            + aggregate headers synth_dsp.h (supported) / arstro_dsp.h (legacy)
+apps/       kitchen_sink — interactive bench, plays processors to default audio I/O
+            wav_demo — libsndfile-based demo (optional; needs libsndfile)
+unittest/   C++ unit tests (dependency-free MiniTest harness)
+tests/      Python integration tests + WAV-emitting render harness
+docs/       architecture.puml (class diagram) + design.md
+```
+
+### Build & test
+
+```bash
+cmake -S . -B build && cmake --build build
+(cd build && ctest --output-on-failure)   # runs unit + Python integration tests
+```
+
+Or run the suites directly: `bash unittest/buildSynthTests.sh` and
+`python3 tests/run_integration.py`.
+
 ## Usage
 
-Here's a basic example of how to create and use a signal processing module from the Gyrus Space DSP Library:
+Here's a basic example of how to create and use a signal processing module from the Arstro DSP Library:
 
 ```cpp
-#include "gyrus_space_dsp.h"
+#include "arstro_dsp.h"
 
 int main() {
     // Create a signal processor instance
@@ -62,7 +86,7 @@ int main() {
 
 ## Contributing
 
-**We welcome contributions to the Gyrus Space DSP Library! If you'd like to contribute, please follow these steps:**
+**We welcome contributions to the Arstro DSP Library! If you'd like to contribute, please follow these steps:**
 
 1. **Fork the [GitHub repository](https://github.com/kpnn0100/DigitalSignalProcessing).**
 
@@ -107,7 +131,7 @@ int main() {
 
 ---
 
-By following these guidelines, you can contribute effectively to the Gyrus Space DSP Library and create new classes that seamlessly integrate with the existing architecture while maintaining code quality and consistency.
+By following these guidelines, you can contribute effectively to the Arstro DSP Library and create new classes that seamlessly integrate with the existing architecture while maintaining code quality and consistency.
 
 ## License
 
@@ -120,5 +144,5 @@ This library is provided as-is without any warranties. The author and organizati
 ---
 
 Author: kpnn0100
-Organization: Gyrus Space
+Organization: Arstro
 GitHub Repository: [https://github.com/kpnn0100/DigitalSignalProcessing](https://github.com/kpnn0100/DigitalSignalProcessing)

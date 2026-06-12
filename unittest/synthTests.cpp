@@ -1,9 +1,9 @@
 #include "MiniTest.h"
-#include "../synth_dsp.h"
+#include "../src/synth_dsp.h"
 #include <cmath>
 #include <thread>
 
-using namespace gyrus_space;
+using namespace arstro;
 
 TEST(LockFreeQueue_basic)
 {
@@ -186,6 +186,121 @@ TEST(MultiCore_voice_split_parallel_is_byte_identical)
     CHECK(seq.size() == par.size());
     CHECK(!seq.empty());
     CHECK(seq == par);
+}
+
+// ─────────── Refactor (v1.0.0) coverage: SmoothedParameter / ParameterSet ───────────
+
+TEST(SmoothedParameter_ramp_and_snap)
+{
+    SmoothedParameter p;
+    p.init(1.0);
+    CHECK_NEAR(p.current, 1.0, 1e-12);
+    CHECK_NEAR(p.last, 1.0, 1e-12);
+    CHECK_NEAR(p.target, 1.0, 1e-12);
+    CHECK(!p.setTarget(1.0));            // unchanged target => false, no ramp needed
+    CHECK(p.setTarget(3.0));             // moved => true
+    p.beginRamp();                       // anchor last at current (1.0)
+    p.interpolate(0.0); CHECK_NEAR(p.current, 1.0, 1e-12);
+    p.interpolate(0.5); CHECK_NEAR(p.current, 2.0, 1e-12);
+    p.interpolate(1.0); CHECK_NEAR(p.current, 3.0, 1e-12);
+    p.current = 0.0;
+    p.snap();                            // jump to target
+    CHECK_NEAR(p.current, 3.0, 1e-12);
+    CHECK_NEAR(p.last, 3.0, 1e-12);
+}
+
+TEST(ParameterSet_bulk_ops)
+{
+    ParameterSet ps;
+    ps.resize(2);
+    CHECK(ps.size() == 2);
+    ps.init(0, 1.0);
+    ps.init(1, 10.0);
+    CHECK(ps.setTarget(0, 2.0));
+    CHECK(ps.setTarget(1, 20.0));
+    ps.beginRamp();
+    ps.interpolate(0.5);
+    CHECK_NEAR(ps.current(0), 1.5, 1e-12);
+    CHECK_NEAR(ps.current(1), 15.0, 1e-12);
+    CHECK_NEAR(ps.target(0), 2.0, 1e-12);
+    ps.snapAll();
+    CHECK_NEAR(ps.current(0), 2.0, 1e-12);
+    CHECK_NEAR(ps.current(1), 20.0, 1e-12);
+}
+
+// Drives SignalProcessor's smoothing scheduler through a concrete subclass (Gain):
+// a parameter change must ramp across the buffer, not jump.
+TEST(SignalProcessor_property_smoothing_ramps)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    AudioConfig::instance().setBufferSize(8);
+    Gain g(1.0);
+    g.setSmoothEnable(true);
+    g.setGain(3.0);                                          // target 1 -> 3 over 8 samples
+    CHECK_NEAR(g.getPropertyTargetValue(Gain::gainID), 3.0, 1e-12);
+    double y1 = g.out(1.0, 0);
+    CHECK(y1 > 1.0 && y1 < 3.0);                             // mid-ramp, not snapped
+    for (int i = 0; i < 8; ++i) g.out(1.0, 0);              // finish the ramp
+    CHECK_NEAR(g.out(1.0, 0), 3.0, 1e-9);                    // arrived at target
+    AudioConfig::instance().setBufferSize(128);             // restore for later tests
+}
+
+// Smoothing disabled => parameter applies immediately (snap), no ramp.
+TEST(SignalProcessor_smoothing_disabled_snaps)
+{
+    AudioConfig::instance().setChannelCount(1);
+    AudioConfig::instance().setBufferSize(64);
+    Gain g(1.0);
+    g.setSmoothEnable(false);
+    g.setGain(5.0);
+    CHECK_NEAR(g.out(1.0, 0), 5.0, 1e-9);
+    AudioConfig::instance().setBufferSize(128);
+}
+
+// Bypass returns the input untouched; otherwise gain is applied.
+TEST(SignalProcessor_bypass_passthrough)
+{
+    AudioConfig::instance().setChannelCount(1);
+    Gain g(4.0);
+    CHECK(!g.isBypassed());
+    CHECK_NEAR(g.out(2.0, 0), 8.0, 1e-9);
+    g.setBypass(true);
+    CHECK(g.isBypassed());
+    CHECK_NEAR(g.out(2.0, 0), 2.0, 1e-9);                    // passthrough
+}
+
+// Natural stereo: a mono input fed to both channels must yield IDENTICAL tails at
+// width 0 (mono) and DECORRELATED tails at width 1 (wide). See reverb/README.md.
+TEST(Reverb_stereo_decorrelation)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(2);
+
+    auto runDiff = [](Sample width) {
+        Reverb rv;
+        rv.setWidth(width);
+        rv.setDelayInMs(20.0);
+        rv.setDecayInMs(300.0);
+        rv.setMix(1.0);                       // fully wet so we compare the tail
+        double diff = 0.0, energy = 0.0;
+        for (int i = 0; i < 8000; ++i)
+        {
+            Sample in = std::sin(i * 0.05);   // same mono excitation on both channels
+            double l = rv.out(in, 0);
+            double r = rv.out(in, 1);
+            diff += (l - r) * (l - r);
+            energy += l * l + r * r;
+        }
+        return std::make_pair(diff, energy);
+    };
+
+    auto mono = runDiff(0.0);
+    CHECK(mono.first < 1e-12);                // width 0 => L and R identical (mono)
+
+    auto wide = runDiff(1.0);
+    CHECK(wide.second > 1e-6);                // produced a tail
+    CHECK(wide.first > 1e-4 * wide.second);   // width 1 => L and R meaningfully decorrelated
 }
 
 int main()

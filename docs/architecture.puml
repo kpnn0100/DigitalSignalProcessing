@@ -1,0 +1,190 @@
+@startuml arstro_architecture
+'  Arstro DSP Library — architecture (channel-aware synth subset of synth_dsp.h).
+'  This diagram is the design surface: keep it in sync with the code (see
+'  .claude/skills/implement_with_sync_and_test). Spatial modules are legacy
+'  (not migrated to the channel-aware base) and shown separately.
+title Arstro DSP — Class Architecture (v1.0.0)
+
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+hide empty members
+
+' ─────────────────────────── Foundation ───────────────────────────
+package base {
+  class AudioConfig <<singleton>> {
+    + {static} instance() : AudioConfig&
+    + sampleRate() : Sample
+    + bufferSize() : int
+    + channelCount() : int
+    + outputBitDepth() : int
+    + setSampleRate(Sample)
+    + setChannelCount(int)
+  }
+
+  abstract class SignalProcessor {
+    + out(in : Sample, channel : int) : Sample
+    + {abstract} process(in : Sample, channel : int) : Sample
+    + update()
+    + onChannelCountChanged()
+    + setProperty(id, value)
+    + getProperty(id) : Sample  ' smoothed
+    - mParams : ParameterSet
+  }
+
+  class SmoothedParameter {
+    + last / target / current : Sample
+    + setTarget(v) : bool
+    + beginRamp()
+    + interpolate(ratio)
+    + snap()
+  }
+  class ParameterSet {
+    + init(id, v) / setTarget(id, v)
+    + current(id) / target(id) : Sample
+    + beginRamp() / interpolate(ratio) / snapAll()
+  }
+
+  class Block {
+    - mChains : vector<vector<SignalProcessor*>>
+    + add(p) / add(p, channel)
+    + setIsParallel(bool)
+  }
+  class FeedbackBlock
+  abstract class SignalGenerator {
+    + noteOn(velocity) / noteOff()
+    + setFrequency(hz)
+    + {abstract} generate(channel) : Sample
+    # mEnvelope : ADSREnvelope
+  }
+  class CircularList<T>
+  class LockFreeQueue<T> <<SPSC, lock-free>>
+}
+
+package util {
+  interface IPropertyChangeListener
+}
+
+SignalProcessor *--> "1" ParameterSet
+ParameterSet o--> "*" SmoothedParameter
+SignalProcessor ..> AudioConfig : reads global config
+SignalProcessor --> IPropertyChangeListener : notifies
+Block --|> SignalProcessor
+FeedbackBlock --|> SignalProcessor
+SignalGenerator --|> SignalProcessor
+
+' ─────────────────────────── Modules ───────────────────────────
+package generator {
+  class Oscillator
+}
+package envelope {
+  class ADSREnvelope
+}
+package simpleProcessor {
+  class Gain
+  class Delay
+}
+package equalizer {
+  class LowPassFilterBase
+  class LowPassFilter
+  class HighPassFilterBase
+  class HighPassFilter
+}
+package reverb {
+  class Reverb {
+    + setDelayInMs / setDecayInMs / setMix(0..1)
+    + setWidth(0..1)   ' stereo decorrelation
+    + setLowCutFrequency / setHighCutFrequency
+    - bsReverb : BasicReverb[channel]  ' per-channel FDN, delay decorrelated by width
+  }
+}
+note bottom of Reverb
+  Natural stereo: each channel's FDN base delay is
+  spread by width (kStereoSpread=0.15) so a mono
+  input yields decorrelated L/R tails.
+  width=0 => identical channels (mono).
+end note
+package effects {
+  class Compressor
+  class Overdrive
+  class Chorus
+  class Repeater
+}
+package output {
+  class OutputBlock
+}
+package functional {
+  class ProcessorRepeater<T>
+}
+
+Oscillator --|> SignalGenerator
+SignalGenerator *--> ADSREnvelope
+ADSREnvelope --|> SignalProcessor
+Gain --|> SignalProcessor
+Delay --|> SignalProcessor
+Delay o--> CircularList
+LowPassFilterBase --|> SignalProcessor
+LowPassFilter --|> LowPassFilterBase
+HighPassFilterBase --|> SignalProcessor
+HighPassFilter --|> LowPassFilter
+Reverb --|> SignalProcessor
+Compressor --|> SignalProcessor
+Overdrive --|> SignalProcessor
+Chorus --|> SignalProcessor
+Repeater --|> SignalProcessor
+
+' ─────────────────────────── Synth engine ───────────────────────────
+package synth {
+  class SynthEngine {
+    + pushParam/pushNoteOn/pushNoteOff   ' comms thread (lock-free)
+    + renderBlockBytes(out, frames)
+    + beginBlock/renderVoiceHalf/finishBlock  ' multi-core voice split
+  }
+  class VoiceManager
+  class Voice
+}
+
+SynthEngine *--> VoiceManager
+SynthEngine *--> Block : "effects chain"
+SynthEngine *--> Compressor
+SynthEngine *--> Overdrive
+SynthEngine *--> Chorus
+SynthEngine *--> Repeater
+SynthEngine *--> Reverb
+SynthEngine *--> OutputBlock
+SynthEngine *--> LockFreeQueue : control commands
+VoiceManager *--> "N" Voice
+Voice *--> Oscillator
+
+' ─────────────────────────── Apps ───────────────────────────
+package "apps/kitchen_sink" <<app>> {
+  class RackEngine {
+    + setGenerator params + ADSR
+    + addNode(type) / removeNode(i) / moveNode(i,dir)
+    + setNodeParam(i, p, value)
+    + noteOnMidi / noteOff
+    + render(interleaved, frames)
+    + {static} nodeTypesJson()  ' catalogue -> UI
+  }
+  class "web (HTML/JS, WASM)" as WebUI <<browser>>
+}
+RackEngine *--> Oscillator : generator
+RackEngine o--> "*" SignalProcessor : ordered effect chain
+WebUI ..> RackEngine : embind (web_bindings.cpp)
+note right of WebUI
+  Chain builder + ADSR editor + waveform/spectrum
+  scopes. Plays via Web Audio (system default out).
+end note
+
+' ─────────────────────────── Legacy (not migrated) ───────────────────────────
+package spatial <<legacy / mono process()>> {
+  class Positioner
+  class PositionSimulator
+  class RoomSimulation
+}
+note bottom of spatial
+  Still on the old mono process(in) signature.
+  Excluded from the synth build (synth_dsp.h).
+  Needs the channel-aware signature change.
+end note
+
+@enduml

@@ -1,0 +1,209 @@
+/*
+ *  Arstro DSP — integration test render harness.
+ *
+ *  Builds a small graph from the channel-aware library (synth_dsp.h) and writes
+ *  the result to a mono 16-bit PCM WAV that the Python stdlib `wave` module can
+ *  read. NO libsndfile dependency.
+ *
+ *  Usage:  render_harness <scenario> <outfile.wav> [arg]
+ *    gain <out>           0.4-amplitude 200 Hz sine through Gain(2.0)
+ *    osc  <out> <freqHz>  1-voice saw oscillator at <freqHz>, settled tone
+ *    lpf  <out> <freqHz>  0.5-amplitude sine at <freqHz> through LPF cutoff 500
+ *    adsr <out>           constant 1.0 through an ADSR (note on, then off)
+ *    synth <out>          8-note SynthEngine scenario (full path)
+ *    reverb <out>         mono burst -> STEREO reverb (width 1); writes a 2-ch WAV
+ */
+#include "../src/synth_dsp.h"
+#include <cstdio>
+#include <cstdint>
+#include <cstring>
+#include <cmath>
+#include <string>
+#include <vector>
+
+using namespace arstro;
+
+static const int kSampleRate = 48000;
+
+static int16_t toPcm(double s)
+{
+    if (s > 1.0) s = 1.0;
+    if (s < -1.0) s = -1.0;
+    return static_cast<int16_t>(std::lround(s * 32767.0));
+}
+
+static void writeWavMono16(const std::string &path, const std::vector<double> &samples, int sr)
+{
+    std::vector<int16_t> pcm(samples.size());
+    for (size_t i = 0; i < samples.size(); ++i) pcm[i] = toPcm(samples[i]);
+
+    const uint32_t dataBytes = static_cast<uint32_t>(pcm.size() * sizeof(int16_t));
+    const uint32_t byteRate = static_cast<uint32_t>(sr) * 1 * 2;
+    FILE *f = std::fopen(path.c_str(), "wb");
+    if (!f) { std::perror("fopen"); std::exit(2); }
+
+    auto u32 = [&](uint32_t v){ std::fwrite(&v, 4, 1, f); };
+    auto u16 = [&](uint16_t v){ std::fwrite(&v, 2, 1, f); };
+
+    std::fwrite("RIFF", 1, 4, f);  u32(36 + dataBytes);  std::fwrite("WAVE", 1, 4, f);
+    std::fwrite("fmt ", 1, 4, f);  u32(16);  u16(1);     // PCM
+    u16(1);                                              // mono
+    u32(static_cast<uint32_t>(sr));  u32(byteRate);  u16(2);  u16(16);
+    std::fwrite("data", 1, 4, f);  u32(dataBytes);
+    std::fwrite(pcm.data(), sizeof(int16_t), pcm.size(), f);
+    std::fclose(f);
+}
+
+static void writeWavStereo16(const std::string &path,
+                             const std::vector<double> &L, const std::vector<double> &R, int sr)
+{
+    const size_t frames = L.size();
+    std::vector<int16_t> pcm(frames * 2);
+    for (size_t i = 0; i < frames; ++i) { pcm[2 * i] = toPcm(L[i]); pcm[2 * i + 1] = toPcm(R[i]); }
+
+    const uint32_t dataBytes = static_cast<uint32_t>(pcm.size() * sizeof(int16_t));
+    const uint32_t byteRate = static_cast<uint32_t>(sr) * 2 * 2;
+    FILE *f = std::fopen(path.c_str(), "wb");
+    if (!f) { std::perror("fopen"); std::exit(2); }
+    auto u32 = [&](uint32_t v){ std::fwrite(&v, 4, 1, f); };
+    auto u16 = [&](uint16_t v){ std::fwrite(&v, 2, 1, f); };
+    std::fwrite("RIFF", 1, 4, f);  u32(36 + dataBytes);  std::fwrite("WAVE", 1, 4, f);
+    std::fwrite("fmt ", 1, 4, f);  u32(16);  u16(1);     // PCM
+    u16(2);                                              // stereo
+    u32(static_cast<uint32_t>(sr));  u32(byteRate);  u16(4);  u16(16);
+    std::fwrite("data", 1, 4, f);  u32(dataBytes);
+    std::fwrite(pcm.data(), sizeof(int16_t), pcm.size(), f);
+    std::fclose(f);
+}
+
+// Mono burst through the STEREO reverb; returns L and R (must decorrelate at width 1).
+static void renderReverbStereo(std::vector<double> &L, std::vector<double> &R)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    Reverb rv;
+    rv.setWidth(1.0);
+    rv.setDelayInMs(20.0);
+    rv.setDecayInMs(400.0);
+    rv.setMix(1.0);                       // fully wet so the tail is what we measure
+    const int n = kSampleRate;            // 1 s
+    L.resize(n); R.resize(n);
+    for (int i = 0; i < n; ++i)
+    {
+        Sample in = (i < kSampleRate / 10) ? std::sin(i * 0.05) : 0.0; // 0.1 s burst, then tail
+        L[i] = rv.out(in, 0);
+        R[i] = rv.out(in, 1);
+    }
+}
+
+static std::vector<double> renderGain()
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    Gain g(2.0);
+    const int n = kSampleRate; // 1 s
+    std::vector<double> out(n);
+    const double w = 2.0 * M_PI * 200.0 / kSampleRate;
+    for (int i = 0; i < n; ++i)
+        out[i] = g.out(0.4 * std::sin(w * i), 0);
+    return out;
+}
+
+static std::vector<double> renderOsc(double freq)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    Oscillator osc;
+    osc.setVoiceCount(1);
+    osc.setDetuneCents(0);
+    osc.setStereoSpreadCents(0);
+    osc.setAttackMs(1.0);
+    osc.setDecayMs(1.0);
+    osc.setSustain(1.0);
+    osc.setReleaseMs(1.0);
+    osc.setFrequency(freq);
+    osc.noteOn(1.0);
+    const int n = kSampleRate / 2; // 0.5 s
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i) out[i] = osc.out(0.0, 0);
+    return out;
+}
+
+static std::vector<double> renderLpf(double freq)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    LowPassFilter lpf;
+    lpf.setCutoffFrequency(500.0);
+    const int n = kSampleRate; // 1 s
+    std::vector<double> out(n);
+    const double w = 2.0 * M_PI * freq / kSampleRate;
+    for (int i = 0; i < n; ++i)
+        out[i] = lpf.out(0.5 * std::sin(w * i), 0);
+    return out;
+}
+
+static std::vector<double> renderAdsr()
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    ADSREnvelope env;
+    env.setAttackMs(50.0);
+    env.setDecayMs(20.0);
+    env.setSustain(0.5);
+    env.setReleaseMs(50.0);
+    std::vector<double> out;
+    env.noteOn(1.0);
+    for (int i = 0; i < kSampleRate / 5; ++i) out.push_back(env.out(1.0, 0)); // 0.2 s on
+    env.noteOff();
+    for (int i = 0; i < kSampleRate / 5; ++i) out.push_back(env.out(1.0, 0)); // 0.2 s release
+    return out;
+}
+
+static std::vector<double> renderSynth()
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    AudioConfig::instance().setOutputBitDepth(16);
+    SynthEngine eng;
+    int notes[8] = {48, 52, 55, 60, 64, 67, 72, 76};
+    for (int i = 0; i < 8; ++i) eng.noteOn(notes[i], 0.8);
+    std::vector<double> out, blk;
+    for (int b = 0; b < 200; ++b) // ~0.5 s
+    {
+        eng.renderBlockDouble(blk, 128);
+        out.insert(out.end(), blk.begin(), blk.end());
+    }
+    return out;
+}
+
+int main(int argc, char **argv)
+{
+    if (argc < 3)
+    {
+        std::fprintf(stderr, "usage: %s <scenario> <out.wav> [arg]\n", argv[0]);
+        return 1;
+    }
+    std::string scenario = argv[1];
+    std::string outfile = argv[2];
+    double arg = (argc > 3) ? std::atof(argv[3]) : 0.0;
+
+    if (scenario == "reverb")     // stereo output
+    {
+        std::vector<double> L, R;
+        renderReverbStereo(L, R);
+        writeWavStereo16(outfile, L, R, kSampleRate);
+        return 0;
+    }
+
+    std::vector<double> samples;
+    if (scenario == "gain")       samples = renderGain();
+    else if (scenario == "osc")   samples = renderOsc(arg);
+    else if (scenario == "lpf")   samples = renderLpf(arg);
+    else if (scenario == "adsr")  samples = renderAdsr();
+    else if (scenario == "synth") samples = renderSynth();
+    else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
+
+    writeWavMono16(outfile, samples, kSampleRate);
+    return 0;
+}

@@ -1,0 +1,31 @@
+:root { --bg:#11141a; --panel:#1b1f29; --ink:#e6e9ef; --muted:#8b94a7; --accent:#5cc8ff; --accent2:#ff8a5c; }
+* { box-sizing: border-box; }
+body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+header { display:flex; align-items:center; gap:16px; padding:12px 20px; background:#0c0e13; border-bottom:1px solid #000; }
+header h1 { font-size:18px; margin:0; letter-spacing:.5px; }
+#status { color:var(--muted); }
+button { background:var(--accent); color:#03121b; border:0; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; }
+button:hover { filter:brightness(1.1); }
+main { display:grid; grid-template-columns: 1fr 1fr; gap:16px; padding:16px 20px; align-items:start; }
+.panel { background:var(--panel); border:1px solid #2a3040; border-radius:10px; padding:14px 16px; }
+#chainPanel { grid-row: span 2; }
+h2 { font-size:14px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin:0 0 10px; }
+h3 { font-size:12px; color:var(--muted); margin:14px 0 6px; }
+.row { display:flex; flex-wrap:wrap; gap:14px; }
+label { display:flex; flex-direction:column; font-size:12px; color:var(--muted); gap:4px; }
+input[type=range] { width:130px; accent-color:var(--accent); }
+output { color:var(--ink); font-variant-numeric:tabular-nums; }
+canvas { background:#0c0e13; border:1px solid #2a3040; border-radius:8px; display:block; width:100%; margin-bottom:10px; }
+.adsrReadout { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.palette { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+.palette button { background:#2a3040; color:var(--ink); font-weight:500; padding:5px 10px; }
+.palette button:hover { background:var(--accent); color:#03121b; }
+.chain { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.node { background:#0c0e13; border:1px solid #2a3040; border-radius:8px; padding:8px 10px; }
+.node .head { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.node .name { font-weight:600; color:var(--accent); flex:1; }
+.node .head button { background:#2a3040; color:var(--ink); padding:2px 8px; font-size:12px; }
+.node .params { display:grid; grid-template-columns: 1fr 1fr; gap:6px 14px; }
+.empty { color:var(--muted); font-style:italic; }
+.hint { color:var(--muted); font-size:12px; }
+.hint b { color:var(--accent2); }
