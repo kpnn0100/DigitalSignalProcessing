@@ -129,6 +129,27 @@ static std::vector<double> renderOsc(double freq)
     return out;
 }
 
+static std::vector<double> renderOscWave(double waveform)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    Oscillator osc;
+    osc.setVoiceCount(1);
+    osc.setDetuneCents(0);
+    osc.setStereoSpreadCents(0);
+    osc.setWaveform((Oscillator::Waveform)(int)(waveform + 0.5));
+    osc.setAttackMs(1.0);
+    osc.setDecayMs(1.0);
+    osc.setSustain(1.0);
+    osc.setReleaseMs(1.0);
+    osc.setFrequency(220.0); // fixed fundamental so the harness/asserts agree
+    osc.noteOn(1.0);
+    const int n = kSampleRate / 2; // 0.5 s
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i) out[i] = osc.out(0.0, 0);
+    return out;
+}
+
 static std::vector<double> renderLpf(double freq)
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -199,6 +220,7 @@ int main(int argc, char **argv)
     std::vector<double> samples;
     if (scenario == "gain")       samples = renderGain();
     else if (scenario == "osc")   samples = renderOsc(arg);
+    else if (scenario == "oscwave") samples = renderOscWave(arg);
     else if (scenario == "lpf")   samples = renderLpf(arg);
     else if (scenario == "adsr")  samples = renderAdsr();
     else if (scenario == "synth") samples = renderSynth();

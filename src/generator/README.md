@@ -9,27 +9,33 @@ Oscillators and the unison voice stack. All inherit the new
 
 ## 🆕 `Oscillator : SignalGenerator`
 
-A single waveform oscillator. Saw is required now; the design keeps waveform selection
-open (Open/Closed) so sine/square/triangle can be added later without touching the base.
+A unison oscillator with **selectable waveform**, chosen with `setWaveform(Waveform)` (or the
+`OSC_WAVEFORM` synth parameter — see `synth/ParamId.h`):
+
+| `Waveform` | value | synthesis | aliasing |
+|---|---|---|---|
+| `Sine`     | 0 | `sin(2π·phase)` | none (single partial) |
+| `Saw`      | 1 | phase ramp + **PolyBLEP** | band-limited |
+| `Square`   | 2 | ±1 + PolyBLEP at both edges | band-limited |
+| `Triangle` | 3 | `(2/π)·asin(sin(2π·phase))` | naive (harmonics fall ~1/n²) |
 
 ```cpp
-enum PropertyIndex {
-    frequencyID,   // stored as per-sample phase increment (Hz → samples at the setter)
-    phaseOffsetID, // 0..1 turns, used for per-channel spread
-    propertyCount
-};
+enum Waveform { Sine = 0, Saw = 1, Square = 2, Triangle = 3 };
+enum PropertyIndex { voiceCountID, detuneID, spreadID, propertyCount };
 
-void setFrequency(double hz);     // inherited semantics
-void setWaveform(Waveform w);     // SAW initially
-double process(double in, int channel) override;
+void   setWaveform(Waveform w);   // default Saw
+void   setFrequency(Sample hz);
+Sample generate(int channel) override;
 ```
 
-- **Per-channel phase** (from `SignalGenerator`): channel 1 can carry a small phase/freq
-  offset from channel 0 → stereo width with one instance.
-- **Saw** generated as a phase ramp; **PolyBLEP** anti-aliasing is the intended approach so
-  the feasibility test reflects real (band-limited) cost, not a cheap aliased ramp.
-  *(Open question for review — see bottom.)*
-- Frequency held as a **phase increment** (sample domain); recomputed on
+- **Default `Saw`.** An unknown waveform value produces silence (`0`).
+- The waveform applies to **every unison voice**; the per-voice detune/spread is unchanged.
+- **Saw / Square** are band-limited with **PolyBLEP**; **Sine** is exact; **Triangle** is the
+  naive `asin(sin)` shape (its harmonics roll off ~1/n², so audible aliasing is minimal).
+- The fast fixed-point **SIMD block path** renders `Saw` only; any other waveform falls back
+  to the scalar per-sample `generate()` path so the shape is honoured.
+- **Per-channel phase** (from `SignalGenerator`): a per-channel cents offset gives stereo
+  width from one instance. Frequency is held as a phase increment, recomputed on
   `onSampleRateChanged()`.
 
 ## 🆕 `UnisonOscillator` (voice stack) — *reuse first*

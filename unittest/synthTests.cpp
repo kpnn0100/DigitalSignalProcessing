@@ -64,6 +64,33 @@ TEST(Oscillator_produces_bounded_signal)
     CHECK(peak > 0.05 && peak < 2.4);   // non-trivial, not exploding
 }
 
+TEST(Oscillator_waveforms_each_oscillate)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    const Oscillator::Waveform shapes[] = {Oscillator::Sine, Oscillator::Square, Oscillator::Triangle, Oscillator::Saw};
+    for (Oscillator::Waveform w : shapes)
+    {
+        Oscillator osc;
+        osc.setVoiceCount(1);
+        osc.setWaveform(w);
+        osc.setFrequency(220.0);
+        osc.noteOn(1.0);
+        bool pos = false, neg = false;
+        double peak = 0.0;
+        for (int i = 0; i < 4800; ++i)
+        {
+            double s = osc.out(0.0, 0);
+            if (s > 0.05) pos = true;
+            if (s < -0.05) neg = true;
+            peak = std::fmax(peak, std::fabs(s));
+            CHECK(std::isfinite(s));
+        }
+        CHECK(pos && neg);             // every shape actually oscillates
+        CHECK(peak > 0.3 && peak < 1.6);
+    }
+}
+
 TEST(Block_different_chain_per_channel)
 {
     AudioConfig::instance().setSampleRate(48000);

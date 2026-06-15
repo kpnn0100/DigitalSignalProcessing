@@ -42,6 +42,7 @@ namespace arstro
         OSC_DECAY = 6,       // ms
         OSC_SUSTAIN = 7,     // 0..1
         OSC_RELEASE = 8,     // ms
+        OSC_WAVEFORM = 9,    // Oscillator::Waveform (0 Sine, 1 Saw, 2 Square, 3 Triangle)
     };
 
     // Shared effect offset: bypass a node in the chain (1 = bypassed/skipped).

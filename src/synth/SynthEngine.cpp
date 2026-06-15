@@ -81,6 +81,7 @@ namespace arstro
                 case OSC_DECAY: o.setDecayMs(value); break;
                 case OSC_SUSTAIN: o.setSustain(value); break;
                 case OSC_RELEASE: o.setReleaseMs(value); break;
+                case OSC_WAVEFORM: o.setWaveform((Oscillator::Waveform)(int)(value + 0.5)); break;
                 default: break;
                 }
             }

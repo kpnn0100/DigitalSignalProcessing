@@ -341,6 +341,7 @@ TEST(SynthEngine_queue_and_all_params)
     eng.applyParam(GROUP_OSC1 + OSC_DECAY, 20);
     eng.applyParam(GROUP_OSC1 + OSC_SUSTAIN, 0.5);
     eng.applyParam(GROUP_OSC1 + OSC_RELEASE, 30);
+    eng.applyParam(GROUP_OSC1 + OSC_WAVEFORM, 2);  // Square
     eng.applyParam(GROUP_OSC3 + OSC_LEVEL, 0.5);   // OSC3 ignored (kOscCount==2)
 
     eng.applyParam(GROUP_COMPRESSOR + CMP_THRESHOLD, -10);
@@ -458,6 +459,11 @@ TEST(Oscillator_remaining_paths)
     std::vector<Sample> buf(64, 0.0);
     Oscillator::setUseSimd(false);
     osc.addBlock(buf.data(), 64, 0, 1.0);         // scalar PolyBLEP fallback path
+    // SIMD enabled but a non-Saw waveform -> addBlock still takes the scalar branch.
+    Oscillator::setUseSimd(true);
+    osc.setWaveform(Oscillator::Sine);
+    osc.addBlock(buf.data(), 64, 0, 1.0);
+    Oscillator::setUseSimd(false);
     osc.setWaveform((Oscillator::Waveform)99);    // unknown waveform
     CHECK_NEAR(osc.out(0.0, 0), 0.0, 1e-12);      // generate() default -> 0
 

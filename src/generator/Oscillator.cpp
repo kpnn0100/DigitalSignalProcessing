@@ -159,14 +159,17 @@ namespace arstro
 
     void Oscillator::addBlock(Sample *buf, int frames, int channel, Sample level)
     {
-        if (sUseSimd)
+        // The fixed-point SIMD path only renders Saw; other shapes use the scalar
+        // per-sample generate() path so the selected waveform is honoured.
+        if (sUseSimd && mWaveform == Saw)
             addBlockSimd(buf, frames, channel, level);
         else
-            SignalGenerator::addBlock(buf, frames, channel, level); // scalar PolyBLEP
+            SignalGenerator::addBlock(buf, frames, channel, level); // scalar generate()
     }
 
     Sample Oscillator::generate(int channel)
     {
+        constexpr double kTwoPi = 6.283185307179586;
         const int vc = mVoiceCount;
         Sample sum = 0.0;
         Sample *phase = &mPhase[(size_t)channel * kMaxVoices];
@@ -175,7 +178,32 @@ namespace arstro
         {
             Sample dt = inc[v];
             Sample t = phase[v];
-            sum += 2.0 * t - 1.0 - polyBlep(t, dt);
+            switch (mWaveform)
+            {
+            case Sine:
+                sum += std::sin(kTwoPi * t);
+                break;
+            case Saw:
+                sum += 2.0 * t - 1.0 - polyBlep(t, dt);
+                break;
+            case Square:
+            {
+                // Naive ±1 square, band-limited with a PolyBLEP at each edge.
+                Sample s = t < 0.5 ? 1.0 : -1.0;
+                s += polyBlep(t, dt);
+                Sample t2 = t + 0.5;
+                if (t2 >= 1.0)
+                    t2 -= 1.0;
+                s -= polyBlep(t2, dt);
+                sum += s;
+                break;
+            }
+            case Triangle:
+                sum += (2.0 / 3.141592653589793) * std::asin(std::sin(kTwoPi * t));
+                break;
+            default:
+                break; // unknown waveform -> silence
+            }
             t += dt;
             if (t >= 1.0)
                 t -= 1.0;

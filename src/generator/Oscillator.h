@@ -22,7 +22,7 @@ namespace arstro
     class Oscillator : public SignalGenerator
     {
     public:
-        enum Waveform { Saw };
+        enum Waveform { Sine = 0, Saw = 1, Square = 2, Triangle = 3 };
         enum PropertyIndex
         {
             voiceCountID, // 1..5 unison voices

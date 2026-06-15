@@ -74,7 +74,11 @@ SignalGenerator --|> SignalProcessor
 
 ' ─────────────────────────── Modules ───────────────────────────
 package generator {
-  class Oscillator
+  enum Waveform
+  class Oscillator {
+    +setWaveform(Waveform)
+  }
+  Oscillator ..> Waveform
 }
 package envelope {
   class ADSREnvelope

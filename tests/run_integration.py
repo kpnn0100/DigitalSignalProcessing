@@ -172,6 +172,35 @@ def check_reverb_stereo_decorrelation(binpath):
     return f"L/R decorrelation ratio = {ratio:.2f}"
 
 
+def goertzel_mag(xs, freq):
+    """Magnitude of `xs` at `freq` (Hz) via the Goertzel algorithm."""
+    w = 2.0 * math.pi * freq / SR
+    coeff = 2.0 * math.cos(w)
+    s1 = s2 = 0.0
+    for x in xs:
+        s0 = x + coeff * s1 - s2
+        s2 = s1
+        s1 = s0
+    return math.hypot(s1 - s2 * math.cos(w), s2 * math.sin(w))
+
+
+def check_waveform_selection(binpath):
+    """Selecting a waveform changes the timbre: a Sine has almost no 2nd harmonic,
+    a Saw at the same pitch has a strong one. Proves OSC_WAVEFORM is wired."""
+    f0 = 220.0
+    sine = render(binpath, "oscwave", 0)[4800:]  # Sine
+    saw = render(binpath, "oscwave", 1)[4800:]   # Saw
+    sine_ratio = goertzel_mag(sine, 2 * f0) / max(1e-9, goertzel_mag(sine, f0))
+    saw_ratio = goertzel_mag(saw, 2 * f0) / max(1e-9, goertzel_mag(saw, f0))
+    if sine_ratio > 0.15:
+        raise Failure(f"sine 2nd-harmonic ratio {sine_ratio:.3f} too high (not a sine?)")
+    if saw_ratio < 0.25:
+        raise Failure(f"saw 2nd-harmonic ratio {saw_ratio:.3f} too low (not a saw?)")
+    if saw_ratio < sine_ratio * 2:
+        raise Failure(f"saw ({saw_ratio:.3f}) not richer than sine ({sine_ratio:.3f})")
+    return f"sine H2/H1={sine_ratio:.3f}  saw H2/H1={saw_ratio:.3f}"
+
+
 def check_synth_deterministic_nonsilent(binpath):
     """Full 8-note engine: produces sound and renders identically twice."""
     a = render(binpath, "synth")
@@ -186,6 +215,7 @@ def check_synth_deterministic_nonsilent(binpath):
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
+    ("waveform_selection", check_waveform_selection),
     ("lowpass_attenuation", check_lowpass_attenuation),
     ("adsr_envelope_shape", check_adsr_shape),
     ("reverb_stereo_decorrelation", check_reverb_stereo_decorrelation),
