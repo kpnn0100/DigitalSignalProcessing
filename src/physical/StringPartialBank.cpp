@@ -1,6 +1,7 @@
 #include "StringPartialBank.h"
 #include "../base/AudioConfig.h"
 #include <cmath>
+#include <algorithm>
 
 namespace arstro
 {
@@ -12,28 +13,37 @@ namespace arstro
         initProperty(baseDecayID, 3.0);
         initProperty(brightnessDecayID, 0.08); // T60 at 5 kHz — real highs die in ~50-150 ms
         initProperty(strikePositionID, 0.125);
-        // Struck, not driven: a partial's initial amplitude comes from the hammer
-        // force and mode shape, not from its decay time (README ## 1).
-        for (auto &p : mPartials)
-            p.setImpulseNormalized(true);
+        ensureChannels();
         update();
     }
+
+    void StringPartialBank::ensureChannels()
+    {
+        const size_t n = (size_t)AudioConfig::instance().channelCount() * (size_t)kMaxPartials;
+        if (mY1.size() != n)
+        {
+            mY1.assign(n, 0.0);
+            mY2.assign(n, 0.0);
+        }
+    }
+
+    void StringPartialBank::onChannelCountChanged() { ensureChannels(); }
 
     void StringPartialBank::setFundamentalHz(Sample hz) { setProperty(fundamentalID, hz); }
     void StringPartialBank::setInharmonicity(Sample b) { setProperty(inharmonicityID, b); }
     void StringPartialBank::setBaseDecaySeconds(Sample t60) { setProperty(baseDecayID, t60); }
     void StringPartialBank::setBrightnessDecaySeconds(Sample t60AtRef) { setProperty(brightnessDecayID, t60AtRef); }
+    void StringPartialBank::setStrikePosition(Sample beta) { setProperty(strikePositionID, beta); }
 
     Sample StringPartialBank::partialFrequencyHz(int index) const
     {
-        return (index >= 0 && index < kPartialCount) ? mFreqN[index] : (Sample)0;
+        return (index >= 0 && index < mActiveCount) ? mFreqN[index] : (Sample)0;
     }
 
     Sample StringPartialBank::partialDecaySeconds(int index) const
     {
-        return (index >= 0 && index < kPartialCount) ? mBaseT60N[index] : (Sample)0;
+        return (index >= 0 && index < mActiveCount) ? mBaseT60N[index] : (Sample)0;
     }
-    void StringPartialBank::setStrikePosition(Sample beta) { setProperty(strikePositionID, beta); }
 
     void StringPartialBank::setDamperEngageMs(Sample ms)
     {
@@ -54,21 +64,18 @@ namespace arstro
 
     void StringPartialBank::reset()
     {
-        for (auto &p : mPartials)
-            p.reset();
+        std::fill(mY1.begin(), mY1.end(), (Sample)0);
+        std::fill(mY2.begin(), mY2.end(), (Sample)0);
         mDamperValue = 0.0;
         mDamperTarget = 0.0;
         mDamperStep = 0.0;
-        // Re-derive each partial's decay coefficient from the now-lifted damper.
-        // A reused (voice-stolen) bank can still carry heavily-damped coefficients
-        // (short T60 -> large StringResonator input gain G, README ## 1) computed
+        // Re-derive the pole radii from the now-lifted damper. A reused
+        // (voice-stolen) bank can still carry heavily-damped coefficients computed
         // for the PREVIOUS note's fully-engaged damper — PianoEngine calls
-        // setFrequency() (which recomputes coefficients from the *current*
-        // mDamperValue) before noteOn() (where this reset() runs), so a reused
-        // voice's coefficients are briefly stale/wrong otherwise. Clearing history
-        // above without this would leave the new note's hammer strike driving a
-        // resonator whose gain was calibrated for a ~40x-shorter decay than the
-        // fresh string actually has — a large, spurious amplitude spike.
+        // setFrequency() (which recomputes from the *current* mDamperValue) before
+        // noteOn() (where this reset() runs), so a reused voice's coefficients are
+        // briefly stale otherwise: the new note's hammer would strike a resonator
+        // calibrated for a ~40x-shorter decay, a large spurious amplitude spike.
         recomputeEffectivePartials();
     }
 
@@ -79,6 +86,9 @@ namespace arstro
         Sample t60_1 = getProperty(baseDecayID);
         Sample t60Ref = getProperty(brightnessDecayID);
         Sample beta = getProperty(strikePositionID);
+
+        const Sample sr = AudioConfig::instance().sampleRate();
+        const Sample nyquistLimit = kNyquistFraction * sr;
 
         // Solve the loss law alpha(f) = c1 + c3*(2*pi*f)^2 from the two decay-time
         // anchors (README ## 3). Positive-time guards first so the reciprocals below
@@ -117,35 +127,74 @@ namespace arstro
             }
         }
 
-        for (int i = 0; i < kPartialCount; ++i)
+        // How many partials fit below Nyquist (README ## 2). Evaluated on the
+        // INHARMONIC f_n — stiffness stretches the series well beyond n*f0, so far
+        // fewer partials fit than harmonic spacing suggests. At least one always
+        // survives, so a (nonsensical) ultrasonic f0 still yields a usable bank.
+        int active = 0;
+        for (int i = 0; i < kMaxPartials; ++i)
         {
-            int n = i + 1;
-            Sample fn = (Sample)n * f0 * std::sqrt(1.0 + b * (Sample)n * (Sample)n);
-            Sample wn = 2.0 * M_PI * fn;
+            const Sample n = (Sample)(i + 1);
+            const Sample fn = n * f0 * std::sqrt(1.0 + b * n * n);
+            if (i > 0 && fn >= nyquistLimit)
+                break;
+            mFreqN[i] = fn;
+            active = i + 1;
+        }
+        mActiveCount = active;
+
+        for (int i = 0; i < mActiveCount; ++i)
+        {
+            // Frequency guard mirrors StringResonator's: the first partial can be
+            // above the limit when f0 itself is (see loop above).
+            Sample fn = mFreqN[i];
+            if (fn < 1.0) fn = 1.0;
+            if (fn > 0.49 * sr) fn = 0.49 * sr;
+            mFreqN[i] = fn;
+
+            const Sample wn = 2.0 * M_PI * fn;
             Sample alphaN = c1 + c3 * wn * wn;
             if (alphaN < kMinAlpha)
                 alphaN = kMinAlpha;
-            Sample t60n = kT60Constant / alphaN;
-            Sample gn = std::fabs(std::sin((Sample)n * M_PI * beta));
-            mFreqN[i] = fn;
-            mBaseT60N[i] = t60n;
-            mGainN[i] = gn;
-            mPartials[i].setFrequencyHz(fn);
+            mBaseT60N[i] = kT60Constant / alphaN;
+
+            const Sample theta = wn / sr;
+            mCosTheta[i] = std::cos(theta);
+            // Impulse normalisation (README ## 1): G = sin(theta), independent of
+            // decay, folded together with the mode-shape gain so process() does one
+            // multiply. Deliberately NOT scaled by 1/N_active — modal superposition
+            // has no such factor, and now that N varies with pitch (README ## 2) it
+            // would make a bass note's fundamental quieter purely because the note
+            // carries more partials. See README ## 4.
+            const Sample gn = std::fabs(std::sin((Sample)(i + 1) * M_PI * beta));
+            mDrive[i] = std::sin(theta) * gn;
         }
         recomputeEffectivePartials();
     }
 
     void StringPartialBank::recomputeEffectivePartials()
     {
-        for (int i = 0; i < kPartialCount; ++i)
+        const Sample sr = AudioConfig::instance().sampleRate();
+        const Sample damperScale = 1.0 + mDamperValue * kDamperLossGain;
+        for (int i = 0; i < mActiveCount; ++i)
         {
-            Sample t60eff = mBaseT60N[i] / (1.0 + mDamperValue * kDamperLossGain);
-            mPartials[i].setDecaySeconds(t60eff);
+            Sample t60eff = mBaseT60N[i] / damperScale;
+            if (t60eff < 0.001) t60eff = 0.001;
+            // r = 10^(-3/(T60*fs)) = exp(-ln(1000)/(T60*fs)); only r moves with the
+            // damper, so theta's cos/sin stay cached from update().
+            const Sample r = std::exp(-kT60Constant / (t60eff * sr));
+            mA1[i] = 2.0 * r * mCosTheta[i];
+            mA2[i] = r * r;
         }
     }
 
     Sample StringPartialBank::process(Sample forceIn, int channel)
     {
+        // ensureChannels() keeps mY1/mY2 sized to channelCount*kMaxPartials, so this
+        // bound is the only one needed.
+        if (channel < 0 || channel >= AudioConfig::instance().channelCount())
+            return 0.0;
+
         if (channel == 0 && mDamperValue != mDamperTarget)
         {
             mDamperValue += mDamperStep;
@@ -155,9 +204,17 @@ namespace arstro
             recomputeEffectivePartials();
         }
 
+        // README ## 1's recurrence, inlined over flat arrays — see the header note.
+        Sample *y1 = mY1.data() + (size_t)channel * kMaxPartials;
+        Sample *y2 = mY2.data() + (size_t)channel * kMaxPartials;
         Sample sum = 0.0;
-        for (int i = 0; i < kPartialCount; ++i)
-            sum += mPartials[i].out(forceIn * mGainN[i] * kExciteNorm, channel);
+        for (int i = 0; i < mActiveCount; ++i)
+        {
+            const Sample y = arstroFlush(mA1[i] * y1[i] - mA2[i] * y2[i] + mDrive[i] * forceIn);
+            y2[i] = y1[i];
+            y1[i] = y;
+            sum += y;
+        }
         return sum;
     }
 }

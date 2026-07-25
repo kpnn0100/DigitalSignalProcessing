@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-25 (M1 complete)
-- **Last commit:** M1 — frequency-dependent loss model + per-note decay
+- **Last updated:** 2026-07-25 (M2 complete)
+- **Last commit:** M2 — pitch-dependent partial count + flattened resonator loop
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -14,28 +14,32 @@ file first and updates it last, every session. Spec:
 |---|---|---|---|---|
 | **M0 baseline (pre-upgrade)** | **15.42× RT** (median 15.32×) | 17.20× | 192 | ✅ met |
 | **M1** (loss model) | **16.25× RT** | 18.35× | 192 | ✅ met |
+| **M2** (64 partials + flattened loop) | **19.27× RT** (median 18.57×) | 20.75× | ~1024 | ✅ met |
 
-Measured by `./build/piano_bench` (5 passes × 10 s, best-of). 192 resonators = 8 voices × 2
-unison × 12 partials, all running every sample — see the decisions log on idle voices.
+Measured by `./build/piano_bench` (5 passes × 10 s, best-of). M2's resonator count is
+pitch-dependent (bass fills the 64 cap, treble uses ~5); ~1024 is the benchmark chord's worst
+case. **M2 runs 5.3× more resonators than M1 yet is faster** — flattening the inner loop gave
+a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never happened.
 
 ---
 
 ## ► NEXT
 
-**M2 — Pitch-dependent partial count (bandwidth).** Replace the fixed 12 partials with
-`N = min(kMaxPartials, count of f_n < 0.45·f_s)`, evaluated on the *inharmonic* `f_n`, using a
-fixed-capacity array so nothing allocates on the audio thread. C4 currently tops out at
-3.1 kHz; real piano attack energy runs to 8–10 kHz.
+**M3 — Coupled hammer↔string interaction.** The deepest fix in the plan and the one that
+addresses the original diagnosis: `HammerExciter::process()` still discards its input, so the
+hammer is a free mass bouncing off an infinitely rigid wall. Close the loop —
+`c = x_hammer − y_string(β)` — so contact force depends on the string yielding.
 
-⚠ **Read plan §M2's "Budget risk" block first.** M0 measured 15.42× RT at 192 resonators, so
-the 4× gate affords ~740; `kMaxPartials = 64` needs 1024 → projected ~2.9×, a breach. Pick a
-mitigation (flattening the resonator inner loop is recommended — it also pays for M4) and
-record it in the decisions log **before** implementing.
+Read plan §M3 first. It requires **deriving modal-mass unit consistency into the README
+before writing code**: `x_hammer` and `y_string` must share units, which is what finally
+replaces `kHammerToStringGain` with physically determined scaling.
 
-Two M1 criteria were deliberately deferred to M2 and should be re-asserted there:
-- criterion 1 in its original form (`T60(p1)/T60(p20) ≥ 50`) — projected 100.7, needs p20 to exist;
-- the treble is currently wasting partials above Nyquist (they clamp and pile up), which is
-  part of why the top octave is quiet — M2 fixes that properly.
+Why it matters now: M1 measured the attack's high partials at ~42 dB below the fundamental,
+and M2 confirmed the bandwidth is there but under-excited — the open-loop ~2.6 ms force pulse
+simply has little high-frequency content. M3's reflection ripple is what re-injects it, and it
+is what should raise the spectral-evolution criterion back to the plan's original 20 dB.
+
+Budget: M2 leaves **19.27× RT**, 4.8× above the gate — ample room.
 
 ---
 
@@ -45,7 +49,7 @@ Two M1 criteria were deliberately deferred to M2 and should be re-asserted there
 |---|---|---|
 | M0 | Perf baseline & budget | `[x]` |
 | M1 | Frequency-dependent loss model (spectral evolution) | `[x]` |
-| M2 | Pitch-dependent partial count (bandwidth) | `[ ]` |
+| M2 | Pitch-dependent partial count (bandwidth) | `[x]` |
 | M3 | Coupled hammer↔string interaction | `[ ]` |
 | M4 | Two transverse polarisations (double decay) | `[ ]` |
 | M5 | Soundboard / bridge | `[ ]` |
@@ -82,13 +86,24 @@ some acceptance criterion could not be verified here (see Verification notes).
 - [x] Re-run M0 benchmark: **16.25× RT** (up from 15.42×) — budget met
 - [x] 100 % line coverage held on all five `physical/` sources
 
-### M2 — Pitch-dependent partial count `[ ]`
-- [ ] Fixed-capacity `kMaxPartials = 64` + `mActiveCount`; **no audio-thread allocation**
-- [ ] Cutoff evaluated on inharmonic `f_n`, not `n·f0`
-- [ ] `kExciteNorm` → `2.0/mActiveCount`
-- [ ] Unit tests: active count at C2/C4/C8; **every** `f_n < f_s/2` across the keyboard
-- [ ] Integration test: C4 has energy above 3 kHz (previously exactly none)
-- [ ] Re-run M0 benchmark, record
+### M2 — Pitch-dependent partial count `[x]`
+- [x] Fixed-capacity `kMaxPartials = 64` + `mActiveCount`; **no audio-thread allocation**
+- [x] Cutoff evaluated on inharmonic `f_n`, not `n·f0` (A0 64, C4 63, C6 20, C8 5)
+- [x] Flattened the recurrence over flat coefficient arrays (the chosen mitigation) —
+      **unit-tested sample-exact (<1e-12) against `StringResonator`**, which stays the
+      soundboard's mode type and the reference implementation
+- [x] Removed the `2/N_active` excitation scaling — modal superposition has no such factor,
+      and once N varied with pitch it made bass fundamentals quieter purely for having more
+      partials (see decisions log)
+- [x] Unit tests: N_active at A0/C4/C8; **every** `f_n < f_s/2` across all 88 notes
+- [x] Integration test: C4 carries 51 partials above 3 kHz at −51.3 dB rel. fundamental,
+      where before M2 it had **exactly none**
+- [x] **M1's deferred criterion 1 re-asserted in its original form**: `T60(p1)/T60(p20)` =
+      **100.7** (≥50) — matching M1's projection exactly
+- [x] Deleted dead code rather than faking coverage: `StringResonator::reset()` (lost its
+      only caller) and an unreachable channel guard
+- [x] Re-run M0 benchmark: **19.27× RT** — budget met with 4.8× margin
+- [x] 100 % line coverage held on all five `physical/` sources
 
 ### M3 — Coupled hammer↔string `[ ]`
 - [ ] Derive modal-mass unit consistency into README `## Math` **before coding** (plan §M3)
@@ -144,6 +159,42 @@ some acceptance criterion could not be verified here (see Verification notes).
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
 
+- **2026-07-25 (M2) — the `2/N_active` excitation scaling was unphysical; removed.** Modal
+  superposition has no `1/N` factor — the mode count is a truncation choice, and adding a 64th
+  partial must not quieten the first 63. It was harmless while N was a fixed 12; once N varied
+  with pitch it became a spurious pitch-dependent gain (peak ∝ 1/√N), leaving the bass 5×
+  quieter than the treble — the opposite of a real piano. Removed, and `kHammerToStringGain`
+  recalibrated once (5.8e-6 → 7.5e-7). Keyboard is now 0.26–0.86 peak with a natural mid-bass
+  emphasis. **Third normalisation error in two milestones** (after M1's sustained-vs-impulse
+  gain and the bridge loop gain) — each hidden until a *different* parameter started varying.
+- **2026-07-25 (M2) — flattening paid for itself several times over.** Projected 2.9× RT and a
+  budget breach; measured **19.27×**, i.e. *faster than M1* while running 5.3× more resonators
+  (~6.7× per-resonator speedup). The per-partial virtual dispatch and property machinery really
+  had been costing far more than the five arithmetic ops they guarded. M4's polarisation
+  doubling now has ample headroom, exactly as the mitigation intended.
+- **2026-07-25 (M2) — full-precision `ln(1000)` matters.** The flattened loop computes the pole
+  radius as `exp(-ln1000/(T60·fs))` where `StringResonator` uses `pow(10,-3/(T60·fs))`. With
+  `kT60Constant` truncated to 6.907755 the two disagreed by ~1e-8 after 2000 samples of IIR
+  recursion — enough to fail the sample-exactness test. At full precision
+  (6.907755278982137) they agree bitwise. Worth remembering for any future coefficient constant.
+- **2026-07-25 (M2) — mitigation chosen: flatten the resonator inner loop; `kMaxPartials = 64`.**
+  Required by the ledger before implementing. Measured bandwidth per cap (inharmonicity
+  stretches `f_n` far beyond `n·f0`, so fewer partials reach Nyquist than expected):
+
+  | cap | A0 | C4 | worst-case resonators | projected RT, no speedup |
+  |---|---|---|---|---|
+  | 32 | 1.7 kHz | 9.1 kHz | 512 | 6.09× ok |
+  | 46 | — | — | 736 | 4.24× ok, **no margin** |
+  | 64 | 6.2 kHz | 21.3 kHz (full) | 1024 | 3.05× **breach** |
+  | 96 | 13.7 kHz | full | 1536 | 2.03× breach |
+
+  Cap 64 gives C4 and everything above it *complete* bandwidth to Nyquist, and the bass 6.2 kHz
+  — the target M2 exists for. Cap 46 would fit the budget today but leaves nothing for M4,
+  which stacks on top. So: take option (1), flatten the loop. Each partial currently pays two
+  virtual calls plus branches to perform five arithmetic ops; inlining the recurrence over flat
+  coefficient arrays removes that. `StringResonator` stays as `PianoBridge`'s mode type and as
+  the reference implementation the flattened loop is unit-tested to match **exactly**.
+  Option (3), skipping idle voices, is still not done and still does not help the gate.
 - **2026-07-25 (M1) — the resonator gain normalisation was wrong for struck strings.** M1's
   per-note T60 exposed a latent bug: `G = (1−r²)sinθ` normalises for *sustained* drive, so a
   struck partial's amplitude scaled as `1/T60`. Invisible while every note decayed in 3 s; the
@@ -199,6 +250,11 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M2** — fully verified; nothing marked `[!]`. The bandwidth is now present (C4 to 21 kHz,
+  A0 to 6.2 kHz) but the attack still **under-excites** it: high partials sit ~42 dB below the
+  fundamental because the open-loop hammer pulse has little high-frequency content. So M2
+  removed the ceiling without yet filling the room — M3 is what fills it. Interim sound is
+  still mellow.
 - **M1** — fully verified; nothing marked `[!]`. Every acceptance number was measured, and the
   two adapted thresholds are documented in plan §M1 with the reason and the milestone that
   should restore them. Note the model is now *more* physically correct but the attack is

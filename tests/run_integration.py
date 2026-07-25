@@ -273,6 +273,34 @@ def check_piano_voice_reuse_bounded(binpath):
     return f"peak={p:.3f}"
 
 
+def check_piano_bandwidth(binpath):
+    """M2 acceptance (plan §M2): a C4 note must now carry real energy ABOVE 3 kHz.
+    Before M2 the bank was a fixed 12 partials, so C4 topped out at ~3.18 kHz and had
+    *exactly zero* content above it — a dull, near-pure tone and one of the reasons
+    the model read as a plucked string. C4 now runs 63 partials to ~21 kHz."""
+    f0 = 261.63
+    b = min(0.02, max(0.00005, 0.00056 * (100.0 / f0) ** 1.25))
+    y = render(binpath, "pianospectral")
+    seg = y[480:14400]  # ~10-300 ms: the attack, where the highs live
+
+    def partial(n):
+        return n * f0 * math.sqrt(1.0 + b * n * n)
+
+    # Probe partials that simply did not exist before M2 (n > 12).
+    above_3k = [partial(n) for n in range(13, 64) if partial(n) > 3000.0]
+    if len(above_3k) < 10:
+        raise Failure(f"expected many partials above 3 kHz, found {len(above_3k)}")
+    hi = math.sqrt(sum(goertzel_mag(seg, f) ** 2 for f in above_3k[:20]))
+    ref = goertzel_mag(seg, partial(1))
+    if ref <= 0:
+        raise Failure("no fundamental to compare against")
+    rel_db = 20.0 * math.log10(max(hi, 1e-12) / ref)
+    # Must be present and well clear of the numerical floor, not merely non-zero.
+    if rel_db < -70.0:
+        raise Failure(f"no real energy above 3 kHz ({rel_db:.1f} dB rel. fundamental)")
+    return f"{len(above_3k)} partials >3 kHz, energy {rel_db:.1f} dB rel. fundamental"
+
+
 def check_piano_spectral_evolution(binpath):
     """M1 acceptance criterion 2 (plan §M1): piano tone is defined by its spectral
     EVOLUTION — a bright, complex attack that mellows to near-sinusoidal within about
@@ -348,6 +376,7 @@ CHECKS = [
     ("piano_inharmonicity", check_piano_inharmonicity),
     ("piano_damper_decay", check_piano_damper),
     ("piano_voice_reuse_bounded", check_piano_voice_reuse_bounded),
+    ("piano_bandwidth", check_piano_bandwidth),
     ("piano_spectral_evolution", check_piano_spectral_evolution),
     ("piano_sympathetic_resonance", check_piano_sympathetic_resonance),
 ]

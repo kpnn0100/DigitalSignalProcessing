@@ -125,7 +125,14 @@ int main(int argc, char **argv)
     // Scaling context for the upcoming milestones: how many resonators a voice
     // currently runs, so M2/M4's cost multiplier can be predicted from this run
     // rather than guessed. (Read from the live types, so it can't go stale.)
-    const int partialsPerString = StringPartialBank::kPartialCount;
+    // Partial count is pitch-dependent since M2, so report the cap AND the actual
+    // active count for the benchmark's own lowest note (the worst case: the bass
+    // fills the cap, the treble uses a handful).
+    const int partialCap = StringPartialBank::kMaxPartials;
+    StringPartialBank probe;
+    probe.setFundamentalHz(41.2); // the lowest note the 8-voice chord uses
+    probe.setInharmonicity(0.0019);
+    const int activeAtLowNote = probe.partialCount();
     const int maxUnison = PianoVoice::kMaxUnison;
 
     std::printf("PIANO_BENCH_SECONDS=%.2f\n", seconds);
@@ -136,7 +143,8 @@ int main(int argc, char **argv)
     std::printf("VOICES8_WALL_MS=%.1f\n", eight.bestWallMs);
     std::printf("VOICES1_REALTIME_BEST=%.2f\n", one.bestRt);
     std::printf("VOICES1_REALTIME_MEDIAN=%.2f\n", one.medianRt);
-    std::printf("PARTIALS_PER_STRING=%d\n", partialsPerString);
+    std::printf("PARTIAL_CAP=%d\n", partialCap);
+    std::printf("PARTIALS_ACTIVE_LOW_NOTE=%d\n", activeAtLowNote);
     std::printf("MAX_UNISON_STRINGS=%d\n", maxUnison);
     std::printf("BUDGET_REALTIME_MIN=4.00\n");
     std::printf("BUDGET_MET=%s\n", eight.bestRt >= 4.0 ? "yes" : "NO");

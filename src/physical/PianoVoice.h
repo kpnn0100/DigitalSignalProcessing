@@ -115,7 +115,7 @@ namespace arstro
         // normalized contact-force units into the resonator bank's signal-level
         // units, so a full-velocity strike lands near +-1 like every other
         // SignalGenerator in this codebase, not derived from a physical unit system.
-        static constexpr Sample kHammerToStringGain = 5.8e-6;
+        static constexpr Sample kHammerToStringGain = 7.5e-7;
 
         // M6 stand-in curve (see mVoicingGain): measured peak ~ f^-0.9, so f^0.8
         // flattens it to ~2.5x across the keyboard, keeping a mild bass emphasis.

@@ -542,11 +542,10 @@ TEST(PianoVoice_reused_voice_after_damper_engaged_stays_bounded)
 // ───────────────── M1: frequency-dependent loss (spectral evolution) ─────────────────
 // Plan docs/piano-physics-plan.md §M1; math in src/physical/README.md ## 3.
 
-// Acceptance criterion 1 (adapted): high partials must decay FAR faster than the
-// fundamental — that tilt is what makes a bright attack mellow to near-sine, and
-// its absence is why the pre-M1 model read as a plucked string. The plan states
-// this at partial 20; partial 20 does not exist until M2 raises kPartialCount
-// above 12, so M1 asserts it on the highest partial that does exist.
+// M1 acceptance criterion 1, now in its ORIGINAL form: M2 made partial 20 exist
+// at C4 (63 active partials), so the plan's stated target is asserted directly.
+// This tilt is what makes a bright attack mellow to near-sine; its absence is why
+// the pre-M1 model read as a plucked string.
 TEST(StringPartialBank_high_partials_decay_far_faster)
 {
     AudioConfig::instance().setSampleRate(48000);
@@ -556,11 +555,16 @@ TEST(StringPartialBank_high_partials_decay_far_faster)
     bank.setInharmonicity(1.6831e-4);
     bank.setBaseDecaySeconds(PianoVoice::defaultBaseDecaySeconds(261.6));
 
-    const int top = bank.partialCount() - 1;
+    CHECK(bank.partialCount() > 20); // M2: C4 now carries 63 partials, not 12
+
     const double t60First = bank.partialDecaySeconds(0);
+    const double t60P20 = bank.partialDecaySeconds(19); // partial 20
+    CHECK(t60First > 0.0 && t60P20 > 0.0);
+    CHECK(t60First / t60P20 >= 50.0); // plan §M1 criterion 1, measured 100.7
+
+    const int top = bank.partialCount() - 1;
     const double t60Top = bank.partialDecaySeconds(top);
-    CHECK(t60First > 0.0 && t60Top > 0.0);
-    CHECK(t60First / t60Top >= 25.0); // measured 35.3 at 12 partials
+    CHECK(t60Top > 0.0);
 
     // Monotonic: every partial decays at least as fast as the one below it.
     bool monotonic = true;
@@ -622,6 +626,118 @@ TEST(PianoVoice_decay_scales_with_pitch)
         prev = t;
     }
     CHECK(decreasing);
+}
+
+// ───────────────── M2: pitch-dependent partial count (bandwidth) ─────────────────
+// Plan §M2; math in src/physical/README.md ## 2.
+
+// The partial count must follow pitch, not be a constant: a string has as many
+// modes as fit below Nyquist. The cutoff is evaluated on the INHARMONIC f_n,
+// which stiffness stretches well beyond n*f0.
+TEST(StringPartialBank_partial_count_scales_with_pitch)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    const double nyquist = 48000.0 * 0.5;
+
+    auto bankAt = [](double f0, double b) {
+        auto *bank = new StringPartialBank();
+        bank->setFundamentalHz(f0);
+        bank->setInharmonicity(b);
+        bank->setBaseDecaySeconds(PianoVoice::defaultBaseDecaySeconds(f0));
+        return bank;
+    };
+
+    // Bass fills the cap; the treble needs only a handful.
+    StringPartialBank *bass = bankAt(27.5, 0.00281);    // A0
+    StringPartialBank *mid = bankAt(261.6, 1.6831e-4);  // C4
+    StringPartialBank *treble = bankAt(4186.0, 5e-5);   // C8
+
+    CHECK(bass->partialCount() == StringPartialBank::kMaxPartials); // cap-limited
+    CHECK(mid->partialCount() > 40 && mid->partialCount() <= StringPartialBank::kMaxPartials);
+    CHECK(treble->partialCount() < 10);                            // Nyquist-limited
+    CHECK(treble->partialCount() >= 1);                            // never zero
+
+    // Strictly increasing bandwidth need as pitch falls.
+    CHECK(bass->partialCount() >= mid->partialCount());
+    CHECK(mid->partialCount() > treble->partialCount());
+
+    // NOTHING may sit at or above Nyquist — aliasing would fold it back audibly.
+    for (StringPartialBank *b : {bass, mid, treble})
+        for (int i = 0; i < b->partialCount(); ++i)
+            CHECK(b->partialFrequencyHz(i) < nyquist);
+
+    delete bass; delete mid; delete treble;
+}
+
+// Every f_n across the WHOLE keyboard stays below Nyquist, using each note's own
+// register-dependent inharmonicity (the value that actually stretches the series).
+TEST(StringPartialBank_no_partial_above_nyquist_across_keyboard)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    const double nyquist = 48000.0 * 0.5;
+    bool allBelow = true, allPositive = true;
+
+    for (int midi = 21; midi <= 108; ++midi) // A0..C8
+    {
+        const double f0 = 440.0 * std::pow(2.0, (midi - 69) / 12.0);
+        double b = 0.00056 * std::pow(100.0 / f0, 1.25);
+        if (b < 0.00005) b = 0.00005;
+        if (b > 0.02) b = 0.02;
+
+        StringPartialBank bank;
+        bank.setFundamentalHz(f0);
+        bank.setInharmonicity(b);
+        bank.setBaseDecaySeconds(PianoVoice::defaultBaseDecaySeconds(f0));
+        CHECK(bank.partialCount() >= 1);
+        for (int i = 0; i < bank.partialCount(); ++i)
+        {
+            if (!(bank.partialFrequencyHz(i) < nyquist)) allBelow = false;
+            if (!(bank.partialDecaySeconds(i) > 0.0)) allPositive = false;
+        }
+    }
+    CHECK(allBelow);
+    CHECK(allPositive);
+}
+
+// M2 inlined §1's recurrence for speed. That optimisation must not change the
+// math — drive a single-partial bank and a StringResonator configured identically
+// and require sample-exact agreement. This also keeps StringResonator (still the
+// soundboard's mode type) as the verified reference implementation.
+TEST(StringPartialBank_flattened_loop_matches_reference_resonator)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    // f0 high enough that only partial 1 fits below Nyquist -> a 1-partial bank.
+    const double f0 = 15000.0, beta = 0.125, t60 = 0.5;
+    StringPartialBank bank;
+    bank.setFundamentalHz(f0);
+    bank.setInharmonicity(0.0);
+    bank.setBaseDecaySeconds(t60);
+    bank.setStrikePosition(beta);
+    CHECK(bank.partialCount() == 1);
+
+    StringResonator ref;
+    ref.setImpulseNormalized(true); // strings are impulse-normalised (README ## 1)
+    ref.setFrequencyHz(bank.partialFrequencyHz(0));
+    ref.setDecaySeconds(bank.partialDecaySeconds(0));
+
+    // The bank folds the mode-shape gain into its drive; the reference gets it applied
+    // to its input instead. Same signal either way.
+    const double g1 = std::fabs(std::sin(M_PI * beta));
+    double maxErr = 0.0, energy = 0.0;
+    for (int i = 0; i < 2000; ++i)
+    {
+        const double x = (i == 0) ? 1.0 : 0.0; // impulse
+        const double a = bank.out(x, 0);
+        const double b = ref.out(x * g1, 0);
+        maxErr = std::max(maxErr, std::fabs(a - b));
+        energy += a * a;
+    }
+    CHECK(energy > 1e-9);   // it actually rang, so the comparison means something
+    CHECK(maxErr < 1e-12);  // sample-exact
 }
 
 int main()

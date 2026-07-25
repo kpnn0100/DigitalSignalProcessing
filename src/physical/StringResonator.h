@@ -34,12 +34,6 @@ namespace arstro
          *  set by the hammer force and mode shape, not by how slowly it later decays. */
         void setImpulseNormalized(bool impulse);
 
-        // Zeroes the y[n-1]/y[n-2] history on every channel. Required before
-        // reusing this resonator for a new note (voice-stealing): changing
-        // frequency/decay coefficients while old history is still nonzero feeds
-        // stale state through new coefficients and can produce a large transient
-        // (this is what "reset before retune" protects against).
-        void reset();
 
         void update() override;
         void onChannelCountChanged() override;

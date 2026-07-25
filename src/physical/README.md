@@ -141,8 +141,55 @@ A real string isn't massless/perfectly flexible; bending stiffness raises each p
 the ideal harmonic:
 
 ```
-f_n = n · f0 · sqrt(1 + B n²)          n = 1 .. N   (N = kPartialCount = 12)
+f_n = n · f0 · sqrt(1 + B n²)          n = 1 .. N_active
 ```
+
+**How many partials (M2).** A string has as many transverse modes as fit below Nyquist, and
+that count varies enormously with pitch. Truncating every note at a fixed 12 removed the whole
+upper spectrum of every note below ~1.6 kHz — a dull, near-pure tone, and one of the reasons
+the model read as a plucked string.
+
+```
+N_active = largest N ≤ kMaxPartials  such that  f_N < kNyquistFraction · f_s
+kMaxPartials = 64        kNyquistFraction = 0.45        N_active ≥ 1 always
+```
+
+The cutoff is evaluated on the **inharmonic** `f_n`, never on `n·f0`: stiffness stretches the
+series (`√(1+Bn²)` reaches 5.9× by n=120 in the bass), so far fewer partials fit under Nyquist
+than the harmonic spacing suggests. Measured, at `f_s = 48 kHz`:
+
+| note | B | partials to Nyquist | N_active (cap 64) | bandwidth |
+|---|---|---|---|---|
+| A0 (27.5) | 0.0028 | 120 | 64 | 6.2 kHz |
+| C2 (65.4) | 0.00095 | 100 | 64 | 9.3 kHz |
+| C4 (261.6) | 0.00017 | 63 | 63 | 21.3 kHz (full) |
+| C6 (1046) | 0.00005 | 20 | 20 | 21.1 kHz (full) |
+| C8 (4186) | 0.00005 | 5 | 5 | 20.9 kHz (full) |
+
+So C4 upward is complete to Nyquist and only the bass is cap-limited — and it is cap-limited by
+CPU (`REQ-piano-17`), not by the model: see `docs/piano-physics-progress.md` for the measured
+cost of each cap. Because `N_active` varies, the mode-superposition normalisation of §4 must
+divide by it (`2/N_active`), not by a constant.
+
+**Nothing allocates on the audio thread.** Storage is a fixed `kMaxPartials`-sized array with
+an `mActiveCount`; only the loop bound changes with pitch.
+
+**The recurrence is inlined, not one `StringResonator` per partial (M2).** At 64 partials ×
+3 unison × 8 voices the per-partial virtual dispatch and property-system overhead dominated the
+five arithmetic ops it guarded, and the projected cost breached `REQ-piano-17`.
+`StringPartialBank` therefore keeps flat coefficient arrays and runs §1's recurrence directly:
+
+```
+per partial i, per sample:   y = a1_i·y1_i − a2_i·y2_i + drive_i·F
+                             a1_i = 2·r_i·cosθ_i     a2_i = r_i²
+                             drive_i = sinθ_i · g_i · (2/N_active)
+```
+
+`cosθ_i`/`sinθ_i`/`drive_i` depend only on `f_n`, so they are computed once per `update()`; the
+damper ramp (§7) changes only `r_i`, so its per-sample work is one `exp()` per partial rather
+than a full coefficient rebuild. `StringResonator` remains the soundboard's mode type (§8) and
+the **reference implementation** — a unit test drives both and asserts they agree to 1e-12, so
+the optimisation cannot silently change the math.
 
 `B` (inharmonicity coefficient, `StringPartialBank::setInharmonicity`) is a property, not
 hardcoded — but per-note it needs *some* default, and this repo has no per-note string

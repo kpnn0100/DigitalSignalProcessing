@@ -35,11 +35,6 @@ namespace arstro
         update(); // G depends on it
     }
 
-    void StringResonator::reset()
-    {
-        std::fill(mY1.begin(), mY1.end(), (Sample)0);
-        std::fill(mY2.begin(), mY2.end(), (Sample)0);
-    }
 
     void StringResonator::update()
     {
