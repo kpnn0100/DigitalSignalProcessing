@@ -144,12 +144,40 @@ kMaxPartials>` (`kMaxPartials = 64`, a perf/realism compromise — document it) 
 
 **Also:** `kExciteNorm = 2.0/kPartialCount` must become `2.0/mActiveCount`.
 
+### ⚠ Budget risk — measured at M0, read this before starting M2
+
+M0 measured the pre-upgrade baseline at **15.42× real-time for 8 voices = 192 resonators**
+(8 voices × 2 unison × 12 partials). The 4× gate therefore affords roughly **740 resonators**.
+
+```
+kMaxPartials = 64  →  8 × 2 × 64 = 1024 resonators  →  ~2.9× real-time   ✗ BREACHES
+fits the gate      →  740 / (8 × 2)                 ≈  46 partials
+```
+
+**M2 as originally specced will breach `REQ-piano-17`.** Choose a mitigation and record it in
+the ledger's decisions log before implementing:
+
+1. **Flatten the resonator inner loop (recommended — highest leverage).** Every partial
+   currently pays a virtual `SignalProcessor::out()` call plus its per-sample smoothing branch
+   to perform *five* arithmetic ops. Iterating a flat `{y1, y2, a1, a2, g}` array inline
+   inside `StringPartialBank::process()` — no virtual dispatch, no per-resonator property
+   machinery — should pay for M2 *and* M4 outright. Costs: `StringResonator` stops being the
+   per-partial unit (it stays the soundboard's mode type), so the README §1 code
+   cross-reference must be updated.
+2. **Cap `kMaxPartials` at ~44–46.** Trivial, keeps the architecture, but leaves the top of
+   the spectrum truncated on bass notes — a partial retreat from M2's whole purpose.
+3. **Skip idle voices.** `PianoEngine::renderBlockBytes()` loops all 8 voices with no
+   `isFinished()` check, which is why M0 measured 1 voice (17.2×) as barely cheaper than 8
+   (15.4×). Worth doing regardless — but it does **not** help the gate, which is defined at 8
+   voices sounding, i.e. the case where nothing is skippable.
+
 **Acceptance.**
-1. Active count matches the formula at C2 / C4 / C8 (C8 ≈ 5 partials, C4 capped at 64).
+1. Active count matches the formula at C2 / C4 / C8 (C8 ≈ 5 partials, C4 at the cap).
 2. **Every** `f_n < f_s/2` — no partial above Nyquist, at every note across the keyboard.
 3. C4 has measurable energy above 3 kHz (Goertzel at partial 15+) where it previously had
    exactly none.
-4. M0 benchmark still ≥ 4× real-time.
+4. M0 benchmark still ≥ 4× real-time — see the budget risk above; this is the criterion most
+   likely to fail, so measure it early rather than at the end.
 
 ---
 
@@ -236,7 +264,13 @@ Document that as a deliberate approximation.
 **Acceptance.**
 1. Fit two exponentials to the RMS envelope; the late slope is ≥ 3× slower than the early one.
 2. Equivalently: decay rate over [0, 0.5 s] vs [1.5 s, 3 s] differs by ≥ 3×.
-3. M0 benchmark still ≥ 4× real-time (this is the milestone most likely to breach it).
+3. M0 benchmark still ≥ 4× real-time.
+
+> ⚠ **Stacks on top of M2's budget risk.** M4 adds `kPolarizedPartials` (~16) extra resonators
+> per string on top of whatever M2 settled on. Off M0's measured 192-resonator baseline, M2
+> at 46 partials plus M4's 16 gives 8 × 2 × 62 ≈ 992 resonators ≈ 3.0× real-time — a breach
+> *unless* M2 took mitigation (1), the flattened inner loop. Treat that as the default plan:
+> if M2 shipped with the cap-only mitigation, expect to do the flattening work here instead.
 
 ---
 

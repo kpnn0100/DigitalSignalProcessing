@@ -72,6 +72,17 @@ if(Python3_Interpreter_FOUND)
                    $<TARGET_FILE:arstro_piano_demo>)
 endif()
 
+# ── Piano render benchmark (REQ-piano-17; docs/piano-physics-plan.md §M0) ──
+# `cmake --build build --target piano_bench && ./build/piano_bench`
+add_executable(piano_bench tools/piano_bench.cpp apps/piano_demo/PianoEngine.cpp)
+target_link_libraries(piano_bench PRIVATE arstro_dsp)
+
+# Smoke only: proves the benchmark still builds and produces a number, so it
+# can't rot between milestones. It deliberately does NOT assert the >=4x budget
+# — wall-clock thresholds are flaky on shared machines, and the budget is a
+# review gate recorded in docs/piano-physics-progress.md instead.
+add_test(NAME piano_bench_smoke COMMAND piano_bench --smoke)
+
 # ── Optional demo app (needs libsndfile; skipped if not present) ──
 find_library(SNDFILE_LIB sndfile)
 if(SNDFILE_LIB)

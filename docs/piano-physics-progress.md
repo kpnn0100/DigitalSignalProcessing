@@ -4,21 +4,34 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-25 (plan created; no milestones started)
-- **Last commit:** _(none yet — this ledger's own commit)_
-- **M0 perf baseline:** _not measured_
-- **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (see plan §M0)
+- **Last updated:** 2026-07-25 (M0 complete)
+- **Last commit:** M0 — piano render benchmark + REQ-piano-17 perf budget
+- **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
+
+### Perf log
+
+| After | 8 voices | 1 voice | Resonators | Budget |
+|---|---|---|---|---|
+| **M0 baseline (pre-upgrade)** | **15.42× RT** (median 15.32×) | 17.20× | 192 | ✅ met |
+
+Measured by `./build/piano_bench` (5 passes × 10 s, best-of). 192 resonators = 8 voices × 2
+unison × 12 partials, all running every sample — see the decisions log on idle voices.
 
 ---
 
 ## ► NEXT
 
-**M0 — Performance baseline & budget.** Build the offline 8-voice benchmark, record the
-pre-upgrade × real-time number in this ledger. Small task; it exists so M2/M4 have a gate to
-be measured against.
+**M1 — Frequency-dependent loss model (spectral evolution).** Replace `T60_n = T60_1/n^0.9`
+with `α(f) = c1 + c3(2πf)²`, and give `PianoVoice::setFrequency()` a pitch-derived default
+T60 (bass rings for tens of seconds, treble under a second) instead of 3.0 s everywhere.
+Plan §M1 has the parameterisation, the T60-vs-pitch anchor table, and the acceptance numbers.
 
-_(After M0: M1 loss model → M2 partial count. Those two are the ones that should audibly stop
-it sounding like a plucked string.)_
+Start with the first unchecked task in the M1 checklist below. **Read plan §M1 first** — it
+specifies the c1/c3 solve, and note that this milestone *replaces* the public
+`dampingExponentID` setter with `brightnessDecayID`, so all callers/tests must move with it.
+
+⚠ **Before starting M2, read plan §M2's "Budget risk" block** — M0's measurement says M2 as
+originally specced would land at ~2.9× real-time and breach `REQ-piano-17`.
 
 ---
 
@@ -26,7 +39,7 @@ it sounding like a plucked string.)_
 
 | M | Milestone | Status |
 |---|---|---|
-| M0 | Perf baseline & budget | `[ ]` |
+| M0 | Perf baseline & budget | `[x]` |
 | M1 | Frequency-dependent loss model (spectral evolution) | `[ ]` |
 | M2 | Pitch-dependent partial count (bandwidth) | `[ ]` |
 | M3 | Coupled hammer↔string interaction | `[ ]` |
@@ -44,10 +57,14 @@ some acceptance criterion could not be verified here (see Verification notes).
 
 ## Task checklists
 
-### M0 — Perf baseline & budget `[ ]`
-- [ ] Offline benchmark: 8-voice chord through `PianoEngine`, reports × real-time
-- [ ] Record baseline number in this ledger's header
-- [ ] Confirm the 4× RT budget is met *before* any change (if not, say so — it changes M2/M4 scope)
+### M0 — Perf baseline & budget `[x]`
+- [x] Offline benchmark: 8-voice chord through `PianoEngine`, reports × real-time
+      (`tools/piano_bench.cpp`, target `piano_bench`, machine-parseable `KEY=VALUE` output)
+- [x] Record baseline number in this ledger's header — **15.42× RT, 8 voices**
+- [x] Confirm the 4× RT budget is met *before* any change — **met with 3.9× headroom**, but
+      that headroom is *not* enough for M2 as specced (see decisions log + plan §M2 risk block)
+- [x] `REQ-piano-17` added (no perf requirement existed; rule 5 requires one before the work)
+- [x] Non-flaky `piano_bench_smoke` ctest so the benchmark can't rot between milestones
 
 ### M1 — Frequency-dependent loss model `[ ]`
 - [ ] Derive α(f) = c1 + c3(2πf)² parameterisation + the c1/c3 solve into README `## Math`
@@ -120,6 +137,23 @@ some acceptance criterion could not be verified here (see Verification notes).
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
 
+- **2026-07-25 (M0) — M2 as specced will breach the perf budget; pick a mitigation first.**
+  Baseline is 15.42× real-time at 192 resonators, so the 4× gate affords ~740. M2's
+  `kMaxPartials = 64` needs 1024 → projected **~2.9× real-time**. Options, in the plan's §M2
+  risk block: (1) flatten the resonator inner loop — recommended, and the only one that also
+  pays for M4; (2) cap partials at ~46 — cheap but partially defeats M2's purpose; (3) skip
+  idle voices — worth doing anyway but does *not* help, since the gate is defined at 8 voices
+  sounding. **Not decided here** — M2 owns the choice, but must record it before implementing.
+- **2026-07-25 (M0) — idle voices are never skipped.** `PianoEngine::renderBlockBytes()` loops
+  all 8 voices with no `isFinished()` check, so 1 sounding note costs almost as much as 8
+  (17.20× vs 15.42×) — the benchmark measured it and the code confirms it. This makes the
+  "1 voice" figure a measure of *8 voice slots with 1 note*, not per-voice cost; treat the
+  8-voice number as the only meaningful one until this changes.
+- **2026-07-25 (M0) — the perf budget is a review gate, not a build failure.** `piano_bench`
+  exits 0 whenever it ran, and `piano_bench_smoke` asserts only that it produces a number.
+  Wall-clock thresholds are flaky on shared machines, and a perf test that fails the build for
+  being scheduled badly gets disabled — which is worse than one that always reports honestly.
+  Enforcement lives here in the ledger, checked by whoever runs the milestone.
 - **2026-07-25** — Plan created from a code audit after the user reported the model "sounds
   like a string instrument, like hitting a violin string." Root findings: the hammer discards
   its string input (open-loop excitation), 12 fixed partials, uniform 3 s decay for every
@@ -130,7 +164,10 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
-- Nothing yet. Note that this project is developed headless: no one has *listened* to the
-  output in this environment. Every acceptance criterion in the plan is deliberately
-  numeric so progress is provable without ears — but final timbre judgement is the user's,
-  and "sounds right" is never a criterion this skill may tick on its own.
+- **M0** — fully verified; nothing marked `[!]`. The benchmark number is wall-clock on this
+  dev machine only, so it is a *relative* baseline: what matters for later milestones is the
+  ratio to this figure, not the absolute value, since another machine will differ.
+- Note that this project is developed headless: no one has *listened* to the output in this
+  environment. Every acceptance criterion in the plan is deliberately numeric so progress is
+  provable without ears — but final timbre judgement is the user's, and "sounds right" is
+  never a criterion this skill may tick on its own.

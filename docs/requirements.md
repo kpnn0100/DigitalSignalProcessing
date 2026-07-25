@@ -122,3 +122,15 @@ silently reintroduced as bugs or silently promised as done)
 - `REQ-piano-16` — Una corda's real mechanism (hammer shifts to strike fewer of the unison
   strings) is approximated as a reduced hammer excitation gain + reduced contact hardness,
   not literal dynamic unison-count switching mid-performance.
+
+### Performance
+
+- `REQ-piano-17` — The piano voice must render **faster than real time by a factor of ≥ 4**
+  with the full `PianoEngine` voice pool (8 voices) sounding at 48 kHz, measured offline on
+  the development machine. **Source:** `docs/piano-physics-plan.md` §M0 — the interactive
+  `examples/piano` app drives a live ALSA thread, so anything approaching 1× real time risks
+  audible underruns, and the planned physics upgrades (M2 raises the partial count ~5×, M4
+  doubles resonators on low partials) multiply the cost. This is a *gate*, not an aspiration:
+  a milestone that breaches it is not done until it is optimised or its scope is cut, with
+  the decision recorded in `docs/piano-physics-progress.md`. Measured by `tools/piano_bench.cpp`
+  (target `piano_bench`); each milestone re-runs it and records the figure in the ledger.
