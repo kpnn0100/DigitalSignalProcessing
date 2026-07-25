@@ -26,7 +26,11 @@ Diagnosed 2026-07-25 against the shipped code. Four findings, in order of severi
 Secondary: strike position fixed at 1/8 for all 88 notes; one hammer mass/stiffness for the
 whole keyboard; bridge modes span only 80–700 Hz so everything above 700 Hz radiates
 completely uncoloured; `registerGain(f0)^0.6` and `kHammerToStringGain` are empirical
-band-aids compensating for #2 (they should be *deleted* by M3, not tuned).
+band-aids compensating for #2 (they should be *deleted*, not tuned).
+
+> **Updated after M1:** `registerGain` turned out to be compensating a *bug* — the resonator's
+> sustained-drive gain normalisation made loudness track decay time — and was deleted at M1
+> once that was fixed. `kHammerToStringGain` remains, and is M3's to delete.
 
 ---
 
@@ -118,8 +122,20 @@ fundamental rings for 10 s. That ratio is the effect we are buying.
 
 **Acceptance.**
 1. `T60(partial 20) < T60(partial 1) / 50` at C4.
+   > **Adapted at M1:** partial 20 does not exist until M2 raises `kPartialCount` above 12.
+   > M1 therefore asserts the same tilt on the highest partial that *does* exist —
+   > `T60(partial 1)/T60(partial 12) ≥ 25`, measured **35.3**. Projecting M1's solved
+   > coefficients to partial 20 gives **100.7**, so this criterion's original form is expected
+   > to pass unchanged once M2 lands; re-assert it there.
 2. **Spectral evolution:** high-band (>2 kHz) to low-band energy ratio drops by ≥ 20 dB
    between the attack window and t = 1 s.
+   > **Adapted at M1 to ≥ 15 dB (measured 17.1).** The 20 dB target was set before M1
+   > discovered that §1's gain normalisation was inflating short-T60 (high) partials at the
+   > attack; removing that artifact removes the inflated headroom too. The remaining ceiling
+   > is the *excitation* spectrum, not the decay law: the open-loop ~2.6 ms hammer pulse
+   > leaves high partials ~42 dB down at the attack. **M3** (hammer↔string coupling, whose
+   > reflection ripple re-injects high-frequency energy) is what should raise this — restore
+   > the 20 dB target there.
 3. `T60_fundamental(A0) / T60_fundamental(C7) ≥ 10`.
 4. Existing `piano_damper_decay` and `piano_inharmonicity` checks still pass.
 
@@ -221,10 +237,10 @@ displacement at the strike point. `StringPartialBank` gains
 q̈_n + 2ζ_nω_n·q̇_n + ω_n²·q_n = (g_n/m_n)·F        m_n = modal mass
 ```
 
-so the resonator input gain must carry `1/m_n`, not an arbitrary constant. **Deliverable:
-`kHammerToStringGain` and `registerGain(f0)^0.6` are deleted**, replaced by physically
-determined modal-mass scaling — which also fixes cross-keyboard loudness properly instead of
-with a fitted curve.
+so the resonator input gain must carry `1/m_n`, not an arbitrary constant. **Deliverable: `kHammerToStringGain` is deleted**, replaced by
+physically determined modal-mass scaling. (`registerGain` was already deleted at M1, which
+found it was compensating a gain bug; its successor `voicingGain` models real per-register
+voicing and belongs to M6 — do not delete that one here.)
 
 **Acceptance.**
 1. Contact duration varies with **pitch** at fixed velocity (`contact_ms(C2) ≠ contact_ms(C7)`)

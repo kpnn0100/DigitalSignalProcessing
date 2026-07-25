@@ -566,7 +566,7 @@ TEST(StringPartialBank_api_bypass_and_setters)
     bank.setFundamentalHz(220.0);
     bank.setInharmonicity(0.001);
     bank.setBaseDecaySeconds(1.5);
-    bank.setDampingExponent(0.8);
+    bank.setBrightnessDecaySeconds(0.1);
     bank.setStrikePosition(0.1);
     bank.setDamperEngageMs(5.0);
     exerciseEffect(bank, _ok);
@@ -617,6 +617,85 @@ TEST(StringPartialBank_reset_recomputes_decay_coefficients)
         maxAbsReused = std::max(maxAbsReused, std::fabs((double)damped.out((i == 0) ? 1.0 : 0.0, 0)));
 
     CHECK(maxAbsReused < maxAbsFresh * 2.0); // same order of magnitude, not a ~40x stale-gain spike
+}
+
+// M1 loss-law guards (README ## 3). Each of these is a branch in the c1/c3 solve
+// that a real caller can reach, and each must leave every partial's T60 finite
+// and positive — a NaN or negative decay here would make a resonator explode.
+TEST(StringPartialBank_loss_solve_guards)
+{
+    resetConfig(1);
+
+    // Guard 1: fundamental at/above the 5 kHz reference -> no two-point solve
+    // exists, falls back to uniform damping.
+    StringPartialBank above;
+    above.setFundamentalHz(6000.0);
+    above.setBaseDecaySeconds(0.5);
+    for (int i = 0; i < above.partialCount(); ++i)
+    {
+        CHECK(std::isfinite(above.partialDecaySeconds(i)));
+        CHECK(above.partialDecaySeconds(i) > 0.0);
+    }
+    CHECK_NEAR(above.partialDecaySeconds(0), 0.5, 1e-6); // uniform: every partial = T60_1
+
+    // Guard 2: c1 would go negative (treble) -> clamp c1=0, recompute c3 so the
+    // fundamental's T60 stays EXACT.
+    StringPartialBank treble;
+    treble.setFundamentalHz(4186.0); // C8
+    treble.setInharmonicity(0.00005);
+    treble.setBaseDecaySeconds(0.56);
+    CHECK_NEAR(treble.partialDecaySeconds(0), 0.56, 1e-6);
+    CHECK(treble.partialDecaySeconds(1) < treble.partialDecaySeconds(0)); // still tilted
+
+    // Guard 3: brightness T60 LONGER than the fundamental's -> c3 would go
+    // negative (highs ringing longer than lows). Clamped to 0 = uniform damping.
+    StringPartialBank inverted;
+    inverted.setFundamentalHz(220.0);
+    inverted.setBaseDecaySeconds(1.0);
+    inverted.setBrightnessDecaySeconds(5.0);
+    CHECK_NEAR(inverted.partialDecaySeconds(0), 1.0, 1e-6);
+    CHECK_NEAR(inverted.partialDecaySeconds(inverted.partialCount() - 1), 1.0, 1e-6);
+
+    // Guard 4: degenerate/zero decay times are clamped positive rather than
+    // dividing by zero.
+    StringPartialBank degenerate;
+    degenerate.setFundamentalHz(220.0);
+    degenerate.setBaseDecaySeconds(0.0);
+    degenerate.setBrightnessDecaySeconds(0.0);
+    for (int i = 0; i < degenerate.partialCount(); ++i)
+        CHECK(std::isfinite(degenerate.partialDecaySeconds(i)));
+
+    // Guard 5: near-lossless string -> alpha floors at kMinAlpha so T60 stays finite.
+    StringPartialBank lossless;
+    lossless.setFundamentalHz(220.0);
+    lossless.setBaseDecaySeconds(1e8);
+    lossless.setBrightnessDecaySeconds(1e8);
+    for (int i = 0; i < lossless.partialCount(); ++i)
+        CHECK(std::isfinite(lossless.partialDecaySeconds(i)));
+
+    // Out-of-range introspection returns 0 rather than reading past the array.
+    CHECK_NEAR(lossless.partialFrequencyHz(-1), 0.0, 1e-12);
+    CHECK_NEAR(lossless.partialFrequencyHz(9999), 0.0, 1e-12);
+    CHECK_NEAR(lossless.partialDecaySeconds(-1), 0.0, 1e-12);
+    CHECK_NEAR(lossless.partialDecaySeconds(9999), 0.0, 1e-12);
+}
+
+TEST(PianoVoice_base_decay_default_and_override)
+{
+    resetConfig(1);
+    // The pitch curve clamps at both extremes (README ## 3).
+    CHECK_NEAR(PianoVoice::defaultBaseDecaySeconds(0.0), 60.0, 1e-9);    // f0<1 -> max clamp
+    CHECK_NEAR(PianoVoice::defaultBaseDecaySeconds(1e6), 0.25, 1e-9);    // min clamp
+    CHECK(PianoVoice::defaultBaseDecaySeconds(261.6) > 6.0);
+
+    // setBaseDecaySeconds latches an override: a later setFrequency() must NOT
+    // silently reapply the pitch default over the caller's explicit value.
+    PianoVoice v;
+    v.setBaseDecaySeconds(1.25);
+    v.setFrequency(880.0);
+    v.setBrightnessDecaySeconds(0.05);
+    v.noteOn(0.5);
+    for (int i = 0; i < 64; ++i) { Sample s = v.out(0.0, 0); CHECK(std::isfinite(s)); }
 }
 
 TEST(HammerExciter_api_bypass_and_contact_lifecycle)
@@ -679,7 +758,7 @@ TEST(PianoVoice_unison_una_corda_and_pedal_api)
     v.setUnisonDetuneCents(0.8);
     v.setInharmonicity(0.0005); // explicit override branch (skips the register-default path)
     v.setBaseDecaySeconds(2.0);
-    v.setDampingExponent(0.9);
+    v.setBrightnessDecaySeconds(0.1);
     v.setStrikePosition(0.125);
     v.setDamperEngageMs(15.0);
     v.setHammerMass(1.0);

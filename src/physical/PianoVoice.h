@@ -36,9 +36,14 @@ namespace arstro
 
         void setUnisonCount(int count);
         void setUnisonDetuneCents(Sample cents);
-        void setInharmonicity(Sample b);       // overrides the register-dependent default
-        void setBaseDecaySeconds(Sample t60);
-        void setDampingExponent(Sample pLoss);
+        void setInharmonicity(Sample b);   // overrides the register-dependent default
+        void setBaseDecaySeconds(Sample t60); // overrides the pitch-derived default
+        void setBrightnessDecaySeconds(Sample t60AtRef);
+
+        /** The pitch -> fundamental-T60 curve of README ## 3, applied by
+         *  setFrequency() unless setBaseDecaySeconds() has overridden it. Public
+         *  and static so it is directly testable. */
+        static Sample defaultBaseDecaySeconds(Sample f0Hz);
         void setStrikePosition(Sample beta);
         void setDamperEngageMs(Sample ms);
 
@@ -65,7 +70,7 @@ namespace arstro
     private:
         Sample computeDefaultInharmonicity(Sample f0Hz) const;
         void applyUnisonFrequencies();
-        void updateRegisterGain();
+        void updateVoicingGain();
         void recomputeNoiseCoeffs();
         Sample nextWhiteNoise();
 
@@ -78,19 +83,24 @@ namespace arstro
         int mUnisonCount = 2;
         Sample mUnisonDetuneCents = 0.6;
         bool mInharmonicityOverridden = false;
+        bool mBaseDecayOverridden = false;
         bool mUnaCorda = false;
         bool mDamperHeld = false;
 
         Sample mHammerBaseStiffness = 1.0e10;
         Sample mLastSample = 0.0;
-        // Register (voicing) compensation — see README ## Units / calibration note.
-        // One HammerExciter model is reused for every register, but a bass note
-        // packs many more of its 12 partials into the resonators' effective range
-        // than a treble note does (whose high partials clamp near Nyquist), so raw
-        // output would swing >>1 in the bass and be nearly inaudible in the treble.
-        // Real pianos counter this with per-register hammer/string voicing; this is
-        // the same idea as one documented empirical gain curve.
-        Sample mRegisterGain = 1.0;
+
+        // Interim stand-in for M6 per-register hammer voicing (see
+        // docs/piano-physics-plan.md §M6). With impulse-normalised partials
+        // (README ## 1) a struck mode's amplitude falls as ~1/omega, so at equal
+        // hammer velocity the bass comes out ~78x louder than the top octave —
+        // that spread is REAL physics, not an artifact, and a real piano flattens
+        // it with lighter, harder treble hammers and higher treble tension. Until
+        // M6 models that properly, one documented curve stands in for it.
+        // NOTE: this is NOT the old registerGain, which compensated a bug (the
+        // 1/T60 gain artifact) and was deleted at M1 — this compensates physics
+        // that the instrument itself also compensates.
+        Sample mVoicingGain = 1.0;
 
         // Secondary mechanical noise (README ## 10): amplitude decays exponentially
         // each sample from a trigger event; coefficients derived from AudioConfig
@@ -105,9 +115,19 @@ namespace arstro
         // normalized contact-force units into the resonator bank's signal-level
         // units, so a full-velocity strike lands near +-1 like every other
         // SignalGenerator in this codebase, not derived from a physical unit system.
-        static constexpr Sample kHammerToStringGain = 0.010;
-        static constexpr Sample kRegisterGainExponent = 0.6; // README ## Units voicing curve
-        static constexpr Sample kRegisterGainRefHz = 220.0;
+        static constexpr Sample kHammerToStringGain = 5.8e-6;
+
+        // M6 stand-in curve (see mVoicingGain): measured peak ~ f^-0.9, so f^0.8
+        // flattens it to ~2.5x across the keyboard, keeping a mild bass emphasis.
+        static constexpr Sample kVoicingRefHz = 261.6;
+        static constexpr Sample kVoicingExponent = 0.8;
+
+        // README ## 3 pitch -> fundamental-T60 curve (empirical log-log fit).
+        static constexpr Sample kDecayRefHz = 261.6;  // C4
+        static constexpr Sample kDecayRefT60 = 6.9;   // s, fitted value at C4
+        static constexpr Sample kDecaySlope = 0.906;  // least-squares exponent
+        static constexpr Sample kDecayMinSeconds = 0.25;
+        static constexpr Sample kDecayMaxSeconds = 60.0;
         static constexpr Sample kUnaCordaStiffness = 0.85;
         static constexpr Sample kUnaCordaGain = 0.6;
         static constexpr Sample kVoiceLifetimeMs = 8000.0;

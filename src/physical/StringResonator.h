@@ -26,6 +26,14 @@ namespace arstro
         void setFrequencyHz(Sample hz);
         void setDecaySeconds(Sample t60);
 
+        /** Selects which excitation the input gain G is normalised for (README ## 1).
+         *  false (default): sustained drive — G = (1-r^2)sin(theta), unit-ish steady-state
+         *  peak. Right for the soundboard modes, which are driven continuously.
+         *  true: impulsive strike — G = sin(theta), unit-ish IMPULSE peak, independent of
+         *  decay time. Right for struck string partials: how hard a mode is set moving is
+         *  set by the hammer force and mode shape, not by how slowly it later decays. */
+        void setImpulseNormalized(bool impulse);
+
         // Zeroes the y[n-1]/y[n-2] history on every channel. Required before
         // reusing this resonator for a new note (voice-stealing): changing
         // frequency/decay coefficients while old history is still nonzero feeds
@@ -45,6 +53,7 @@ namespace arstro
         Sample mCosTheta = 1.0;
         Sample mR = 0.0;
         Sample mG = 0.0;
+        bool mImpulseNormalized = false;
         // Per-channel history: y[n-1], y[n-2].
         std::vector<Sample> mY1;
         std::vector<Sample> mY2;

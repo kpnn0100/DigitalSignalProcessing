@@ -16,6 +16,8 @@
  *                         partial-4's shift is easy to measure), 1 s render
  *    pianodamper <out> <0|1>  PianoVoice: strike, 100ms, noteOff. arg=0 damper
  *                         engages (not held); arg=1 sustain held (setDamperHeld)
+ *    pianospectral <out>  PianoVoice C4 held 1.5 s, all defaults — for the M1
+ *                         spectral-evolution measurement (high/low band collapse)
  *    pianoreuse <out>     PianoVoice: strike C4, release (damper engages+settles),
  *                         then setFrequency(A4)+noteOn() on the SAME voice —
  *                         the exact voice-steal sequence PianoEngine uses
@@ -298,6 +300,23 @@ static std::vector<double> renderPianoReuse()
     return out;
 }
 
+// M1 acceptance criterion 2 (plan §M1): spectral evolution. A struck C4 held with
+// the damper lifted for 1.5 s, all defaults — so the pitch-derived T60 and the
+// c1+c3*w^2 loss law are the ones under test. Python measures the high-band /
+// low-band energy ratio at the attack vs at t=1 s and asserts it collapses.
+static std::vector<double> renderPianoSpectral()
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(261.63); // C4 — defaults supply B and T60 from pitch
+    v.noteOn(0.9);          // never released: damper stays lifted
+    const int n = (int)(1.5 * kSampleRate);
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i) out[i] = v.out(0.0, 0);
+    return out;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3)
@@ -327,6 +346,7 @@ int main(int argc, char **argv)
     else if (scenario == "piano") samples = renderPiano(arg);
     else if (scenario == "pianodamper") samples = renderPianoDamper(arg);
     else if (scenario == "pianoreuse") samples = renderPianoReuse();
+    else if (scenario == "pianospectral") samples = renderPianoSpectral();
     else if (scenario == "pianosympathetic") samples = renderPianoSympathetic(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 

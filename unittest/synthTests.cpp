@@ -539,6 +539,91 @@ TEST(PianoVoice_reused_voice_after_damper_engaged_stays_bounded)
     CHECK(maxAbs < 1.5); // bounded like any normal struck note (README ## Units), not a spike
 }
 
+// ───────────────── M1: frequency-dependent loss (spectral evolution) ─────────────────
+// Plan docs/piano-physics-plan.md §M1; math in src/physical/README.md ## 3.
+
+// Acceptance criterion 1 (adapted): high partials must decay FAR faster than the
+// fundamental — that tilt is what makes a bright attack mellow to near-sine, and
+// its absence is why the pre-M1 model read as a plucked string. The plan states
+// this at partial 20; partial 20 does not exist until M2 raises kPartialCount
+// above 12, so M1 asserts it on the highest partial that does exist.
+TEST(StringPartialBank_high_partials_decay_far_faster)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    StringPartialBank bank;
+    bank.setFundamentalHz(261.6); // C4
+    bank.setInharmonicity(1.6831e-4);
+    bank.setBaseDecaySeconds(PianoVoice::defaultBaseDecaySeconds(261.6));
+
+    const int top = bank.partialCount() - 1;
+    const double t60First = bank.partialDecaySeconds(0);
+    const double t60Top = bank.partialDecaySeconds(top);
+    CHECK(t60First > 0.0 && t60Top > 0.0);
+    CHECK(t60First / t60Top >= 25.0); // measured 35.3 at 12 partials
+
+    // Monotonic: every partial decays at least as fast as the one below it.
+    bool monotonic = true;
+    for (int i = 1; i <= top; ++i)
+        monotonic = monotonic && bank.partialDecaySeconds(i) <= bank.partialDecaySeconds(i - 1);
+    CHECK(monotonic);
+}
+
+// The model itself, asserted exactly rather than statistically: alpha(f) must be
+// affine in omega^2, i.e. (alpha_n - alpha_1)/(w_n^2 - w_1^2) is the SAME c3 for
+// every partial. This pins README ## 3's loss law, not just its consequences.
+TEST(StringPartialBank_loss_law_is_quadratic_in_frequency)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    StringPartialBank bank;
+    bank.setFundamentalHz(261.6);
+    bank.setInharmonicity(1.6831e-4);
+    bank.setBaseDecaySeconds(6.9);
+    bank.setBrightnessDecaySeconds(0.08);
+
+    const double kT60 = 6.907755; // ln(1000)
+    const double a1 = kT60 / bank.partialDecaySeconds(0);
+    const double w1 = 2.0 * M_PI * bank.partialFrequencyHz(0);
+    double c3Ref = -1.0;
+    bool consistent = true;
+    for (int i = 1; i < bank.partialCount(); ++i)
+    {
+        const double an = kT60 / bank.partialDecaySeconds(i);
+        const double wn = 2.0 * M_PI * bank.partialFrequencyHz(i);
+        const double c3 = (an - a1) / (wn * wn - w1 * w1);
+        if (c3Ref < 0.0) c3Ref = c3;
+        if (std::fabs(c3 - c3Ref) > 1e-9 * std::fabs(c3Ref)) consistent = false;
+    }
+    CHECK(consistent);
+    CHECK(c3Ref > 0.0); // highs really do lose more, not less
+
+    // The fundamental's T60 is honoured exactly — it is a parameter, not a hint.
+    CHECK_NEAR(bank.partialDecaySeconds(0), 6.9, 1e-6);
+}
+
+// Acceptance criterion 3: decay spans the keyboard. A single 3 s constant for all
+// 88 notes (pre-M1) is wrong at both ends — bass sounds cut off, treble sounds
+// like a music box.
+TEST(PianoVoice_decay_scales_with_pitch)
+{
+    const double a0 = PianoVoice::defaultBaseDecaySeconds(27.5);   // A0
+    const double c7 = PianoVoice::defaultBaseDecaySeconds(2093.0); // C7
+    CHECK(a0 / c7 >= 10.0); // measured 50.7
+
+    // Strictly decreasing with pitch across the whole keyboard.
+    bool decreasing = true;
+    double prev = PianoVoice::defaultBaseDecaySeconds(27.5);
+    for (int midi = 22; midi <= 108; midi += 6)
+    {
+        const double f = 440.0 * std::pow(2.0, (midi - 69) / 12.0);
+        const double t = PianoVoice::defaultBaseDecaySeconds(f);
+        decreasing = decreasing && (t <= prev);
+        prev = t;
+    }
+    CHECK(decreasing);
+}
+
 int main()
 {
     return mini::runAll();

@@ -14,7 +14,16 @@ namespace arstro
     PianoBridge::PianoBridge() : SignalProcessor(propertyCount)
     {
         setSmoothEnable(false);
-        initProperty(couplingGainID, 0.15);
+        // Stability-bounded (M1). Impulse-normalised string partials (README ## 1)
+        // have a very high SUSTAINED resonance gain — G/(1-r^2) ~ 800 for a 6.9 s
+        // C4 partial, more for the bass — so the string->bridge->string loop needs a
+        // correspondingly small coupling gain. Measured worst case (8 sustained
+        // bass voices, longest T60 hence highest gain): diverges at 5e-3, stable at
+        // 1e-3; 5e-4 keeps a 10x margin while leaving sympathetic selectivity at
+        // ~35x (the ratio is coupling-independent, so lowering this costs nothing
+        // in REQ-piano-6 terms). Proper treatment — where the bridge admittance
+        // sets string damping AND radiation, making the loop self-limiting — is M5.
+        initProperty(couplingGainID, 5e-4);
         initProperty(radiationGainID, 0.5);
         for (int i = 0; i < kBodyModeCount; ++i)
         {

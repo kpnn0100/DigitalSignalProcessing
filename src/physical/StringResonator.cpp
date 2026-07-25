@@ -29,6 +29,12 @@ namespace arstro
     void StringResonator::setFrequencyHz(Sample hz) { setProperty(frequencyID, hz); }
     void StringResonator::setDecaySeconds(Sample t60) { setProperty(decayID, t60); }
 
+    void StringResonator::setImpulseNormalized(bool impulse)
+    {
+        mImpulseNormalized = impulse;
+        update(); // G depends on it
+    }
+
     void StringResonator::reset()
     {
         std::fill(mY1.begin(), mY1.end(), (Sample)0);
@@ -50,7 +56,9 @@ namespace arstro
         Sample theta = 2.0 * M_PI * f / sr;
         mCosTheta = std::cos(theta);
         mR = std::pow(10.0, -3.0 / (t60 * sr));
-        mG = (1.0 - mR * mR) * std::sin(theta);
+        // See setImpulseNormalized(): struck partials must not get quieter merely
+        // because they ring longer, which (1-r^2) would impose.
+        mG = mImpulseNormalized ? std::sin(theta) : (1.0 - mR * mR) * std::sin(theta);
 
         if (std::isnan(mR) || std::isinf(mR)) mR = 0.0;
         if (std::isnan(mG) || std::isinf(mG)) mG = 0.0;

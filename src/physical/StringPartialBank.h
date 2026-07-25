@@ -20,11 +20,11 @@ namespace arstro
 
         enum PropertyIndex
         {
-            fundamentalID,      // Hz, f0
-            inharmonicityID,    // B
-            baseDecayID,        // seconds, T60_1 (fundamental's decay)
-            dampingExponentID,  // p_loss
-            strikePositionID,   // 0..0.5, beta
+            fundamentalID,     // Hz, f0
+            inharmonicityID,   // B
+            baseDecayID,       // seconds, T60 of the fundamental
+            brightnessDecayID, // seconds, T60 at kLossRefHz -> solves c3/c1 (README ## 3)
+            strikePositionID,  // 0..0.5, beta
             propertyCount
         };
         StringPartialBank();
@@ -32,8 +32,15 @@ namespace arstro
         void setFundamentalHz(Sample hz);
         void setInharmonicity(Sample b);
         void setBaseDecaySeconds(Sample t60);
-        void setDampingExponent(Sample pLoss);
+        void setBrightnessDecaySeconds(Sample t60AtRef);
         void setStrikePosition(Sample beta);
+
+        // Read-only introspection of the computed partial series, so tests can
+        // assert README ## 2 / ## 3's formulas exactly instead of inferring them
+        // statistically from rendered audio. Out-of-range indices return 0.
+        int partialCount() const { return kPartialCount; }
+        Sample partialFrequencyHz(int index) const;
+        Sample partialDecaySeconds(int index) const; // natural T60, before the damper
 
         // 0 = damper lifted, 1 = fully engaged; ramps linearly over setDamperEngageMs().
         void setDamperEngagement(Sample target01);
@@ -73,5 +80,11 @@ namespace arstro
 
         static constexpr Sample kDamperLossGain = 40.0;
         static constexpr Sample kExciteNorm = 2.0 / (Sample)kPartialCount;
+
+        // README ## 3: T60 = ln(1000)/alpha, and the high-frequency anchor the
+        // brightnessDecay parameter is defined at.
+        static constexpr Sample kT60Constant = 6.907755; // ln(1000)
+        static constexpr Sample kLossRefHz = 5000.0;
+        static constexpr Sample kMinAlpha = 1e-6; // keeps T60 finite if both anchors are ~0 loss
     };
 }

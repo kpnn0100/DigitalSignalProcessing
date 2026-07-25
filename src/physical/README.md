@@ -56,23 +56,29 @@ seconds unless stated; `f_s` = `AudioConfig::sampleRate()`, `dt = 1/f_s`.
 derived — documented per rule 2 rather than left as unexplained magic numbers):
 
 ```
-force_into_strings = HammerExciter.out() · kHammerToStringGain · registerGain(f0)
-kHammerToStringGain = 0.010
-registerGain(f0) = clamp( (f0 / 220 Hz)^0.6,  0.05,  3.0 )
+force_into_strings = HammerExciter.out() · kHammerToStringGain · voicingGain(f0)
+kHammerToStringGain = 5.8e-6
+voicingGain(f0) = clamp( (f0 / 261.6 Hz)^0.8,  0.1,  10.0 )
 ```
 
-`kHammerToStringGain` brings the hammer ODE's force scale (which can run into the thousands
-at high stiffness/velocity, §6) down to the resonator bank's signal scale. `registerGain`
-exists because one `HammerExciter` model is reused unmodified for every register, but a bass
-note packs many more of its 12 partials (§2) into the resonators' effective range than a
-treble note does (whose high partials clamp near Nyquist and contribute almost nothing) —
-measured, an uncompensated bass note at max velocity peaks around 4× full scale while a
-top-octave note peaks around 0.03. `registerGain` (measured/tuned against
-`PianoVoice::setFrequency`, exponent 0.6, reference 220 Hz) is the same idea as a real
-piano's per-register hammer/string voicing, done as one documented curve instead of a
-per-note table — it does not fully flatten loudness across the keyboard (real pianos aren't
-flat either), it brings the *worst case* under 1.0 (measured peak ≈0.87 at the lowest note,
-full velocity) while keeping a natural bass-louder-than-treble trend.
+`kHammerToStringGain` brings the hammer ODE's force scale (which runs into the thousands at
+high stiffness/velocity, §6) down to the resonator bank's signal scale.
+
+`voicingGain` compensates a **real** physical trend rather than an implementation artifact.
+With impulse-normalised partials (§1) a struck mode's amplitude scales as roughly `1/ω`, so at
+equal hammer velocity the bass is *genuinely* far louder than the treble — measured, a ~78×
+peak spread from A0 to C8, closely tracking the expected `1/ω` (128× over that range). Real
+pianos flatten the same trend with **per-register voicing**: lighter, harder hammers and
+higher tension toward the treble. Until `M6` models that properly
+(`docs/piano-physics-plan.md` §M6), one documented curve stands in for it — measured peak
+`f^-0.9`, so `f^0.8` flattens the keyboard to a ~2.5× spread (0.34 → 0.86 at full velocity,
+nothing clipping) while keeping a natural mild bass emphasis.
+
+> **This is not the `registerGain` curve M1 deleted.** That one compensated a *bug* — §1's
+> sustained-drive gain normalisation made loudness track decay time, which was invisible while
+> every note decayed in 3 s and became a 95× imbalance (and clipping at 880 Hz) the moment M1
+> gave each note its own T60. `voicingGain` compensates physics the instrument itself
+> compensates, and is *replaced* by M6 rather than deleted.
 
 ### 1. String / body mode — `StringResonator`
 
@@ -96,14 +102,29 @@ y[n] = 2 r cosθ · y[n-1]  −  r² · y[n-2]  +  G · x[n]
 
 θ = 2π f_n / f_s                              (pole angle -> resonant frequency)
 r = 10^(−3 / (T60_n · f_s))                   (pole radius -> decay time)
-G = (1 − r²) · sinθ                           (unity-ish peak-gain normalization)
+
+G = (1 − r²) · sinθ    (sustained-drive normalisation — the DEFAULT)
+G = sinθ               (impulse normalisation — setImpulseNormalized(true))
 ```
 
 `r`'s formula: −60 dB decay in `T60_n` seconds means `r^N = 10^(−60/20) = 10^-3` at
-`N = T60_n · f_s` samples → `r = 10^(−3 / (T60_n f_s))`. `G`'s formula is the standard
-normalization that keeps a driven resonator's peak magnitude roughly independent of `r`
-(the two-pole resonator's frequency response peaks at ≈`G / (1−r)` without it — `(1−r²)sinθ`
-cancels that to unit order).
+`N = T60_n · f_s` samples → `r = 10^(−3 / (T60_n f_s))`.
+
+**The two `G` normalisations, and why the choice matters.** This resonator's impulse response
+is `G·rⁿ·sin((n+1)θ)/sinθ`, peaking at ≈`G/sinθ`; its *sustained* response at resonance peaks
+at ≈`G/(1−r²)`. So a single gain cannot normalise both:
+
+- `G = (1−r²)sinθ` gives unit-ish **sustained** peak — correct for `PianoBridge`'s soundboard
+  modes (§8), which are driven continuously by the string bus. This is the default.
+- `G = sinθ` gives unit-ish **impulse** peak, *independent of decay time* — correct for struck
+  string partials (§3), because how hard a mode is set moving is determined by the hammer force
+  and mode shape, **not** by how slowly it later decays.
+
+Using the sustained form for struck strings makes amplitude scale as `1/T60`. That was
+invisible while every note decayed in 3 s, and became a 95× loudness imbalance across the
+keyboard (bass inaudible, 880 Hz clipping at 2.79) the moment M1 gave each note its own
+pitch-derived T60 — the physical error only became *visible* once the surrounding physics got
+more correct. `StringPartialBank` therefore sets `setImpulseNormalized(true)` on every partial.
 
 Per-channel state: `y[n-1]`, `y[n-2]` (two `Sample` history values), sized/reset in
 `onChannelCountChanged()` (same convention as `Oscillator::mPhase`). `θ`/`r`/`G` are shared
@@ -138,12 +159,82 @@ B_default(f0) = clamp( 0.00056 · (100 / f0)^1.25,  Bmin = 0.00005,  Bmax = 0.02
 
 ### 3. Partial damping — frequency-dependent loss + damper coupling
 
-Higher partials lose energy faster (air friction + internal losses scale with frequency) —
-documented **empirical** power-law rolloff from a base (fundamental) decay time:
+**Piano tone is defined by its spectral *evolution*:** a bright, complex attack that mellows
+to near-sinusoidal within about a second. That requires high partials to die *far* faster
+than the fundamental — hundreds of times, not the ~9× a `T60_1/n^0.9` power law gave before
+M1 (see `docs/piano-physics-plan.md` §M1; a near-static spectrum is what made the model read
+as a bowed/plucked string).
+
+**Continuous model.** A stiff, lossy string's amplitude decays as `a(t) = a₀·e^(−αt)`. The
+loss rate combines a roughly frequency-independent term (air/viscous drag, bridge losses) and
+a viscoelastic/internal term that scales with the *square* of frequency — the standard
+piano-string damping parameterisation (Bensa et al. 2003; Bank):
 
 ```
-T60_n = T60_1 / n^p_loss              p_loss default 0.9  (StringPartialBank::setDampingExponent)
+α(f) = c₁ + c₃·(2πf)²                [nepers/s]
+T60(f) = ln(1000)/α(f) = 6.907755/α(f)      [s]
+α_n = c₁ + c₃·(2πf_n)²               per partial, f_n from §2
 ```
+
+**Solving c₁/c₃ from two decay times.** Raw `c₁`/`c₃` are not values anyone can reason about,
+so the parameters are two *decay times* and the coefficients are solved from them — the
+fundamental's T60 (`baseDecayID`) and a high-frequency reference T60 at `f_ref = 5 kHz`
+(`brightnessDecayID`, default 0.08 s — real ~5 kHz partials die in roughly 50–150 ms):
+
+```
+ω₁   = 2π·f₁      (f₁ = the actual first partial, f0·√(1+B) — inharmonicity included)
+ω_ref = 2π·f_ref
+α_lo = 6.907755 / T60_fundamental
+α_hi = 6.907755 / T60_ref
+
+c₃ = (α_hi − α_lo) / (ω_ref² − ω₁²)         clamped ≥ 0
+c₁ = α_lo − c₃·ω₁²
+```
+
+**Two guards, both physical, both load-bearing:**
+
+- `ω_ref² − ω₁² ≤ 0` (the note's fundamental is at or above the 5 kHz reference — outside a
+  real piano's range, but the setter accepts any frequency): fall back to `c₃ = 0, c₁ = α_lo`,
+  i.e. uniform damping. No solve is possible with both anchors at one frequency.
+- **`c₁ < 0` — the treble case, and the reason a naive two-point solve breaks.** For a top-octave
+  note the fundamental *already* decays fast (C8 ≈ 0.56 s), so demanding an additional 7×
+  speed-up by 5 kHz forces the frequency-independent term negative — unphysical (it would mean
+  low frequencies gaining energy). Physically, such a string's losses are *entirely* dominated
+  by the ω² term at every frequency, so clamp `c₁ = 0` and **recompute** `c₃ = α_lo/ω₁²`. This
+  keeps `T60_fundamental` exact and the ω² law intact; the only thing given up is hitting the
+  5 kHz target exactly in the extreme treble, which is the right trade.
+
+**Per-note fundamental decay.** Real piano decay varies by *two orders of magnitude* across
+the keyboard, so a single constant (3.0 s for all 88 notes, pre-M1) is wrong everywhere.
+`PianoVoice::defaultBaseDecaySeconds()` supplies a pitch-derived default — an **empirical
+least-squares fit in log-log** to measured-piano anchor values, not derived from string
+dimensions (this repo has no per-note string gauge/tension table):
+
+```
+T60_1(f0) = T60_ref_note · (f_ref_note / f0)^k        clamped to [0.25 s, 60 s]
+T60_ref_note = 6.9 s   f_ref_note = 261.6 Hz (C4)   k = 0.906
+```
+
+| Note | f0 | anchor | fitted | residual |
+|---|---|---|---|---|
+| A0 | 27.5 | ~40 s | 53.1 s | +33 % |
+| C2 | 65.4 | ~25 s | 24.2 s | −3 % |
+| C4 | 261.6 | ~10 s | 6.9 s | −31 % |
+| C6 | 1046 | ~2.5 s | 2.0 s | −21 % |
+| C8 | 4186 | ~0.4 s | 0.56 s | +40 % |
+
+The anchors are themselves approximate and do not lie on a true power law (they curve in
+log-log), so residuals reach ±40 %. Accepted deliberately: decay-time perception is roughly
+logarithmic, the *trend* across two orders of magnitude is what matters, and one documented
+formula beats an 88-entry table nobody can verify. A per-note table is the refinement path
+if it ever matters. `setBaseDecaySeconds()` overrides the default permanently for that voice
+(same override latch as `setInharmonicity()`, §2).
+
+**Worked example (C4, the acceptance case).** `f0 = 261.6`, `B = 1.68e-4`, `T60_1 = 6.9 s`,
+`T60_5k = 0.08 s` → `α_lo = 1.001`, `α_hi = 86.35`, `c₃ = 8.67e-8`, `c₁ = 0.767`. Partial 12
+(`f₁₂ = 3177 Hz`) then gets `α = 35.3 → T60 = 0.196 s`: it is gone in a fifth of a second
+while the fundamental rings for seven seconds. *That* ratio is the spectral evolution being
+bought.
 
 Damper engagement (§7) scales this down further, per partial, uniformly:
 
@@ -152,8 +243,8 @@ T60_n,eff = T60_n / (1 + d · L_damper)     d ∈ [0,1] damper ramp value, L_dam
 ```
 
 `d=0` (lifted): `T60_n,eff = T60_n` (natural string decay). `d=1` (fully engaged): decay time
-collapses by `1+L_damper` ≈ 41×, i.e. a `T60_1 = 3 s` fundamental decays in ≈ 73 ms once the
-damper is fully down — short, but not a click (`REQ-piano-7`).
+collapses by `1+L_damper` ≈ 41×, i.e. a `T60_1 = 6.9 s` C4 fundamental decays in ≈ 170 ms once
+the damper is fully down — short, but not a click (`REQ-piano-7`).
 
 ### 4. Mode-shape excitation gain — strike position
 
@@ -294,7 +385,16 @@ totalDrive_voice[n] = force_into_partial_n[n]  +  response[n-1] · couplingGain
 
 Using `n-1` (one sample of delay) rather than solving the mutual system simultaneously is
 standard practice for stable causal coupled digital resonant networks — it introduces a
-negligible (1/f_s ≈ 20 µs) delay in the coupling path. Because every voice's own
+negligible (1/f_s ≈ 20 µs) delay in the coupling path.
+
+**`couplingGain` is stability-bounded, not free.** Impulse-normalised partials (§1) have a
+large *sustained* resonance gain (`G/(1−r²)` ≈ 800 for a 6.9 s C4 partial, higher in the bass
+where T60 reaches 53 s), so this loop's gain is dominated by string Q. Measured worst case —
+8 sustained bass voices on one bridge — diverges at `5e-3` and is stable at `1e-3`; the
+default `5e-4` keeps a 10× margin. Lowering it costs nothing in `REQ-piano-6` terms because
+the *selectivity ratio* is coupling-independent (both same-pitch and off-pitch response scale
+linearly with it) — measured ≈ 35× either way. The principled fix, where bridge admittance
+sets string damping *and* radiation so the loop is inherently self-limiting, is `M5`. Because every voice's own
 `StringResonator`s are sharply frequency-selective (§1), feeding the *same* broadband
 `response` signal into all of them only measurably excites the strings whose partials are
 near a frequency actually present in `response` — i.e. sympathetic resonance emerges from
@@ -303,11 +403,8 @@ table (`REQ-piano-6`'s explicit requirement).
 
 **Damped strings gate sympathetic feedback too:** `PianoVoice` scales `response[n-1]` by
 `(1 − d)` (§7's damper ramp value) before adding it as drive. A real damper mutes the
-string's response to *any* driving, not only its own free decay — and since §1's `G` grows
-as a partial's decay shrinks, an engaged (heavily damped) string is numerically *more*
-sensitive to broadband input per sample than a ringing one, even though its own free decay
-is much faster. Without this gate, damper engagement turned sympathetic coupling into a
-disproportionately strong feedback path for exactly the strings that should be going silent.
+string's response to *any* driving, not only its own free decay; without the gate a damped
+string keeps accepting bridge energy at full strength while supposedly being silenced.
 
 `PianoBridge` runs mono (`REQ-piano-13`): `PianoEngine` adds `radiated[n]` to every output
 channel identically. Stereo width, if ever added, belongs here (the way `Reverb` decorrelates
@@ -364,8 +461,8 @@ per voice instance so unit tests can assert boundedness/reproducibility).
 | | `setDecaySeconds` | s (T60) | `T60_n` |
 | `StringPartialBank` | `setFundamentalHz` | Hz | `f0` |
 | | `setInharmonicity` | — | `B` |
-| | `setBaseDecaySeconds` | s | `T60_1` |
-| | `setDampingExponent` | — | `p_loss` |
+| | `setBaseDecaySeconds` | s (T60) | `T60_fundamental` (latches an override, §3) |
+| | `setBrightnessDecaySeconds` | s (T60 @ 5 kHz) | `T60_ref` → solves `c₃`/`c₁` (§3) |
 | | `setStrikePosition` | 0..0.5 | `β` |
 | | `setDamperEngagement` | 0..1 target | `d` (ramped) |
 | | `setDamperEngageMs` | ms | ramp time |
@@ -376,11 +473,21 @@ per voice instance so unit tests can assert boundedness/reproducibility).
 | | `strike(velocity)` | 0..1 | → `v0` |
 | `PianoBridge` | `setCouplingGain` | linear | sympathetic feedback gain |
 | | `setRadiationGain` | linear | output gain |
-| `PianoVoice` | `setFrequency` (override) | Hz | `f0` (→ all unison banks) |
+| `PianoVoice` | `setFrequency` (override) | Hz | `f0` (→ all unison banks, and the §3 default `T60_1` unless overridden) |
 | | `setUnisonCount` | 1..3 | `U` |
 | | `setUnisonDetuneCents` | cents | `c` |
+| | `setBaseDecaySeconds` | s (T60) | `T60_fundamental` (latches an override, §3) |
+| | `setBrightnessDecaySeconds` | s (T60 @ 5 kHz) | `T60_ref` (§3) |
 | | `setUnaCorda` | bool | soft-pedal gate |
 | | `setDamperHeld` | bool | sustain/sostenuto gate |
+| | `defaultBaseDecaySeconds(f0)` *(static)* | s (T60) | the §3 pitch→decay curve, exposed for tests |
 
 Code cross-reference: every formula above is implemented in the `update()`/`process()` of the
-class named in its section header — see the class map table for the file.
+class named in its section header — see the class map table for the file. §3's per-partial
+`α_n`/`T60_n` solve is in `StringPartialBank::update()`; §3's pitch→`T60_1` curve is
+`PianoVoice::defaultBaseDecaySeconds()`, applied from `PianoVoice::setFrequency()`.
+
+**Read-only introspection** (`StringPartialBank::partialCount()`, `partialFrequencyHz(i)`,
+`partialDecaySeconds(i)`) exposes the computed per-partial `f_n` and natural `T60_n` so the
+tests can assert §2/§3's formulas *exactly* rather than inferring them statistically from
+rendered audio.

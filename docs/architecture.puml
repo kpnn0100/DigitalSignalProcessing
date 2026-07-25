@@ -126,7 +126,7 @@ package physical {
   }
   class StringPartialBank {
     + setFundamentalHz / setInharmonicity(B)
-    + setBaseDecaySeconds / setDampingExponent(p)
+    + setBaseDecaySeconds / setBrightnessDecaySeconds(t60@5k)
     + setStrikePosition(beta) / setDamperEngagement(d) / setDamperEngageMs
     - mPartials : StringResonator[N]   ' f_n = n*f0*sqrt(1+B*n^2)
   }

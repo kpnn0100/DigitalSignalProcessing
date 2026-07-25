@@ -20,24 +20,16 @@ namespace arstro
 
         mHammer.setStiffness(mHammerBaseStiffness);
         applyUnisonFrequencies();
-        updateRegisterGain();
+        updateVoicingGain();
     }
 
     void PianoVoice::setFrequency(Sample hz)
     {
         SignalGenerator::setFrequency(hz);
         applyUnisonFrequencies();
-        updateRegisterGain();
+        updateVoicingGain();
     }
 
-    void PianoVoice::updateRegisterGain()
-    {
-        Sample ratio = frequency() / kRegisterGainRefHz;
-        if (ratio < 1e-6) ratio = 1e-6;
-        mRegisterGain = std::pow(ratio, kRegisterGainExponent);
-        if (mRegisterGain < 0.05) mRegisterGain = 0.05;
-        if (mRegisterGain > 3.0) mRegisterGain = 3.0;
-    }
 
     Sample PianoVoice::computeDefaultInharmonicity(Sample f0Hz) const
     {
@@ -51,6 +43,9 @@ namespace arstro
     void PianoVoice::applyUnisonFrequencies()
     {
         Sample defaultB = mInharmonicityOverridden ? 0.0 : computeDefaultInharmonicity(frequency());
+        // Piano decay spans two orders of magnitude across the keyboard (README ## 3),
+        // so the fundamental's T60 is derived from pitch unless explicitly overridden.
+        Sample defaultT60 = mBaseDecayOverridden ? 0.0 : defaultBaseDecaySeconds(frequency());
         for (int k = 0; k < mUnisonCount; ++k)
         {
             Sample offsetNorm = (mUnisonCount <= 1) ? 0.0 : (2.0 * (Sample)k / (Sample)(mUnisonCount - 1) - 1.0);
@@ -59,7 +54,18 @@ namespace arstro
             mStrings[k].setFundamentalHz(f0k);
             if (!mInharmonicityOverridden)
                 mStrings[k].setInharmonicity(defaultB);
+            if (!mBaseDecayOverridden)
+                mStrings[k].setBaseDecaySeconds(defaultT60);
         }
+    }
+
+    void PianoVoice::updateVoicingGain()
+    {
+        Sample ratio = frequency() / kVoicingRefHz;
+        if (ratio < 1e-6) ratio = 1e-6;
+        mVoicingGain = std::pow(ratio, kVoicingExponent);
+        if (mVoicingGain < 0.1) mVoicingGain = 0.1;
+        if (mVoicingGain > 10.0) mVoicingGain = 10.0;
     }
 
     void PianoVoice::setUnisonCount(int count)
@@ -83,16 +89,26 @@ namespace arstro
             mStrings[k].setInharmonicity(b);
     }
 
+    Sample PianoVoice::defaultBaseDecaySeconds(Sample f0Hz)
+    {
+        if (f0Hz < 1.0) f0Hz = 1.0;
+        Sample t60 = kDecayRefT60 * std::pow(kDecayRefHz / f0Hz, kDecaySlope);
+        if (t60 < kDecayMinSeconds) t60 = kDecayMinSeconds;
+        if (t60 > kDecayMaxSeconds) t60 = kDecayMaxSeconds;
+        return t60;
+    }
+
     void PianoVoice::setBaseDecaySeconds(Sample t60)
     {
+        mBaseDecayOverridden = true; // stop setFrequency() reapplying the pitch default
         for (int k = 0; k < kMaxUnison; ++k)
             mStrings[k].setBaseDecaySeconds(t60);
     }
 
-    void PianoVoice::setDampingExponent(Sample pLoss)
+    void PianoVoice::setBrightnessDecaySeconds(Sample t60AtRef)
     {
         for (int k = 0; k < kMaxUnison; ++k)
-            mStrings[k].setDampingExponent(pLoss);
+            mStrings[k].setBrightnessDecaySeconds(t60AtRef);
     }
 
     void PianoVoice::setStrikePosition(Sample beta)
@@ -171,20 +187,15 @@ namespace arstro
         if (channel != 0)
             return mLastSample;
 
-        Sample force = mHammer.out(0.0, 0) * kHammerToStringGain * mRegisterGain;
+        Sample force = mHammer.out(0.0, 0) * kHammerToStringGain * mVoicingGain;
         if (mUnaCorda)
             force *= kUnaCordaGain;
 
         // Gate sympathetic feedback by how engaged the damper is (README ## 8):
-        // a real damper mutes the string's response to ANY driving, not just its
-        // own free decay, and StringResonator's input gain G=(1-r^2)sin(theta)
-        // (README ## 1) necessarily grows as decay shrinks (a lower-Q resonator
-        // needs more input coupling for the same peak response) — so an engaged,
-        // heavily-damped string is numerically MORE sensitive to broadband input
-        // per sample than a ringing one, even though its own free decay is much
-        // faster. Feeding it undamped bridge feedback anyway turns damper
-        // engagement into an unbounded-gain feedback path instead of the
-        // physically-correct "damped strings stop participating" behavior.
+        // a real damper mutes the string's response to ANY driving, not only its
+        // own free decay. Without this gate a damped string keeps accepting bridge
+        // energy at full strength while supposedly being silenced, which is both
+        // unphysical and a needless feedback path.
         Sample damping = mStrings[0].damperValue();
         Sample feedback = mBridge ? mBridge->feedback() * (1.0 - damping) : 0.0;
         Sample totalDrive = force + feedback;

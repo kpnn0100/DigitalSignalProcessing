@@ -10,15 +10,29 @@ namespace arstro
         initProperty(fundamentalID, 110.0);
         initProperty(inharmonicityID, 0.0002);
         initProperty(baseDecayID, 3.0);
-        initProperty(dampingExponentID, 0.9);
+        initProperty(brightnessDecayID, 0.08); // T60 at 5 kHz — real highs die in ~50-150 ms
         initProperty(strikePositionID, 0.125);
+        // Struck, not driven: a partial's initial amplitude comes from the hammer
+        // force and mode shape, not from its decay time (README ## 1).
+        for (auto &p : mPartials)
+            p.setImpulseNormalized(true);
         update();
     }
 
     void StringPartialBank::setFundamentalHz(Sample hz) { setProperty(fundamentalID, hz); }
     void StringPartialBank::setInharmonicity(Sample b) { setProperty(inharmonicityID, b); }
     void StringPartialBank::setBaseDecaySeconds(Sample t60) { setProperty(baseDecayID, t60); }
-    void StringPartialBank::setDampingExponent(Sample pLoss) { setProperty(dampingExponentID, pLoss); }
+    void StringPartialBank::setBrightnessDecaySeconds(Sample t60AtRef) { setProperty(brightnessDecayID, t60AtRef); }
+
+    Sample StringPartialBank::partialFrequencyHz(int index) const
+    {
+        return (index >= 0 && index < kPartialCount) ? mFreqN[index] : (Sample)0;
+    }
+
+    Sample StringPartialBank::partialDecaySeconds(int index) const
+    {
+        return (index >= 0 && index < kPartialCount) ? mBaseT60N[index] : (Sample)0;
+    }
     void StringPartialBank::setStrikePosition(Sample beta) { setProperty(strikePositionID, beta); }
 
     void StringPartialBank::setDamperEngageMs(Sample ms)
@@ -63,14 +77,55 @@ namespace arstro
         Sample f0 = getProperty(fundamentalID);
         Sample b = getProperty(inharmonicityID);
         Sample t60_1 = getProperty(baseDecayID);
-        Sample pLoss = getProperty(dampingExponentID);
+        Sample t60Ref = getProperty(brightnessDecayID);
         Sample beta = getProperty(strikePositionID);
+
+        // Solve the loss law alpha(f) = c1 + c3*(2*pi*f)^2 from the two decay-time
+        // anchors (README ## 3). Positive-time guards first so the reciprocals below
+        // stay finite for any caller input.
+        if (t60_1 < 1e-3) t60_1 = 1e-3;
+        if (t60Ref < 1e-4) t60Ref = 1e-4;
+
+        const Sample f1 = f0 * std::sqrt(1.0 + b); // actual first partial, not f0
+        const Sample w1 = 2.0 * M_PI * f1;
+        const Sample w1sq = w1 * w1;
+        const Sample wRef = 2.0 * M_PI * kLossRefHz;
+        const Sample wRefSq = wRef * wRef;
+        const Sample alphaLo = kT60Constant / t60_1;
+        const Sample alphaHi = kT60Constant / t60Ref;
+
+        Sample c1, c3;
+        const Sample denom = wRefSq - w1sq;
+        if (denom <= 0.0)
+        {
+            // Fundamental at/above the reference — no two-point solve exists.
+            c3 = 0.0;
+            c1 = alphaLo;
+        }
+        else
+        {
+            c3 = (alphaHi - alphaLo) / denom;
+            if (c3 < 0.0)
+                c3 = 0.0; // highs asked to ring longer than the fundamental: unphysical
+            c1 = alphaLo - c3 * w1sq;
+            if (c1 < 0.0)
+            {
+                // Treble case: losses are entirely omega^2-dominated. Keep T60 of the
+                // fundamental exact and let the 5 kHz anchor go (README ## 3 guard 2).
+                c1 = 0.0;
+                c3 = alphaLo / w1sq;
+            }
+        }
 
         for (int i = 0; i < kPartialCount; ++i)
         {
             int n = i + 1;
             Sample fn = (Sample)n * f0 * std::sqrt(1.0 + b * (Sample)n * (Sample)n);
-            Sample t60n = t60_1 / std::pow((Sample)n, pLoss);
+            Sample wn = 2.0 * M_PI * fn;
+            Sample alphaN = c1 + c3 * wn * wn;
+            if (alphaN < kMinAlpha)
+                alphaN = kMinAlpha;
+            Sample t60n = kT60Constant / alphaN;
             Sample gn = std::fabs(std::sin((Sample)n * M_PI * beta));
             mFreqN[i] = fn;
             mBaseT60N[i] = t60n;
