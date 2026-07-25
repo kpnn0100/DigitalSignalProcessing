@@ -56,13 +56,17 @@ seconds unless stated; `f_s` = `AudioConfig::sampleRate()`, `dt = 1/f_s`.
 derived — documented per rule 2 rather than left as unexplained magic numbers):
 
 ```
-force_into_strings = HammerExciter.out() · kHammerToStringGain · voicingGain(f0)
-kHammerToStringGain = 5.8e-6
-voicingGain(f0) = clamp( (f0 / 261.6 Hz)^0.8,  0.1,  10.0 )
+force_into_strings = HammerExciter.out() · voicingGain(f0) / U        (U = unison count)
+audio_out          = Σ partial velocities · kVelocityToSignal
+voicingGain(f0)    = clamp( (f0 / 261.6 Hz)^0.8,  0.1,  10.0 )
+kVelocityToSignal  = 0.055
 ```
 
-`kHammerToStringGain` brings the hammer ODE's force scale (which runs into the thousands at
-high stiffness/velocity, §6) down to the resonator bank's signal scale.
+**`kHammerToStringGain` is gone (M3).** The force→displacement path is now fixed by the modal
+mass (§6), so no arbitrary scalar bridges "hammer force units" and "signal units" any more.
+What remains is `kVelocityToSignal`: the bank outputs modal *velocity* in the normalised unit
+system, and turning that into a line-level signal is a radiation/transduction constant, not a
+fudge — `M5`'s bridge is where it properly belongs.
 
 `voicingGain` compensates a **real** physical trend rather than an implementation artifact.
 With impulse-normalised partials (§1) a struck mode's amplitude scales as roughly `1/ω`, so at
@@ -333,46 +337,92 @@ emergent, not a second decay-rate constant bolted on; it is not — §3's `T60_n
 per-partial decay parameter, the two-stage shape comes from unison superposition +
 bridge coupling.
 
-### 6. Hammer–string contact — nonlinear, hysteretic (`HammerExciter`)
+### 6. Hammer–string contact — nonlinear, hysteretic, and COUPLED (`HammerExciter`)
 
-A single-degree-of-freedom nonlinear-spring hammer model (the standard simplified
-alternative to solving the full coupled hammer+string PDE in real time): the hammer felt is a
-compression-only nonlinear spring, asymmetric between loading (compressing) and unloading
-(rebounding) so contact dissipates energy — this asymmetry *is* the hysteresis, a documented
-simplification of felt viscoelasticity (not the full Stulov model).
+A single-degree-of-freedom nonlinear-spring hammer: the felt is a compression-only nonlinear
+spring, asymmetric between loading and unloading so contact dissipates energy — that asymmetry
+*is* the hysteresis (a documented simplification of felt viscoelasticity, not the full Stulov
+model).
 
-State: hammer compression `x_h` (≥ 0), velocity `v_h`. At `strike(velocity)` (called from
-`PianoVoice::noteOn`): `x_h ← 0`, `v_h ← v0`, contact begins.
+**The string yields (M3).** Before M3 the felt compressed against an infinitely rigid wall —
+the hammer never saw the string at all, which made the excitation open-loop and *is* the
+textbook plucked-string model. Compression is a **relative** displacement:
 
 ```
-v0 = vMaxImpact · velocity              velocity ∈ [0,1] (noteOn arg), vMaxImpact empirical (default 4.0)
+c[n] = x_h[n] − y_string(β, n−1)          <- the coupling term
+F[n] = K·max(0, c[n])^p          if v_h[n] ≥ 0   (loading)
+F[n] = K·(1−ε)·max(0, c[n])^p    if v_h[n] < 0   (unloading — softer, dissipative)
 
-c[n]  = max(0, x_h[n])                                    (felt compression this sample)
-F[n]  = K · c[n]^p                       if v_h[n] ≥ 0     (loading)
-F[n]  = K · (1 − ε) · c[n]^p             if v_h[n] < 0      (unloading — softer, dissipative)
-
-v_h[n+1] = v_h[n] − (F[n] / m_h) · dt     (semi-implicit/symplectic Euler — stable for a stiff
-x_h[n+1] = x_h[n] + v_h[n+1] · dt          nonlinear spring at audio sample rates)
+v_h[n+1] = v_h[n] − (F[n]/m_h)·dt     (semi-implicit/symplectic Euler)
+x_h[n+1] = x_h[n] + v_h[n+1]·dt
+string driven by +F[n]                (Newton's third law)
+contact ends when c ≤ 0 and v_h < 0    (the hammer rebounds off the string)
 ```
 
-Contact ends when `x_h` returns to `0` while `v_h < 0` (hammer rebounds off the string), or a
-safety bound (`kMaxContactMs`, default 15 ms) is reached, whichever comes first — matches
-typical real hammer-string contact durations of 1–5 ms scaling with impact velocity (harder
-strikes → shorter, stiffer contact → brighter tone), which **falls out of the ODE above**
-rather than being separately curve-fitted.
+`y_string` is taken at `n−1` so the loop is causal — the same one-sample-delay argument as the
+bridge feedback path (§8); at 48 kHz that is a 21 µs lag inside a 1–5 ms contact.
 
-`F[n]` (the reaction force, Newton's third law) is what's fed into `StringPartialBank` as
-`F_hammer` in §4.
+What the coupling buys, none of it reachable from an open-loop pulse:
 
-**Properties (all empirical/typical, documented as such per rule 2 — not derived from a
-measured instrument):** `massID` → `m_h` (default 1.0, normalized hammer inertia),
-`stiffnessID` → `K` (default 1×10¹⁰, measured — via a standalone stiffness scan against this
-ODE — to put contact duration in a realistic ≈1–9 ms window: ≈2.6 ms at max velocity down to
-≈9.3 ms at a very soft touch, matching real hammer contact times shortening with impact
-force), `nonlinearExponentID` → `p` (default 2.5; real felt is commonly cited in the 2–3.5
-range), `hysteresisLossID` → `ε` (default 0.2 — 20% of loading stiffness lost on rebound).
-`kMaxContactMs` (15 ms) is a numerical safety bound, not a physical target — at the tuned
-default it only binds for very soft (near-zero-velocity) touches.
+- **Contact duration becomes a result**, set by the string's impedance rather than by bouncing
+  off a wall — so it varies with *pitch*, not just velocity.
+- **Force-pulse ripple:** the wave launched at the strike point reflects off the near
+  termination and returns *while the hammer is still touching*, re-modulating F. This needs a
+  well-resolved partial series to appear at all, which is why it only became reachable after
+  M2 raised the partial count (12 partials smear the returning wave away).
+- **Register divergence:** in the treble, contact lasts longer than one string period, so the
+  hammer stays engaged across several reflections — a fundamentally different excitation
+  spectrum from the bass, from one unchanged model.
+
+#### Unit consistency — why the coupling needs a modal mass
+
+`c = x_h − y_string` is only meaningful if both terms are displacements in the *same* units,
+which forces the resonator's input gain to carry a real `1/m`. Starting from the modal form
+of a point-driven string (mode shape `φ_n(x) = sin(nπx/L)`, `g_n = φ_n(βL)` from §4):
+
+```
+q̈_n + 2ζ_nω_n·q̇_n + ω_n²·q_n = (g_n/m)·F(t)          m = modal mass (= ρL/2, equal for all n)
+```
+
+Impulse-invariant discretisation of that second-order system (continuous impulse response
+`(g_n/(m·ω_d))·e^(−ζω t)·sin(ω_d t)`, sampled and scaled by `T_s` so the discrete convolution
+approximates the continuous integral) gives, for §1's resonator whose impulse response is
+`G·rⁿ·sin((n+1)θ)/sinθ`:
+
+```
+G_n^disp = sinθ_n · g_n / (m · ω_n · f_s)        -> output is modal DISPLACEMENT q_n
+G_n^vel  = ω_n · G_n^disp = sinθ_n · g_n / (m · f_s)   -> output is modal VELOCITY
+```
+
+**The bank runs at the velocity gain, and recovers displacement by weighting.** Velocity is
+the right thing to output: what radiates is bridge force/velocity, not static displacement —
+and it is also why the `1/ω_n` does *not* appear in the audio path (it cancels), which is
+exactly the structure the pre-M3 code already had, minus the physical constant. Displacement
+at the strike point is then recovered from the same partial outputs for free:
+
+```
+q_n        = y_n / ω_n                     (y_n = the partial's velocity-scaled output)
+y_string   = Σ_n g_n · q_n = Σ_n (g_n/ω_n) · y_n
+```
+
+so `process()` accumulates two sums over the same loop — the audio sum and, with the
+precomputed weight `g_n/ω_n`, the strike-point displacement. One extra multiply-add per
+partial.
+
+**`kHammerToStringGain` is deleted.** The force→displacement path is now fixed by `m`
+(`kModalMass`), so the arbitrary scalar that used to bridge "hammer force units" and "signal
+units" has nothing left to do. `m`, `m_h` and `K` form one consistent *normalised* unit system
+(this is still a signal-level model, not SI — see ## Units); what remains free is only the
+instrument's overall loudness, which is a legitimate control rather than a fudge factor.
+
+**Properties (empirical/typical, documented as such — not measured from an instrument):**
+`massID` → `m_h`, `stiffnessID` → `K`, `nonlinearExponentID` → `p` (default 2.5; real felt is
+commonly cited in the 2–3.5 range), `hysteresisLossID` → `ε` (default 0.2 — 20 % of loading
+stiffness lost on rebound). `m_h` and `K` are calibrated **together with `kModalMass`** against
+the coupled loop, targeting real contact durations of 1–5 ms that shorten with impact velocity;
+the ratio `m_h/m` matters more than either alone (a real hammer is a few times the mass of the
+string length it strikes, so the string yields comparably to the hammer). `kMaxContactMs`
+(15 ms) is a numerical safety bound, not a physical target.
 
 ### 7. Damper engagement ramp
 

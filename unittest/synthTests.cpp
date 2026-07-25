@@ -425,7 +425,7 @@ TEST(PianoVoice_note_bounded_and_decaying)
         if (i < 2000) attack.push_back(s);
         if (i >= 46000) sustained.push_back(s);
     }
-    CHECK(maxAbs < 1.5);              // no blow-up (README ## Units: near +-1 at full velocity)
+    CHECK(maxAbs < 1.0);              // no blow-up (README ## Units: near +-1 at full velocity)
     CHECK(maxAbs > 0.01);             // actually produced sound
     CHECK(rms(sustained) < rms(attack) * 0.5); // decayed well below the strike level by 1s in
 }
@@ -536,7 +536,7 @@ TEST(PianoVoice_reused_voice_after_damper_engaged_stays_bounded)
     double maxAbs = 0.0;
     for (int i = 0; i < 4800; ++i)
         maxAbs = std::max(maxAbs, std::fabs((double)v.out(0.0, 0)));
-    CHECK(maxAbs < 1.5); // bounded like any normal struck note (README ## Units), not a spike
+    CHECK(maxAbs < 1.0); // bounded like any normal struck note (README ## Units), not a spike
 }
 
 // ───────────────── M1: frequency-dependent loss (spectral evolution) ─────────────────
@@ -724,9 +724,11 @@ TEST(StringPartialBank_flattened_loop_matches_reference_resonator)
     ref.setFrequencyHz(bank.partialFrequencyHz(0));
     ref.setDecaySeconds(bank.partialDecaySeconds(0));
 
-    // The bank folds the mode-shape gain into its drive; the reference gets it applied
+    // The bank folds the mode-shape gain AND the physical velocity scale
+    // 1/(kModalMass*fs) (README ## 6) into its drive; the reference gets both applied
     // to its input instead. Same signal either way.
-    const double g1 = std::fabs(std::sin(M_PI * beta));
+    const double g1 = std::fabs(std::sin(M_PI * beta)) /
+                      (StringPartialBank::kModalMass * 48000.0);
     double maxErr = 0.0, energy = 0.0;
     for (int i = 0; i < 2000; ++i)
     {
@@ -738,6 +740,130 @@ TEST(StringPartialBank_flattened_loop_matches_reference_resonator)
     }
     CHECK(energy > 1e-9);   // it actually rang, so the comparison means something
     CHECK(maxErr < 1e-12);  // sample-exact
+}
+
+// ───────────────── M3: coupled hammer<->string interaction ─────────────────
+// Plan §M3; math in src/physical/README.md ## 6.
+
+namespace {
+// Runs PianoVoice's coupled loop directly so the contact itself can be observed:
+// hammer sees the string's displacement, string is driven by the reaction force.
+struct ContactRun
+{
+    int samples = 0;
+    std::vector<double> force;
+};
+ContactRun runContact(double f0, double velocity)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    StringPartialBank bank;
+    double b = 0.00056 * std::pow(100.0 / f0, 1.25);
+    if (b < 0.00005) b = 0.00005;
+    if (b > 0.02) b = 0.02;
+    bank.setFundamentalHz(f0);
+    bank.setInharmonicity(b);
+    bank.setBaseDecaySeconds(PianoVoice::defaultBaseDecaySeconds(f0));
+
+    HammerExciter h;
+    h.strike(velocity);
+    ContactRun r;
+    for (int i = 0; i < 48000 && h.isInContact(); ++i)
+    {
+        const double f = h.out(bank.displacementAtStrike(), 0);
+        bank.out(f, 0);
+        r.force.push_back(f);
+        ++r.samples;
+    }
+    return r;
+}
+}
+
+// Criterion 1 + 4: with the string yielding, contact duration is a RESULT of string
+// impedance, so it varies with pitch — structurally impossible while the felt
+// compressed against a rigid wall. And in the treble contact outlasts a whole
+// string period, so the hammer stays engaged across several reflections: the same
+// model produces genuinely different excitation in different registers.
+TEST(HammerString_contact_duration_varies_with_pitch)
+{
+    const double bassMs = runContact(65.4, 0.8).samples / 48.0;   // C2
+    const double midMs = runContact(261.6, 0.8).samples / 48.0;   // C4
+    const double trebleMs = runContact(2093.0, 0.8).samples / 48.0; // C7
+
+    // Bass strings yield more, so the felt stays in contact markedly longer.
+    CHECK(bassMs > midMs * 1.5);
+    CHECK(midMs > trebleMs);
+    // All within a physically sensible window (real pianos: ~1-5 ms).
+    CHECK(trebleMs > 0.5 && bassMs < 9.0);
+
+    // Criterion 4: treble contact spans more than one period of f0.
+    const double treblePeriodMs = 1000.0 / 2093.0;
+    CHECK(trebleMs > treblePeriodMs);
+    // ...while the bass hammer has left long before its period elapses.
+    CHECK(bassMs < 1000.0 / 65.4);
+}
+
+// Criterion 2: harder strikes still compress the felt faster and leave sooner.
+TEST(HammerString_contact_shortens_with_velocity)
+{
+    double prev = 1e9;
+    bool monotonic = true;
+    for (double v : {0.2, 0.4, 0.6, 0.8, 1.0})
+    {
+        const double ms = runContact(261.6, v).samples / 48.0;
+        if (ms > prev) monotonic = false;
+        prev = ms;
+    }
+    CHECK(monotonic);
+    CHECK(runContact(261.6, 0.2).samples > runContact(261.6, 1.0).samples);
+}
+
+// Criterion 3: the force pulse is no longer a smooth one-shot bump. The wave
+// launched at the strike point reflects off the near termination and returns while
+// the hammer is still touching, re-modulating the contact force — a piano
+// fingerprint, and only resolvable because M2 gave the bass a full partial series.
+TEST(HammerString_force_pulse_shows_reflection_ripple)
+{
+    const ContactRun r = runContact(65.4, 0.8); // C2
+    CHECK(r.samples > 50);
+
+    size_t peak = 0;
+    for (size_t i = 0; i < r.force.size(); ++i)
+        if (r.force[i] > r.force[peak]) peak = i;
+
+    int localMaxima = 0;
+    for (size_t i = peak + 2; i + 2 < r.force.size(); ++i)
+        if (r.force[i] > r.force[i - 1] && r.force[i] > r.force[i + 1] &&
+            r.force[i] > 0.02 * r.force[peak])
+            ++localMaxima;
+    CHECK(localMaxima >= 1); // at least one re-excitation after the primary peak
+}
+
+// The coupling must actually be wired: driving the hammer against a displaced
+// string has to change the force it produces. Guards against the input being
+// silently ignored again (which is exactly the bug M3 fixed).
+TEST(HammerString_coupling_is_actually_connected)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    // Advance two hammers IDENTICALLY so their states match exactly, then differ
+    // only in the string displacement on the next step. (Comparing over many steps
+    // would invert the sign: less force means less deceleration, so the yielding
+    // hammer penetrates further and can end up producing MORE force later.)
+    HammerExciter rigid, yielding;
+    rigid.strike(0.8);
+    yielding.strike(0.8);
+    for (int i = 0; i < 40; ++i)
+    {
+        rigid.out(0.0, 0);
+        yielding.out(0.0, 0);
+    }
+    const double fRigid = rigid.out(0.0, 0);       // rigid wall: string never moves
+    const double fYielding = yielding.out(1e-5, 0); // string yields away from the felt
+
+    CHECK(fRigid > 0.0);        // there is a contact force to compare
+    CHECK(fRigid != fYielding); // the displacement input reaches the force law at all
+    CHECK(fYielding < fRigid);  // a yielding string reduces compression, hence force
 }
 
 int main()

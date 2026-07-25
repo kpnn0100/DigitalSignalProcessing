@@ -8,7 +8,7 @@ namespace arstro
     {
         setSmoothEnable(false); // strike() is an instantaneous event, not a tone knob
         initProperty(massID, 1.0);
-        initProperty(stiffnessID, 1.0e10);
+        initProperty(stiffnessID, 3.0e11);
         initProperty(nonlinearExponentID, 2.5);
         initProperty(hysteresisLossID, 0.2);
     }
@@ -28,7 +28,7 @@ namespace arstro
         mContactSamples = 0;
     }
 
-    Sample HammerExciter::process(Sample /*in*/, int channel)
+    Sample HammerExciter::process(Sample stringDisplacement, int channel)
     {
         // Mono physics (REQ-piano-13): only channel 0 advances the contact ODE.
         if (channel != 0 || !mInContact)
@@ -41,7 +41,10 @@ namespace arstro
         Sample p = getProperty(nonlinearExponentID);
         Sample eps = getProperty(hysteresisLossID);
 
-        Sample compression = (mPos > 0.0) ? mPos : 0.0;
+        // README ## 6: compression is RELATIVE — the string yields under the felt.
+        // Before M3 this was just mPos, i.e. an infinitely rigid string.
+        const Sample c = mPos - stringDisplacement;
+        Sample compression = (c > 0.0) ? c : 0.0;
         Sample force = 0.0;
         if (compression > 0.0)
         {
@@ -55,8 +58,8 @@ namespace arstro
         ++mContactSamples;
 
         Sample maxContactSamples = kMaxContactMs * 0.001 * sr;
-        if ((mPos <= 0.0 && mVel < 0.0) || (Sample)mContactSamples > maxContactSamples)
-            mInContact = false;
+        if ((c <= 0.0 && mVel < 0.0) || (Sample)mContactSamples > maxContactSamples)
+            mInContact = false; // hammer rebounded off the (moving) string
 
         return arstroFlush(force);
     }

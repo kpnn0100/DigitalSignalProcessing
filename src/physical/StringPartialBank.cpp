@@ -167,7 +167,11 @@ namespace arstro
             // would make a bass note's fundamental quieter purely because the note
             // carries more partials. See README ## 4.
             const Sample gn = std::fabs(std::sin((Sample)(i + 1) * M_PI * beta));
-            mDrive[i] = std::sin(theta) * gn;
+            // Velocity gain (README ## 6): sin(theta)*g_n/(m*fs). The 1/omega_n that
+            // would appear for displacement cancels here — velocity is what radiates.
+            mDrive[i] = std::sin(theta) * gn / (kModalMass * sr);
+            // ...and displacement is recovered from the same output by weighting.
+            mDispWeight[i] = gn / wn;
         }
         recomputeEffectivePartials();
     }
@@ -208,13 +212,16 @@ namespace arstro
         Sample *y1 = mY1.data() + (size_t)channel * kMaxPartials;
         Sample *y2 = mY2.data() + (size_t)channel * kMaxPartials;
         Sample sum = 0.0;
+        Sample disp = 0.0;
         for (int i = 0; i < mActiveCount; ++i)
         {
             const Sample y = arstroFlush(mA1[i] * y1[i] - mA2[i] * y2[i] + mDrive[i] * forceIn);
             y2[i] = y1[i];
             y1[i] = y;
             sum += y;
+            disp += mDispWeight[i] * y; // README ## 6: q_n = y_n/omega_n, projected by g_n
         }
+        mLastDisplacement = disp;
         return sum;
     }
 }

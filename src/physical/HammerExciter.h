@@ -33,8 +33,10 @@ namespace arstro
         bool isInContact() const { return mInContact; }
 
     protected:
-        // `in` unused (this is an excitation source, like SignalGenerator::process
-        // ignoring its input); advances the contact ODE by one sample on channel 0.
+        // `in` is the STRING DISPLACEMENT at the strike point (README ## 6): the
+        // felt compresses against a yielding string, not a rigid wall, so contact
+        // force depends on the relative displacement x_hammer - y_string. Advances
+        // the contact ODE by one sample; mono, channel 0 only (REQ-piano-13).
         Sample process(Sample in, int channel) override;
 
     private:

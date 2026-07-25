@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-25 (M2 complete)
-- **Last commit:** M2 — pitch-dependent partial count + flattened resonator loop
+- **Last updated:** 2026-07-25 (M3 complete)
+- **Last commit:** M3 — coupled hammer↔string interaction
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -15,6 +15,7 @@ file first and updates it last, every session. Spec:
 | **M0 baseline (pre-upgrade)** | **15.42× RT** (median 15.32×) | 17.20× | 192 | ✅ met |
 | **M1** (loss model) | **16.25× RT** | 18.35× | 192 | ✅ met |
 | **M2** (64 partials + flattened loop) | **19.27× RT** (median 18.57×) | 20.75× | ~1024 | ✅ met |
+| **M3** (hammer↔string coupling) | **14.96× RT** | — | ~1024 | ✅ met (3.7× margin) |
 
 Measured by `./build/piano_bench` (5 passes × 10 s, best-of). M2's resonator count is
 pitch-dependent (bass fills the 64 cap, treble uses ~5); ~1024 is the benchmark chord's worst
@@ -25,21 +26,19 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 
 ## ► NEXT
 
-**M3 — Coupled hammer↔string interaction.** The deepest fix in the plan and the one that
-addresses the original diagnosis: `HammerExciter::process()` still discards its input, so the
-hammer is a free mass bouncing off an infinitely rigid wall. Close the loop —
-`c = x_hammer − y_string(β)` — so contact force depends on the string yielding.
+**M4 — Two transverse polarisations (double decay).** Give each partial a vertical and a
+horizontal polarisation, split slightly in frequency and strongly in decay, with the excitation
+split ~95/5. The result is the **prompt sound → aftersound** envelope: a fast initial fall, then
+a long quiet tail. Piano notes "bloom"; a single exponential reads as a plucked string.
 
-Read plan §M3 first. It requires **deriving modal-mass unit consistency into the README
-before writing code**: `x_hammer` and `y_string` must share units, which is what finally
-replaces `kHammerToStringGain` with physically determined scaling.
+Plan §M4 has the parameterisation. Two notes carried forward:
+- Apply polarisation only to the first `kPolarizedPartials` (~16) — double decay is a
+  low-partial phenomenon, and this keeps the cost bounded. Document it as an approximation.
+- **Correct the README's existing double-decay claim** while you are there: §5 still credits
+  unison detune + bridge coupling for it, which two strings at 0.6 cents do not deliver.
 
-Why it matters now: M1 measured the attack's high partials at ~42 dB below the fundamental,
-and M2 confirmed the bandwidth is there but under-excited — the open-loop ~2.6 ms force pulse
-simply has little high-frequency content. M3's reflection ripple is what re-injects it, and it
-is what should raise the spectral-evolution criterion back to the plan's original 20 dB.
-
-Budget: M2 leaves **19.27× RT**, 4.8× above the gate — ample room.
+Budget: M3 leaves **14.96× RT**, 3.7× above the gate. M4 adds ~16 resonators per string on top
+of ~64, so expect roughly −25 %; the flattened loop from M2 is what makes this affordable.
 
 ---
 
@@ -50,7 +49,7 @@ Budget: M2 leaves **19.27× RT**, 4.8× above the gate — ample room.
 | M0 | Perf baseline & budget | `[x]` |
 | M1 | Frequency-dependent loss model (spectral evolution) | `[x]` |
 | M2 | Pitch-dependent partial count (bandwidth) | `[x]` |
-| M3 | Coupled hammer↔string interaction | `[ ]` |
+| M3 | Coupled hammer↔string interaction | `[x]` |
 | M4 | Two transverse polarisations (double decay) | `[ ]` |
 | M5 | Soundboard / bridge | `[ ]` |
 | M6 | Per-register voicing | `[ ]` |
@@ -105,17 +104,27 @@ some acceptance criterion could not be verified here (see Verification notes).
 - [x] Re-run M0 benchmark: **19.27× RT** — budget met with 4.8× margin
 - [x] 100 % line coverage held on all five `physical/` sources
 
-### M3 — Coupled hammer↔string `[ ]`
-- [ ] Derive modal-mass unit consistency into README `## Math` **before coding** (plan §M3)
-- [ ] `StringResonator::lastValue(channel)` + `StringPartialBank::displacementAtStrike()`
-- [ ] `HammerExciter::process()` uses `in` as string displacement; `c = x_h − y_string`
-- [ ] **Delete `kHammerToStringGain`** (replaced by modal mass). `registerGain` is already
-      gone — deleted at M1; its successor `voicingGain` belongs to M6, not here.
-- [ ] Unit tests: contact duration varies with pitch; still monotonic in velocity
-- [ ] Integration test: bass force pulse shows a post-peak local max (reflection ripple)
-- [ ] Integration test: treble contact duration > one period of f0
-- [ ] Output bounded across keyboard with `registerGain` gone
-- [ ] Re-run M0 benchmark, record
+### M3 — Coupled hammer↔string `[x]`
+- [x] Derived modal-mass unit consistency into README `## 6` **before coding** — impulse-invariant
+      discretisation gives `G_n^disp = sinθ_n·g_n/(m·ω_n·f_s)`, and since velocity is what
+      radiates the audio path uses `G_n^vel = sinθ_n·g_n/(m·f_s)` (the `1/ω_n` cancels)
+- [x] `StringPartialBank::displacementAtStrike()` = `Σ (g_n/ω_n)·y_n`, accumulated in the same
+      loop as the audio sum — one extra multiply-add per partial
+- [x] `HammerExciter::process()` uses `in` as string displacement; `c = x_h − y_string`
+- [x] **`kHammerToStringGain` deleted** — the force→displacement path is now fixed by
+      `kModalMass`. What remains is `kVelocityToSignal`, an honest velocity→signal
+      transduction constant that M5's bridge should absorb
+- [x] Contact duration varies with **pitch**: 5.2 ms (C2) → 1.1 ms (C8) at fixed velocity —
+      structurally impossible before this milestone
+- [x] Contact/period spans **0.46 → 12.0**: the bass hammer leaves before the reflection
+      returns, the treble stays engaged across 12 periods (criterion 4)
+- [x] Contact still shortens monotonically with velocity (criterion 2)
+- [x] Bass force pulse shows a post-peak local maximum — the reflection ripple (criterion 3)
+- [x] Output bounded across the keyboard: 0.37–0.86 peak, `registerGain` long gone
+- [x] Integration: spectral evolution rose to **20.5 dB**, so the plan's ORIGINAL 20 dB target
+      was restored (M1 had lowered it to 15 pending exactly this milestone)
+- [x] Re-run M0 benchmark: **14.96× RT** — budget met with 3.7× margin
+- [x] 100 % line coverage held on all five `physical/` sources
 
 ### M4 — Two polarisations `[ ]`
 - [ ] Derive polarisation split + `kPolarizedPartials` approximation into README `## Math`
@@ -159,6 +168,21 @@ some acceptance criterion could not be verified here (see Verification notes).
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
 
+- **2026-07-25 (M3) — a coupling constant must be rescaled whenever the drive path's units
+  change, and a "passing" test hid it.** M3 gave the string drive its physical
+  `1/(kModalMass·f_s)` factor — ~48000× smaller — which left the bridge's sympathetic feedback
+  ~125 dB down: inaudible, and *below 16-bit WAV resolution*. The integration check reported
+  **"ratio 0.00 PASS"** because it only compared same-pitch against off-pitch, and `0 < 0` is
+  false. Fixed both: coupling re-measured against the bass worst case (diverges at 50, grows at
+  20, stable at 10 → **5.0**, a 4× margin, putting sympathetic response ~45 dB below the struck
+  note as on a real piano), and the check now asserts a non-zero floor *first*. **Second time a
+  vacuous/masked pass has hidden a real regression** (M1's NaN was hidden by WAV clamping) —
+  every ratio assertion needs a magnitude floor beside it.
+- **2026-07-25 (M3) — hammer stiffness recalibrated for the coupled loop.** Against a rigid
+  wall `K = 1e10` gave 2.9–7.1 ms contacts; with the string yielding, the same K is too soft.
+  Swept K against contact duration and chose **3e11**: C2 5.2 ms, C4 2.1 ms, C6 1.2 ms,
+  C8 1.1 ms — matching real pianos (1–5 ms, longest in the bass) with the register trend
+  emerging from the physics rather than being curve-fitted.
 - **2026-07-25 (M2) — the `2/N_active` excitation scaling was unphysical; removed.** Modal
   superposition has no `1/N` factor — the mode count is a truncation choice, and adding a 64th
   partial must not quieten the first 63. It was harmless while N was a fixed 12; once N varied
@@ -250,6 +274,13 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M3** — fully verified; nothing marked `[!]`. This is the milestone that addressed the
+  original diagnosis, and the attack finally has structure: contact duration now depends on
+  pitch, and the treble hammer stays engaged across 12 string periods where the bass leaves
+  after half of one. Spectral evolution reached the plan's original 20 dB target. **The model
+  is now qualitatively a piano rather than a struck string** — but M4 (bloom), M5 (soundboard
+  colour above 700 Hz) and M6 (per-register voicing) are all still absent, so it should be
+  judged as unfinished rather than as the intended timbre.
 - **M2** — fully verified; nothing marked `[!]`. The bandwidth is now present (C4 to 21 kHz,
   A0 to 6.2 kHz) but the attack still **under-excites** it: high partials sit ~42 dB below the
   fundamental because the open-loop hammer pulse has little high-frequency content. So M2

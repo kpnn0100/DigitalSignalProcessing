@@ -29,6 +29,13 @@ namespace arstro
         // this is only the ceiling, chosen against the REQ-piano-17 budget.
         static constexpr int kMaxPartials = 64;
 
+        // README ## 6: modal mass (rho*L/2), normalised. Sets how far the string
+        // yields under the hammer, so it is calibrated jointly with the hammer's
+        // mass/stiffness — the RATIO m_h/m governs the contact, not either alone.
+        // Replaces the deleted kHammerToStringGain. Public so tests can reproduce
+        // the physical force->velocity scale exactly.
+        static constexpr Sample kModalMass = 1.0;
+
         enum PropertyIndex
         {
             fundamentalID,     // Hz, f0
@@ -67,6 +74,11 @@ namespace arstro
         Sample partialFrequencyHz(int index) const;
         Sample partialDecaySeconds(int index) const; // natural T60, before the damper
 
+        /** Transverse displacement at the strike point as of the most recent
+         *  process() call — sum(g_n/omega_n * y_n), README ## 6. This is what the
+         *  hammer compresses against; without it the felt meets a rigid wall. */
+        Sample displacementAtStrike() const { return mLastDisplacement; }
+
         void update() override;
         void onChannelCountChanged() override;
 
@@ -81,10 +93,12 @@ namespace arstro
         std::array<Sample, kMaxPartials> mFreqN{};    // f_n
         std::array<Sample, kMaxPartials> mBaseT60N{}; // natural T60_n (pre-damper)
         std::array<Sample, kMaxPartials> mCosTheta{};
-        std::array<Sample, kMaxPartials> mDrive{}; // sin(theta)*g_n*(2/N) — damper-independent
+        std::array<Sample, kMaxPartials> mDrive{};      // sin(theta)*g_n/(m*fs) — velocity gain
+        std::array<Sample, kMaxPartials> mDispWeight{}; // g_n/omega_n: velocity -> displacement
         std::array<Sample, kMaxPartials> mA1{};    // 2*r*cos(theta)
         std::array<Sample, kMaxPartials> mA2{};    // r^2
         int mActiveCount = 1;
+        Sample mLastDisplacement = 0.0;
 
         // Per-channel recurrence history, flat: [channel*kMaxPartials + partial].
         // Sized in ensureChannels(); never resized from the audio thread.
@@ -111,5 +125,6 @@ namespace arstro
 
         // README ## 2: the highest partial kept, as a fraction of the sample rate.
         static constexpr Sample kNyquistFraction = 0.45;
+
     };
 }

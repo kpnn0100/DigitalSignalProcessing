@@ -14,16 +14,16 @@ namespace arstro
     PianoBridge::PianoBridge() : SignalProcessor(propertyCount)
     {
         setSmoothEnable(false);
-        // Stability-bounded (M1). Impulse-normalised string partials (README ## 1)
-        // have a very high SUSTAINED resonance gain — G/(1-r^2) ~ 800 for a 6.9 s
-        // C4 partial, more for the bass — so the string->bridge->string loop needs a
-        // correspondingly small coupling gain. Measured worst case (8 sustained
-        // bass voices, longest T60 hence highest gain): diverges at 5e-3, stable at
-        // 1e-3; 5e-4 keeps a 10x margin while leaving sympathetic selectivity at
-        // ~35x (the ratio is coupling-independent, so lowering this costs nothing
-        // in REQ-piano-6 terms). Proper treatment — where the bridge admittance
-        // sets string damping AND radiation, making the loop self-limiting — is M5.
-        initProperty(couplingGainID, 5e-4);
+        // Stability-bounded, and RESCALED AT M3. The string drive path now carries the
+        // physical 1/(kModalMass*f_s) (README ## 6), i.e. it got ~48000x smaller, so the
+        // old 5e-4 left sympathetic resonance ~125 dB down — inaudible, and below 16-bit
+        // resolution, which made the integration check pass on an all-zero signal.
+        // Re-measured against the worst case (8 sustained bass voices, highest resonance
+        // gain): diverges at 50, grows at 20, stable at 10. 5.0 keeps a 4x margin and puts
+        // the sympathetic response ~45 dB below the struck note — audible, as on a real
+        // piano. The selectivity ratio (~85x) is coupling-independent, so this trades no
+        // REQ-piano-6 fidelity. M5's admittance bridge is the principled fix.
+        initProperty(couplingGainID, 5.0);
         initProperty(radiationGainID, 0.5);
         for (int i = 0; i < kBodyModeCount; ++i)
         {

@@ -87,7 +87,7 @@ namespace arstro
         bool mUnaCorda = false;
         bool mDamperHeld = false;
 
-        Sample mHammerBaseStiffness = 1.0e10;
+        Sample mHammerBaseStiffness = 3.0e11;
         Sample mLastSample = 0.0;
 
         // Interim stand-in for M6 per-register hammer voicing (see
@@ -111,11 +111,12 @@ namespace arstro
         Sample mDamperNoiseDecayCoeff = 0.0;
         uint32_t mNoiseState = 0x9E3779B9u;
 
-        // Empirical calibration gain (README ## Units): converts HammerExciter's
-        // normalized contact-force units into the resonator bank's signal-level
-        // units, so a full-velocity strike lands near +-1 like every other
-        // SignalGenerator in this codebase, not derived from a physical unit system.
-        static constexpr Sample kHammerToStringGain = 7.5e-7;
+        // Velocity -> signal transduction scale. NOT a physics fudge: the bank now
+        // outputs modal VELOCITY in the normalised unit system fixed by kModalMass
+        // (README ## 6), and converting that to a line-level signal is a radiation /
+        // transduction constant. M5's bridge is where this properly belongs; until
+        // then it is one documented scalar setting the instrument's loudness.
+        static constexpr Sample kVelocityToSignal = 0.055;
 
         // M6 stand-in curve (see mVoicingGain): measured peak ~ f^-0.9, so f^0.8
         // flattens it to ~2.5x across the keyboard, keeping a mild bass emphasis.

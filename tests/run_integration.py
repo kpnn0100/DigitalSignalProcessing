@@ -331,20 +331,16 @@ def check_piano_spectral_evolution(binpath):
 
     attack_db = band_ratio_db(attack)
     late_db = band_ratio_db(late)
-    # Threshold is 15 dB, not the plan's original 20: that 20 was set against a
-    # measurement inflated by the sustained-drive gain artifact M1 removed (which
-    # boosted short-T60 high partials at the attack). With the corrected impulse
-    # normalisation the honest figure is ~17 dB, and the CEILING is now the hammer
-    # excitation spectrum — a ~2.6 ms open-loop force pulse rolls off hard above
-    # ~400 Hz, so the high partials start ~42 dB down and there is little left to
-    # lose. M3's hammer<->string coupling is what restores attack brightness;
-    # raise this threshold there. M1 owns the DECAY tilt, which the unit tests
-    # assert exactly (T60 ratio 35x, loss law provably quadratic).
+    # Back to the plan's original 20 dB target, restored at M3 as planned: M1 had to
+    # lower it to 15 because the open-loop hammer pulse left the high partials ~42 dB
+    # down with little left to lose. Coupling the hammer to the string re-injects
+    # high-frequency energy (the reflection ripple), and the measured drop rose to
+    # 20.5 dB — so the original criterion now holds on its own terms.
     drop = attack_db - late_db
-    if drop < 15.0:
+    if drop < 20.0:
         raise Failure(
             f"spectrum barely evolves: high/low ratio {attack_db:.1f} dB at attack vs "
-            f"{late_db:.1f} dB at 1 s (drop {drop:.1f} dB, need >= 15 dB)"
+            f"{late_db:.1f} dB at 1 s (drop {drop:.1f} dB, need >= 20 dB)"
         )
     return f"high/low ratio {attack_db:.1f} dB -> {late_db:.1f} dB (drop {drop:.1f} dB)"
 
@@ -357,6 +353,15 @@ def check_piano_sympathetic_resonance(binpath):
     off = render(binpath, "pianosympathetic", 1)
     mag_same = goertzel_mag(same, 220.0)
     mag_off = goertzel_mag(off, 233.08)
+    # Floor check FIRST: without it this passes vacuously on an all-zero signal
+    # (0 < 0 is false). That actually happened at M3 — the drive path was rescaled
+    # by 1/(m*fs), the sympathetic response fell below 16-bit WAV resolution, and
+    # the check reported "ratio 0.00 PASS".
+    if mag_same < 1e-3:
+        raise Failure(
+            f"sympathetic response is effectively silent (|same| = {mag_same:.3e}) — "
+            "coupling gain too low, or lost below WAV quantisation"
+        )
     if mag_same < mag_off * 2.0:
         raise Failure(
             f"sympathetic resonance not frequency-selective: same-pitch={mag_same:.4f} "

@@ -187,7 +187,16 @@ namespace arstro
         if (channel != 0)
             return mLastSample;
 
-        Sample force = mHammer.out(0.0, 0) * kHammerToStringGain * mVoicingGain;
+        // M3 coupling (README ## 6): the felt compresses against the string's actual
+        // displacement, not a rigid wall. The hammer contacts all U unison strings at
+        // once, so it feels their MEAN displacement and its reaction force is shared
+        // among them — a lumped approximation of U parallel contacts.
+        Sample stringDisp = 0.0;
+        for (int k = 0; k < mUnisonCount; ++k)
+            stringDisp += mStrings[k].displacementAtStrike();
+        stringDisp /= (Sample)mUnisonCount;
+
+        Sample force = mHammer.out(stringDisp, 0) * mVoicingGain / (Sample)mUnisonCount;
         if (mUnaCorda)
             force *= kUnaCordaGain;
 
@@ -219,7 +228,7 @@ namespace arstro
         if (mBridge)
             mBridge->accumulate(stringSum);
 
-        mLastSample = arstroFlush(stringSum + noise);
+        mLastSample = arstroFlush(stringSum * kVelocityToSignal + noise);
         return mLastSample;
     }
 }
