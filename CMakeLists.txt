@@ -55,6 +55,16 @@ add_test(NAME rack_smoke COMMAND rack_smoke)
 add_executable(arstro_piano_demo apps/piano_demo/main.cpp apps/piano_demo/PianoEngine.cpp)
 target_link_libraries(arstro_piano_demo PRIVATE arstro_dsp)
 
+# Convenience target: `cmake --build build --target demo` (or `make demo`) renders
+# the canned anatomy-showcase sequence to a WAV you can actually listen to,
+# instead of just building the binary.
+add_custom_target(demo
+  COMMAND $<TARGET_FILE:arstro_piano_demo> --wav ${CMAKE_CURRENT_BINARY_DIR}/piano_demo.wav 13.5
+  DEPENDS arstro_piano_demo
+  COMMENT "Rendering ${CMAKE_CURRENT_BINARY_DIR}/piano_demo.wav (piano anatomy showcase)"
+  VERBATIM
+)
+
 if(Python3_Interpreter_FOUND)
   add_test(NAME piano_demo_smoke
            COMMAND ${Python3_EXECUTABLE}
