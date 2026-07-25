@@ -12,6 +12,13 @@
  *    adsr <out>           constant 1.0 through an ADSR (note on, then off)
  *    synth <out>          8-note SynthEngine scenario (full path)
  *    reverb <out>         mono burst -> STEREO reverb (width 1); writes a 2-ch WAV
+ *    piano <out> <freqHz> PianoVoice struck note (large inharmonicity override so
+ *                         partial-4's shift is easy to measure), 1 s render
+ *    pianodamper <out> <0|1>  PianoVoice: strike, 100ms, noteOff. arg=0 damper
+ *                         engages (not held); arg=1 sustain held (setDamperHeld)
+ *    pianosympathetic <out> <0|1>  Struck A3 (220Hz) + a silently-depressed voice
+ *                         sharing one PianoBridge; arg=0 renders the SAME-pitch
+ *                         silent voice, arg=1 the OFF-pitch (233.08Hz) one
  */
 #include "../src/synth_dsp.h"
 #include <cstdio>
@@ -198,6 +205,69 @@ static std::vector<double> renderSynth()
     return out;
 }
 
+static std::vector<double> renderPiano(double freqHz)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    if (freqHz <= 0.0) freqHz = 220.0;
+    PianoVoice v;
+    v.setFrequency(freqHz);
+    v.setInharmonicity(0.02); // large, fixed override -> partial shift easy to measure
+    v.setStrikePosition(0.125);
+    v.noteOn(0.85);
+    const int n = kSampleRate; // 1 s
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i) out[i] = v.out(0.0, 0);
+    return out;
+}
+
+static std::vector<double> renderPianoDamper(double heldFlag)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(220.0);
+    v.setDamperHeld(heldFlag > 0.5);
+    v.noteOn(0.8);
+    const int pre = kSampleRate / 10;  // 100 ms struck
+    const int post = kSampleRate / 2;  // 500 ms tail
+    std::vector<double> out(pre + post);
+    for (int i = 0; i < pre; ++i) out[i] = v.out(0.0, 0);
+    v.noteOff();
+    for (int i = 0; i < post; ++i) out[pre + i] = v.out(0.0, 0);
+    return out;
+}
+
+static std::vector<double> renderPianoSympathetic(double whichFlag)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoBridge bridge;
+    PianoVoice struckVoice, samePitchSilent, offPitchSilent;
+    struckVoice.setFrequency(220.0);
+    samePitchSilent.setFrequency(220.0);
+    offPitchSilent.setFrequency(233.08);
+    struckVoice.setBridge(&bridge);
+    samePitchSilent.setBridge(&bridge);
+    offPitchSilent.setBridge(&bridge);
+
+    samePitchSilent.noteOn(0.0); // silently depressed: damper lifted, no strike
+    offPitchSilent.noteOn(0.0);
+    struckVoice.noteOn(0.9);
+
+    const int n = kSampleRate; // 1 s
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i)
+    {
+        struckVoice.out(0.0, 0);
+        Sample same = samePitchSilent.out(0.0, 0);
+        Sample off = offPitchSilent.out(0.0, 0);
+        bridge.tick();
+        out[i] = (whichFlag > 0.5) ? off : same;
+    }
+    return out;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3)
@@ -224,6 +294,9 @@ int main(int argc, char **argv)
     else if (scenario == "lpf")   samples = renderLpf(arg);
     else if (scenario == "adsr")  samples = renderAdsr();
     else if (scenario == "synth") samples = renderSynth();
+    else if (scenario == "piano") samples = renderPiano(arg);
+    else if (scenario == "pianodamper") samples = renderPianoDamper(arg);
+    else if (scenario == "pianosympathetic") samples = renderPianoSympathetic(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

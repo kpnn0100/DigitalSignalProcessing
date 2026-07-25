@@ -212,6 +212,70 @@ def check_synth_deterministic_nonsilent(binpath):
     return f"peak={peak(a):.3f} deterministic over {len(a)} samples"
 
 
+def check_piano_inharmonicity(binpath):
+    """PianoVoice (large forced B=0.02): partial 4 sits at the stiffness-shifted
+    frequency f0*4*sqrt(1+B*16), not the exact harmonic 4*f0 (REQ-piano-2/4)."""
+    f0 = 110.0
+    b = 0.02
+    y = render(binpath, "piano", f0)
+    if peak(y) >= 0.99:
+        raise Failure(f"piano note clipped (peak {peak(y):.3f}) — see README ## Units headroom")
+    seg = y[2000:]  # skip the strike transient
+    exact4 = 4.0 * f0
+    inharmonic4 = 4.0 * f0 * math.sqrt(1.0 + b * 16.0)
+    mag_exact = goertzel_mag(seg, exact4)
+    mag_inharmonic = goertzel_mag(seg, inharmonic4)
+    mag_f0 = goertzel_mag(seg, f0)
+    if mag_f0 < 1e-6:
+        raise Failure("piano note produced no measurable fundamental")
+    if mag_inharmonic < mag_exact * 1.5:
+        raise Failure(
+            f"partial 4 not inharmonically shifted: exact({exact4:.1f}Hz)={mag_exact:.4f} "
+            f"vs shifted({inharmonic4:.1f}Hz)={mag_inharmonic:.4f}"
+        )
+    return f"peak={peak(y):.3f} shifted/exact={mag_inharmonic / max(1e-9, mag_exact):.2f}"
+
+
+def check_piano_damper(binpath):
+    """noteOff (damper engaging) decays much faster than sustain-held (REQ-piano-7)."""
+    engaged = render(binpath, "pianodamper", 0)
+    held = render(binpath, "pianodamper", 1)
+    pre = SR // 10  # 100 ms struck region written by the harness before noteOff
+
+    def early_late_ratio(y):
+        just_after = y[pre + 1000: pre + 1000 + 2400]   # ~20ms past noteOff (damper ramp)
+        later = y[pre + 15000: pre + 15000 + 2400]        # ~310ms after noteOff
+        r_early = rms(just_after)
+        return rms(later) / r_early if r_early > 1e-9 else 0.0
+
+    ratio_engaged = early_late_ratio(engaged)
+    ratio_held = early_late_ratio(held)
+    if ratio_engaged > 0.3:
+        raise Failure(f"damper (engaged) tail didn't decay enough: ratio {ratio_engaged:.3f}")
+    if ratio_engaged > ratio_held * 0.5:
+        raise Failure(
+            f"damper not clearly faster than sustain-held: engaged={ratio_engaged:.3f} "
+            f"held={ratio_held:.3f}"
+        )
+    return f"engaged_ratio={ratio_engaged:.3f} held_ratio={ratio_held:.3f}"
+
+
+def check_piano_sympathetic_resonance(binpath):
+    """A struck A3 (220Hz) sympathetically excites a silently-held same-pitch string
+    far more than an off-pitch (233.08Hz) one — emergent via the shared PianoBridge,
+    not a per-note-pair table (REQ-piano-6)."""
+    same = render(binpath, "pianosympathetic", 0)
+    off = render(binpath, "pianosympathetic", 1)
+    mag_same = goertzel_mag(same, 220.0)
+    mag_off = goertzel_mag(off, 233.08)
+    if mag_same < mag_off * 2.0:
+        raise Failure(
+            f"sympathetic resonance not frequency-selective: same-pitch={mag_same:.4f} "
+            f"off-pitch={mag_off:.4f}"
+        )
+    return f"same-pitch/off-pitch energy ratio={mag_same / max(1e-9, mag_off):.2f}"
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -220,6 +284,9 @@ CHECKS = [
     ("adsr_envelope_shape", check_adsr_shape),
     ("reverb_stereo_decorrelation", check_reverb_stereo_decorrelation),
     ("synth_deterministic_nonsilent", check_synth_deterministic_nonsilent),
+    ("piano_inharmonicity", check_piano_inharmonicity),
+    ("piano_damper_decay", check_piano_damper),
+    ("piano_sympathetic_resonance", check_piano_sympathetic_resonance),
 ]
 
 

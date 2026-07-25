@@ -330,6 +330,182 @@ TEST(Reverb_stereo_decorrelation)
     CHECK(wide.first > 1e-4 * wide.second);   // width 1 => L and R meaningfully decorrelated
 }
 
+// ─────────────────────────── physical/ (piano) ───────────────────────────
+// Verifies the math in src/physical/README.md, not just "doesn't crash".
+
+namespace {
+// Goertzel magnitude at a target frequency — same technique tests/run_integration.py
+// uses (see check_waveform_selection), reimplemented locally for a C++ unit test.
+double goertzelMag(const std::vector<double> &xs, double freqHz, double sr)
+{
+    double k = 0.5 + (xs.size() * freqHz / sr);
+    double w = (2.0 * M_PI / xs.size()) * k;
+    double coeff = 2.0 * std::cos(w);
+    double q0 = 0, q1 = 0, q2 = 0;
+    for (double x : xs)
+    {
+        q0 = coeff * q1 - q2 + x;
+        q2 = q1;
+        q1 = q0;
+    }
+    double real = q1 - q2 * std::cos(w);
+    double imag = q2 * std::sin(w);
+    return std::sqrt(real * real + imag * imag);
+}
+double rms(const std::vector<double> &xs)
+{
+    double s = 0;
+    for (double x : xs) s += x * x;
+    return std::sqrt(s / xs.size());
+}
+}
+
+// REQ-piano-3: a driven resonator settles at its configured frequency and decays.
+TEST(StringResonator_frequency_and_decay)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    StringResonator res;
+    res.setFrequencyHz(440.0);
+    res.setDecaySeconds(0.3);
+
+    std::vector<double> early, late;
+    for (int i = 0; i < 200; ++i) early.push_back(res.out((i == 0) ? 1.0 : 0.0, 0));
+    for (int i = 0; i < 4000; ++i) res.out(0.0, 0);
+    for (int i = 0; i < 4000; ++i) late.push_back(res.out(0.0, 0));
+
+    double magAt440 = goertzelMag(late, 440.0, 48000.0);
+    double magAt220 = goertzelMag(late, 220.0, 48000.0);
+    CHECK(magAt440 > magAt220 * 5.0); // resonant at the configured frequency, not elsewhere
+    CHECK(rms(late) < rms(early));    // decaying (T60=0.3s, ~14 periods of 0.3s by 4000+4000 samples in)
+}
+
+// REQ-piano-2/4: inharmonic partial 4 lands where B predicts, not at the exact harmonic.
+// (n=4, beta=0.125 chosen so the mode-shape gain g_4=|sin(4*pi*0.125)|=1 is maximal, and
+// the absolute frequency shift — which grows with n — is comfortably above Goertzel's
+// bin resolution at this window length; n=2 with a small/moderate B is too close to the
+// exact harmonic to resolve reliably at practical window sizes.)
+TEST(StringPartialBank_partials_are_inharmonic)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    StringPartialBank bank;
+    Sample f0 = 110.0, B = 0.01; // deliberately large B so the shift is easy to measure
+    bank.setFundamentalHz(f0);
+    bank.setInharmonicity(B);
+    bank.setBaseDecaySeconds(2.0);
+    bank.setStrikePosition(0.125);
+
+    std::vector<double> out;
+    for (int i = 0; i < 16000; ++i) out.push_back(bank.out((i == 0) ? 1.0 : 0.0, 0));
+
+    Sample exactHarmonic4 = 4.0 * f0;
+    Sample inharmonic4 = 4.0 * f0 * std::sqrt(1.0 + B * 16.0); // README ## 2 formula, n=4
+
+    double magExact = goertzelMag(out, exactHarmonic4, 48000.0);
+    double magInharmonic = goertzelMag(out, inharmonic4, 48000.0);
+    CHECK(magInharmonic > magExact * 1.5); // energy sits at the stiffness-shifted frequency
+}
+
+// REQ-piano-1/2: a struck note is bounded (no blow-up) and decays after the strike.
+TEST(PianoVoice_note_bounded_and_decaying)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(220.0);
+    v.noteOn(0.9);
+
+    double maxAbs = 0.0;
+    std::vector<double> attack, sustained;
+    for (int i = 0; i < 48000; ++i)
+    {
+        Sample s = v.out(0.0, 0);
+        if (std::fabs(s) > maxAbs) maxAbs = std::fabs(s);
+        if (i < 2000) attack.push_back(s);
+        if (i >= 46000) sustained.push_back(s);
+    }
+    CHECK(maxAbs < 1.5);              // no blow-up (README ## Units: near +-1 at full velocity)
+    CHECK(maxAbs > 0.01);             // actually produced sound
+    CHECK(rms(sustained) < rms(attack) * 0.5); // decayed well below the strike level by 1s in
+}
+
+// REQ-piano-7: damper (noteOff, not held) measurably speeds up decay vs. sustain-held.
+TEST(PianoVoice_damper_speeds_up_decay_vs_sustain_held)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    auto measure = [](bool sustainHeld) {
+        PianoVoice v;
+        v.setFrequency(220.0);
+        v.setDamperHeld(sustainHeld);
+        v.noteOn(0.8);
+        for (int i = 0; i < 4800; ++i) v.out(0.0, 0); // let the note establish (100ms)
+        v.noteOff();
+        for (int i = 0; i < 1500; ++i) v.out(0.0, 0); // past the ~20ms damper ramp
+        std::vector<double> tail;
+        for (int i = 0; i < 2000; ++i) tail.push_back(v.out(0.0, 0));
+        return rms(tail);
+    };
+
+    double dampedRms = measure(false);
+    double heldRms = measure(true);
+    CHECK(dampedRms < heldRms * 0.5); // damper (not held) decays much faster than sustain-held
+}
+
+// REQ-piano-6: sympathetic resonance is frequency-selective, emerging from the shared
+// PianoBridge, not from a per-note-pair table (there is none in this codebase).
+TEST(PianoVoice_sympathetic_resonance_is_frequency_selective)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    PianoBridge bridge;
+    PianoVoice struckVoice, samePitchSilent, offPitchSilent;
+    struckVoice.setFrequency(220.0);
+    samePitchSilent.setFrequency(220.0);     // same pitch, never struck
+    offPitchSilent.setFrequency(233.08);     // a half-step away, never struck
+
+    struckVoice.setBridge(&bridge);
+    samePitchSilent.setBridge(&bridge);
+    offPitchSilent.setBridge(&bridge);
+
+    samePitchSilent.noteOn(0.0); // "silently depressed": damper lifted, no hammer strike
+    offPitchSilent.noteOn(0.0);
+    struckVoice.noteOn(0.9);
+
+    std::vector<double> samePitchOut, offPitchOut;
+    for (int i = 0; i < 48000; ++i)
+    {
+        struckVoice.out(0.0, 0);
+        samePitchOut.push_back(samePitchSilent.out(0.0, 0));
+        offPitchOut.push_back(offPitchSilent.out(0.0, 0));
+        bridge.tick();
+    }
+
+    double sympatheticEnergy = goertzelMag(samePitchOut, 220.0, 48000.0);
+    double offPitchEnergy = goertzelMag(offPitchOut, 233.08, 48000.0);
+    CHECK(sympatheticEnergy > offPitchEnergy * 2.0); // same-pitch string picks up far more energy
+}
+
+// REQ-piano-1/2: louder strikes produce louder output (hammer velocity drives dynamics).
+TEST(PianoVoice_velocity_increases_loudness)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    auto peak = [](Sample velocity) {
+        PianoVoice v;
+        v.setFrequency(220.0);
+        v.noteOn(velocity);
+        double m = 0.0;
+        for (int i = 0; i < 4800; ++i) m = std::max(m, std::fabs((double)v.out(0.0, 0)));
+        return m;
+    };
+    CHECK(peak(0.9) > peak(0.3) * 1.5);
+}
+
 int main()
 {
     return mini::runAll();

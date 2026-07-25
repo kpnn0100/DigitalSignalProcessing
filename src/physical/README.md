@@ -1,0 +1,364 @@
+# physical/ — Physically-modeled piano voice
+
+A struck-string voice built from first-principles DSP (modal resonators + a nonlinear hammer
+contact ODE), not sample playback. Implements `REQ-piano-1..16` (`docs/requirements.md`).
+
+> Status: DESIGN → being implemented against this doc (`arstro.dsp.implement` rule 2/3: this
+> file is written *before* the code; if the code and this file ever disagree, this file is
+> the bug unless `docs/requirements.md` is updated to say otherwise).
+
+## Why new classes (rule 1 — reuse check)
+
+`src/equalizer/` has only one-pole RC filters (`LowPassFilter`/`HighPassFilter`, scalar,
+non-resonant). Nothing in this repo implements a resonant/biquad/modal filter, a nonlinear
+contact model, or a multi-processor shared coupling bus — grep for
+`waveguide|modal|karplus|resonat|piano|hammer` across `src/`, `docs/` returns nothing. This is
+genuinely new core math, not a composition of existing effects (see `docs/requirements.md`
+seed note `REQ-effects-1`). What *is* reused:
+
+- `SignalGenerator` — `PianoVoice` inherits it directly (envelope + note-on/off + property
+  contract), per `REQ-piano-1`.
+- `equalizer::LowPassFilter` — reused as-is to shape the secondary-noise bursts (§9), instead
+  of writing a new filter for that purpose.
+- The existing `SmoothedParameter`/`ParameterSet` property system — every tunable (frequency,
+  inharmonicity, hammer mass, etc.) is a normal `PropertyIndex` property, not a bespoke field.
+- `ADSREnvelope`'s **sample-count ramp pattern** (ms → samples, per-channel stage counter) is
+  followed (not reused by inheritance — it's a different physical quantity) for the damper
+  ramp in §7, because the generic property-smoothing ramp in `SignalProcessor::out()` runs
+  over one **control block** (`AudioConfig::bufferSize()` samples) and is not independently
+  configurable in milliseconds — the wrong tool for a musically-meaningful ~20 ms damper
+  engagement time. `PianoVoice::StringPartialBank` therefore rolls its own tiny linear ramp,
+  the same shape `ADSREnvelope` already uses for attack/decay/release.
+- `Voice::midiToHz` and the `noteOn(velocity)` 0..1 convention (`src/synth/Voice.cpp`) are
+  followed exactly for pitch/velocity units, so a `PianoVoice` drops into the same calling
+  convention as `Oscillator`.
+
+## Class map
+
+| Class | Base | Owns / responsibility |
+|---|---|---|
+| `StringResonator` | `SignalProcessor` | One damped sinusoidal mode (§1). The one reusable primitive — also used, unmodified, for the soundboard's body modes (§8). |
+| `StringPartialBank` | `SignalProcessor` | N `StringResonator`s = one physical string: inharmonic partial frequencies (§2), frequency-dependent + damper damping (§3), strike-position mode-shape excitation (§4). |
+| `HammerExciter` | `SignalProcessor` | Nonlinear hysteretic hammer-felt contact ODE (§6). |
+| `PianoBridge` | `SignalProcessor` | Shared per-note-set soundboard modal bank + sympathetic-resonance feedback bus (§8). One instance shared by every `PianoVoice` in a `PianoEngine`. |
+| `PianoVoice` | `SignalGenerator` | Owns U unison `StringPartialBank`s (§5) + one `HammerExciter` + damper state (§7) + pedal state (§9 pedals) + secondary-noise bursts (§9 noise); ties §1–§9 together; `generate(channel)` is the physical step. |
+
+---
+
+## Math
+
+Units: force in abstract normalized units (this is a *signal-level* model, not
+SI-calibrated to real newtons — every "N" below is normalized so `StringResonator` output
+stays in the same ±1-ish range as every other `SignalGenerator` in this codebase); time in
+seconds unless stated; `f_s` = `AudioConfig::sampleRate()`, `dt = 1/f_s`.
+
+**Two empirical calibration constants** (measured against the actual implementation, not
+derived — documented per rule 2 rather than left as unexplained magic numbers):
+
+```
+force_into_strings = HammerExciter.out() · kHammerToStringGain · registerGain(f0)
+kHammerToStringGain = 0.010
+registerGain(f0) = clamp( (f0 / 220 Hz)^0.6,  0.05,  3.0 )
+```
+
+`kHammerToStringGain` brings the hammer ODE's force scale (which can run into the thousands
+at high stiffness/velocity, §6) down to the resonator bank's signal scale. `registerGain`
+exists because one `HammerExciter` model is reused unmodified for every register, but a bass
+note packs many more of its 12 partials (§2) into the resonators' effective range than a
+treble note does (whose high partials clamp near Nyquist and contribute almost nothing) —
+measured, an uncompensated bass note at max velocity peaks around 4× full scale while a
+top-octave note peaks around 0.03. `registerGain` (measured/tuned against
+`PianoVoice::setFrequency`, exponent 0.6, reference 220 Hz) is the same idea as a real
+piano's per-register hammer/string voicing, done as one documented curve instead of a
+per-note table — it does not fully flatten loudness across the keyboard (real pianos aren't
+flat either), it brings the *worst case* under 1.0 (measured peak ≈0.87 at the lowest note,
+full velocity) while keeping a natural bass-louder-than-treble trend.
+
+### 1. String / body mode — `StringResonator`
+
+Continuous model: a lightly-damped harmonic oscillator (one vibration mode of a string, or of
+a soundboard panel — the same math either way, which is why §8 reuses this class),
+
+```
+x'' + 2 ζ ω0 x' + ω0² x = f(t) / m
+```
+
+For piano-string / soundboard-panel modes, `ζ ≪ 1` (very lightly damped: strings ring for
+seconds), so the damped natural frequency `ωd ≈ ω0`. Its impulse response is a decaying
+sinusoid `e^(-ζ ω0 t) sin(ωd t)` — i.e. exactly the shape a struck string partial has.
+
+Discretization: standard **matched-Z two-pole resonator** (poles at `r e^{±jθ}`, matched to
+the continuous decay/frequency rather than derived via bilinear transform, so `f_n`/`T60_n`
+land exactly where specified with no warping):
+
+```
+y[n] = 2 r cosθ · y[n-1]  −  r² · y[n-2]  +  G · x[n]
+
+θ = 2π f_n / f_s                              (pole angle -> resonant frequency)
+r = 10^(−3 / (T60_n · f_s))                   (pole radius -> decay time)
+G = (1 − r²) · sinθ                           (unity-ish peak-gain normalization)
+```
+
+`r`'s formula: −60 dB decay in `T60_n` seconds means `r^N = 10^(−60/20) = 10^-3` at
+`N = T60_n · f_s` samples → `r = 10^(−3 / (T60_n f_s))`. `G`'s formula is the standard
+normalization that keeps a driven resonator's peak magnitude roughly independent of `r`
+(the two-pole resonator's frequency response peaks at ≈`G / (1−r)` without it — `(1−r²)sinθ`
+cancels that to unit order).
+
+Per-channel state: `y[n-1]`, `y[n-2]` (two `Sample` history values), sized/reset in
+`onChannelCountChanged()` (same convention as `Oscillator::mPhase`). `θ`/`r`/`G` are shared
+(computed in `update()` from the `frequencyID`/`decayID` properties — standard property
+contract, `REQ-base-2`). Output is denormal-flushed (`arstroFlush`) every sample — a lightly
+damped IIR run for seconds will hit denormals as it decays toward silence, same reasoning as
+`Delay`/`Compressor`'s existing `arstroFlush` calls.
+
+**Property → symbol:** `frequencyID` (Hz) → `f_n`; `decayID` (seconds, T60) → `T60_n`.
+
+### 2. Partial frequencies — inharmonicity (stiff string)
+
+A real string isn't massless/perfectly flexible; bending stiffness raises each partial above
+the ideal harmonic:
+
+```
+f_n = n · f0 · sqrt(1 + B n²)          n = 1 .. N   (N = kPartialCount = 12)
+```
+
+`B` (inharmonicity coefficient, `StringPartialBank::setInharmonicity`) is a property, not
+hardcoded — but per-note it needs *some* default, and this repo has no per-note string
+gauge/tension table (that's out of scope, `REQ-piano-15`'s sibling scope note). Documented
+**empirical** default curve (larger `B` for bass, smaller for treble, matching the real
+qualitative trend — not derived from an actual string's physical dimensions):
+
+```
+B_default(f0) = clamp( 0.00056 · (100 / f0)^1.25,  Bmin = 0.00005,  Bmax = 0.02 )
+```
+
+`PianoVoice::setFrequency(hz)` calls this to seed `B` unless the caller has already called
+`setInharmonicity()` explicitly.
+
+### 3. Partial damping — frequency-dependent loss + damper coupling
+
+Higher partials lose energy faster (air friction + internal losses scale with frequency) —
+documented **empirical** power-law rolloff from a base (fundamental) decay time:
+
+```
+T60_n = T60_1 / n^p_loss              p_loss default 0.9  (StringPartialBank::setDampingExponent)
+```
+
+Damper engagement (§7) scales this down further, per partial, uniformly:
+
+```
+T60_n,eff = T60_n / (1 + d · L_damper)     d ∈ [0,1] damper ramp value, L_damper default 40
+```
+
+`d=0` (lifted): `T60_n,eff = T60_n` (natural string decay). `d=1` (fully engaged): decay time
+collapses by `1+L_damper` ≈ 41×, i.e. a `T60_1 = 3 s` fundamental decays in ≈ 73 ms once the
+damper is fully down — short, but not a click (`REQ-piano-7`).
+
+### 4. Mode-shape excitation gain — strike position
+
+For a string pinned at both ends, mode `n`'s shape is `sin(nπx/L)`; a force applied at
+position `x = βL` (β = fractional strike position, `0 < β < 0.5`) excites mode `n` in
+proportion to the mode shape's value there:
+
+```
+g_n = | sin(n π β) |                  StringPartialBank::setStrikePosition(β), default β ≈ 1/8
+force_into_partial_n[t] = F_hammer[t] · g_n · (2/N)
+```
+
+`(2/N)` is the standard mode-superposition normalization for N truncated modes (keeps total
+injected energy from scaling with the arbitrary partial count `N`). This is the real
+comb-filter mechanism (`REQ-piano-4`): whenever `β ≈ k/n` for integer `k`, `g_n ≈ 0` and that
+partial is suppressed — e.g. striking at `1/8` suppresses partials 8, 16, 24…
+
+### 5. Unison strings — detuning, beating, and *emergent* two-stage decay
+
+Each note has `U` (`kUnisonStrings`, default 2, settable 1–3) full `StringPartialBank`
+instances, detuned a few tenths of a Hz apart:
+
+```
+f0_k = f0 · 2^(detuneCents_k / 1200)        k = 0 .. U-1
+detuneCents_k spread symmetrically around 0, e.g. U=2 -> {-c/2, +c/2}, U=3 -> {-c, 0, +c}
+```
+(`c` = `PianoVoice::setUnisonDetuneCents`, default ≈ 0.6 cents — a few tenths of a Hz at
+piano pitches, matching real piano unison tuning spread.)
+
+All `U` banks are struck by the *same* hammer force (§6) and summed. **Deliberately not
+implemented as a hand-authored envelope:** because the `U` strings are at nearly-identical
+frequencies, their damped sinusoids beat (`|f_k − f_j|` Hz) and, critically, their combined
+(coherent) motion couples into the shared `PianoBridge` (§8) much more strongly than a single
+string's residual, decorrelated ringing does — so the *coupled system itself* naturally
+produces a fast initial decay (energy dumping into the bridge while the strings are roughly
+in phase) followed by a slower tail (once phase has drifted and each string is left mostly
+driving itself) — the real piano's well-known two-stage decay. `REQ-piano-3` requires this be
+emergent, not a second decay-rate constant bolted on; it is not — §3's `T60_n` is the only
+per-partial decay parameter, the two-stage shape comes from unison superposition +
+bridge coupling.
+
+### 6. Hammer–string contact — nonlinear, hysteretic (`HammerExciter`)
+
+A single-degree-of-freedom nonlinear-spring hammer model (the standard simplified
+alternative to solving the full coupled hammer+string PDE in real time): the hammer felt is a
+compression-only nonlinear spring, asymmetric between loading (compressing) and unloading
+(rebounding) so contact dissipates energy — this asymmetry *is* the hysteresis, a documented
+simplification of felt viscoelasticity (not the full Stulov model).
+
+State: hammer compression `x_h` (≥ 0), velocity `v_h`. At `strike(velocity)` (called from
+`PianoVoice::noteOn`): `x_h ← 0`, `v_h ← v0`, contact begins.
+
+```
+v0 = vMaxImpact · velocity              velocity ∈ [0,1] (noteOn arg), vMaxImpact empirical (default 4.0)
+
+c[n]  = max(0, x_h[n])                                    (felt compression this sample)
+F[n]  = K · c[n]^p                       if v_h[n] ≥ 0     (loading)
+F[n]  = K · (1 − ε) · c[n]^p             if v_h[n] < 0      (unloading — softer, dissipative)
+
+v_h[n+1] = v_h[n] − (F[n] / m_h) · dt     (semi-implicit/symplectic Euler — stable for a stiff
+x_h[n+1] = x_h[n] + v_h[n+1] · dt          nonlinear spring at audio sample rates)
+```
+
+Contact ends when `x_h` returns to `0` while `v_h < 0` (hammer rebounds off the string), or a
+safety bound (`kMaxContactMs`, default 15 ms) is reached, whichever comes first — matches
+typical real hammer-string contact durations of 1–5 ms scaling with impact velocity (harder
+strikes → shorter, stiffer contact → brighter tone), which **falls out of the ODE above**
+rather than being separately curve-fitted.
+
+`F[n]` (the reaction force, Newton's third law) is what's fed into `StringPartialBank` as
+`F_hammer` in §4.
+
+**Properties (all empirical/typical, documented as such per rule 2 — not derived from a
+measured instrument):** `massID` → `m_h` (default 1.0, normalized hammer inertia),
+`stiffnessID` → `K` (default 1×10¹⁰, measured — via a standalone stiffness scan against this
+ODE — to put contact duration in a realistic ≈1–9 ms window: ≈2.6 ms at max velocity down to
+≈9.3 ms at a very soft touch, matching real hammer contact times shortening with impact
+force), `nonlinearExponentID` → `p` (default 2.5; real felt is commonly cited in the 2–3.5
+range), `hysteresisLossID` → `ε` (default 0.2 — 20% of loading stiffness lost on rebound).
+`kMaxContactMs` (15 ms) is a numerical safety bound, not a physical target — at the tuned
+default it only binds for very soft (near-zero-velocity) touches.
+
+### 7. Damper engagement ramp
+
+Own small linear ramp (following `ADSREnvelope`'s sample-count-stage pattern, not the
+generic per-property block-smoothing — see rule-1 note above):
+
+```
+d[n+1] = clamp(d[n] + step, 0, 1)      step = ±1 / (engageMs · f_s / 1000)
+```
+
+`noteOff()` (sustain pedal not held, §9) sets the ramp target to `1` (damper closing) over
+`engageMs` (default 20 ms — a felt damper physically takes roughly this long to fully seat).
+`noteOn()`/sustain-pedal-press sets target `0` (damper lifted) over the same ramp shape. `d`
+feeds §3's `T60_n,eff` formula every sample.
+
+### 8. Bridge / soundboard coupling + sympathetic resonance (`PianoBridge`)
+
+All `PianoVoice`s in a `PianoEngine` share **one** `PianoBridge`. Each voice's summed
+unison-string output (§5) is treated as the drive force onto the soundboard; the soundboard
+is modeled the same way a string is (§1) — a small bank of `StringResonator`s, just with
+frequencies/decays typical of a piano soundboard's low-order body modes rather than a
+string's harmonic series:
+
+```
+busIn[n]      = Σ_voices stringOut_voice[n]                 (this sample's total drive)
+response[n]   = Σ_(m=1..M) StringResonator_m.process(busIn[n])     M = kBodyModeCount = 8
+radiated[n]   = response[n] · radiationGain
+```
+
+Body-mode frequencies/decays are a **documented generic placeholder set**, not measured from
+a real instrument (`REQ-piano-14` — no measured IR / room acoustics in scope):
+`{80, 130, 190, 250, 340, 420, 550, 700} Hz`, `T60 ≈ 0.3–0.6 s` each (shorter than string
+`T60`s, so the board itself doesn't ring forever — it's a lossy coupling path, not a second
+set of strings).
+
+**Sympathetic resonance** (`REQ-piano-6`): the *previous* sample's `response[n-1]`, scaled by
+a small `couplingGainID`, is added into every voice's §4 excitation as extra drive, on top of
+`F_hammer`:
+
+```
+totalDrive_voice[n] = force_into_partial_n[n]  +  response[n-1] · couplingGain
+```
+
+Using `n-1` (one sample of delay) rather than solving the mutual system simultaneously is
+standard practice for stable causal coupled digital resonant networks — it introduces a
+negligible (1/f_s ≈ 20 µs) delay in the coupling path. Because every voice's own
+`StringResonator`s are sharply frequency-selective (§1), feeding the *same* broadband
+`response` signal into all of them only measurably excites the strings whose partials are
+near a frequency actually present in `response` — i.e. sympathetic resonance emerges from
+shared-bus feedback into resonant filters, not from a hand-authored per-note-pair coupling
+table (`REQ-piano-6`'s explicit requirement).
+
+`PianoBridge` runs mono (`REQ-piano-13`): `PianoEngine` adds `radiated[n]` to every output
+channel identically. Stereo width, if ever added, belongs here (the way `Reverb` decorrelates
+per-channel delay lines for width) — not in per-voice hammer/string physics.
+
+### 9. Pedals
+
+- **Sustain** (`PianoEngine::setSustainPedal(bool)` → broadcasts `setDamperHeld(true/false)`
+  to every voice): while held, `noteOff()` does **not** start the §7 damper-close ramp — the
+  string keeps ringing (and keeps feeding the bridge) until sustain is released, at which
+  point any note whose key is already up starts closing its damper.
+- **Sostenuto** (`PianoEngine::setSostenutoPedal(true)`): at the instant it's pressed, the
+  engine calls `setDamperHeld(true)` only on voices that are *currently sounding* (key still
+  down or ringing); future notes struck while sostenuto is held are unaffected and damp
+  normally on their own `noteOff()`.
+- **Una corda** (`PianoVoice::setUnaCorda(bool)`): approximates the real "hammer shifts to
+  strike fewer strings" mechanism (`REQ-piano-16`, explicitly *not* literal dynamic
+  unison-count switching) as a hammer-excitation scale:
+
+```
+K_effective       = K · kUnaCordaStiffness          kUnaCordaStiffness default 0.85 (softer contact)
+F_hammer_effective = F_hammer · kUnaCordaGain         kUnaCordaGain default 0.6 (quieter + mellower,
+                                                       since a softer/shorter contact also shifts
+                                                       energy away from high partials — §6's ODE)
+```
+
+### 10. Secondary mechanical noises
+
+Two short filtered-noise bursts, reusing `equalizer::LowPassFilter` (rule 1 — no new filter
+written) rather than a new noise-shaping class:
+
+```
+noise(t) = whiteNoise(t) · A · e^(−t/τ)              (t = seconds since trigger)
+output   = LowPassFilter(cutoff).out(noise(t))
+```
+
+- **Hammer thump** — triggered at `strike()` (§6): `A = A_thump · velocity`, `τ ≈ 3 ms`,
+  `cutoff ≈ 4 kHz` (`A_thump` default small, ≈ 0.03 — audible as texture, not as a separate
+  tone).
+- **Damper noise** — triggered when the §7 ramp starts closing (`d` leaves `0`): fixed small
+  `A ≈ 0.015`, `τ ≈ 15 ms`, `cutoff ≈ 1.5 kHz` (duller than the hammer thump — felt-on-string
+  contact, not felt-on-felt hammer impact).
+
+`whiteNoise(t)` is a small xorshift32 PRNG (no new module — a private helper, deterministic
+per voice instance so unit tests can assert boundedness/reproducibility).
+
+---
+
+## Parameters
+
+| Class | Setter | Unit | Symbol |
+|---|---|---|---|
+| `StringResonator` | `setFrequencyHz` | Hz | `f_n` |
+| | `setDecaySeconds` | s (T60) | `T60_n` |
+| `StringPartialBank` | `setFundamentalHz` | Hz | `f0` |
+| | `setInharmonicity` | — | `B` |
+| | `setBaseDecaySeconds` | s | `T60_1` |
+| | `setDampingExponent` | — | `p_loss` |
+| | `setStrikePosition` | 0..0.5 | `β` |
+| | `setDamperEngagement` | 0..1 target | `d` (ramped) |
+| | `setDamperEngageMs` | ms | ramp time |
+| `HammerExciter` | `setMass` | normalized | `m_h` |
+| | `setStiffness` | normalized | `K` |
+| | `setNonlinearExponent` | — | `p` |
+| | `setHysteresisLoss` | 0..1 | `ε` |
+| | `strike(velocity)` | 0..1 | → `v0` |
+| `PianoBridge` | `setCouplingGain` | linear | sympathetic feedback gain |
+| | `setRadiationGain` | linear | output gain |
+| `PianoVoice` | `setFrequency` (override) | Hz | `f0` (→ all unison banks) |
+| | `setUnisonCount` | 1..3 | `U` |
+| | `setUnisonDetuneCents` | cents | `c` |
+| | `setUnaCorda` | bool | soft-pedal gate |
+| | `setDamperHeld` | bool | sustain/sostenuto gate |
+
+Code cross-reference: every formula above is implemented in the `update()`/`process()` of the
+class named in its section header — see the class map table for the file.

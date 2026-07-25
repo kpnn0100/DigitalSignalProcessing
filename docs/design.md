@@ -22,6 +22,7 @@ the verified build here.
 | Composites | `base/Block`, `FeedbackBlock` | Per-channel chains; serial/parallel routing; feedback. |
 | Sources | `base/SignalGenerator` → `generator/Oscillator` | Enveloped sound sources (own their ADSR). |
 | Modules | `simpleProcessor/`, `equalizer/`, `reverb/`, `effects/`, `envelope/` | Concrete processors. |
+| Physical modeling | `physical/` | Struck-string synthesis (piano): modal resonators, nonlinear hammer contact, shared bridge/sympathetic coupling. See [`../src/physical/README.md`](../src/physical/README.md) for the full math. Not sample playback. |
 | Engine | `synth/SynthEngine`, `VoiceManager`, `Voice` | Polyphony → shared effects → output. |
 | Platform | `base/platform/` | Thin thread/mutex adapter (the only OS-specific code). |
 

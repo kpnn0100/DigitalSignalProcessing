@@ -537,3 +537,157 @@ TEST(VoiceManager_renderBlock_single)
     for (Sample s : buf) any = any || std::fabs(s) > 1e-12;
     CHECK(any);
 }
+
+// ─────────────────────────── physical/ (piano) ───────────────────────────
+
+TEST(StringResonator_api_bypass_and_channel_guard)
+{
+    StringResonator res;
+    res.setFrequencyHz(300.0);
+    res.setDecaySeconds(0.2);
+    exerciseEffect(res, _ok);
+
+    // Numerical safety clamps (README ## 1 note): absurd frequency clamps to
+    // Nyquist, tiny decay clamps to a positive floor — neither should NaN/blow up.
+    resetConfig(1);
+    StringResonator res2;
+    res2.setFrequencyHz(1.0e9);
+    res2.setDecaySeconds(0.0);
+    for (int i = 0; i < 50; ++i)
+    {
+        Sample s = res2.out((i == 0) ? 1.0 : 0.0, 0);
+        CHECK(!std::isnan(s) && !std::isinf(s));
+    }
+}
+
+TEST(StringPartialBank_api_bypass_and_setters)
+{
+    StringPartialBank bank;
+    bank.setFundamentalHz(220.0);
+    bank.setInharmonicity(0.001);
+    bank.setBaseDecaySeconds(1.5);
+    bank.setDampingExponent(0.8);
+    bank.setStrikePosition(0.1);
+    bank.setDamperEngageMs(5.0);
+    exerciseEffect(bank, _ok);
+
+    // Damper ramp: engaging then lifting should not blow up, and should actually
+    // change the effective decay (covers the mDamperValue-changing branch twice).
+    resetConfig(1);
+    StringPartialBank bank2;
+    bank2.setFundamentalHz(220.0);
+    bank2.setBaseDecaySeconds(1.0);
+    bank2.setDamperEngageMs(2.0); // short ramp so the test doesn't need many samples
+    for (int i = 0; i < 20; ++i) bank2.out((i == 0) ? 1.0 : 0.0, 0);
+    bank2.setDamperEngagement(1.0);
+    for (int i = 0; i < 200; ++i) { Sample s = bank2.out(0.0, 0); CHECK(!std::isnan(s)); }
+    bank2.setDamperEngagement(0.0);
+    for (int i = 0; i < 200; ++i) { Sample s = bank2.out(0.0, 0); CHECK(!std::isnan(s)); }
+}
+
+TEST(HammerExciter_api_bypass_and_contact_lifecycle)
+{
+    HammerExciter h;
+    h.setMass(1.0);
+    h.setStiffness(1.0e10);
+    h.setNonlinearExponent(2.5);
+    h.setHysteresisLoss(0.2);
+    exerciseEffect(h, _ok); // covers channel!=0 -> 0.0 branch too (channel 99 in the helper)
+
+    resetConfig(1);
+    HammerExciter h2;
+    CHECK(!h2.isInContact());
+    h2.strike(0.7);
+    CHECK(h2.isInContact());
+    bool sawContactEnd = false;
+    for (int i = 0; i < 2000 && !sawContactEnd; ++i)
+    {
+        h2.out(0.0, 0);
+        if (!h2.isInContact()) sawContactEnd = true;
+    }
+    CHECK(sawContactEnd); // contact ends on its own well before the 15ms safety cap
+    CHECK_NEAR(h2.out(0.0, 0), 0.0, 1e-9); // no force once contact has ended
+
+    // Safety-bound branch: a velocity so soft the ODE alone won't end contact
+    // quickly — must still stop by kMaxContactMs rather than running forever.
+    HammerExciter h3;
+    h3.strike(1e-6);
+    int n = 0;
+    while (h3.isInContact() && n < 20000) { h3.out(0.0, 0); ++n; }
+    CHECK(!h3.isInContact());
+    CHECK(n < 20000);
+}
+
+TEST(PianoBridge_api_bypass_and_multi_voice_bus)
+{
+    PianoBridge bridge;
+    bridge.setCouplingGain(0.2);
+    bridge.setRadiationGain(0.4);
+    exerciseEffect(bridge, _ok);
+
+    resetConfig(1);
+    PianoBridge bridge2;
+    CHECK_NEAR(bridge2.feedback(), 0.0, 1e-12); // nothing accumulated yet
+    bridge2.accumulate(1.0);
+    bridge2.accumulate(0.5); // two voices contributing to the same sample
+    bridge2.tick();
+    CHECK(bridge2.feedback() != 0.0 || bridge2.radiatedOutput() != 0.0);
+}
+
+TEST(PianoVoice_unison_una_corda_and_pedal_api)
+{
+    resetConfig(2); // exercise the channel>0 replicate-cached-sample path (REQ-piano-13)
+    PianoVoice v;
+    v.setFrequency(261.63);
+    v.setUnisonCount(0);      // clamps to 1
+    v.setUnisonCount(9);      // clamps to kMaxUnison
+    v.setUnisonCount(2);
+    v.setUnisonDetuneCents(0.8);
+    v.setInharmonicity(0.0005); // explicit override branch (skips the register-default path)
+    v.setBaseDecaySeconds(2.0);
+    v.setDampingExponent(0.9);
+    v.setStrikePosition(0.125);
+    v.setDamperEngageMs(15.0);
+    v.setHammerMass(1.0);
+    v.setHammerStiffness(1.0e10);
+    v.setHammerNonlinearExponent(2.5);
+    v.setHammerHysteresisLoss(0.2);
+    v.setUnaCorda(true);
+    v.setDamperHeld(false);
+    v.setBridge(nullptr); // standalone (no cross-string coupling) path
+
+    v.noteOn(0.6);
+    Sample left = v.out(0.0, 0);
+    Sample right = v.out(0.0, 1); // channel 1 must read the cached channel-0 sample
+    CHECK_NEAR(left, right, 1e-9);
+    for (int i = 0; i < 100; ++i) { v.out(0.0, 0); v.out(0.0, 1); }
+    v.noteOff();
+    for (int i = 0; i < 100; ++i) { Sample s = v.out(0.0, 0); CHECK(!std::isnan(s)); }
+    CHECK(!v.isFinished()); // long backstop release hasn't elapsed yet
+}
+
+TEST(PianoVoice_sample_rate_change_recomputes_noise_coeffs)
+{
+    resetConfig(1);
+    PianoVoice v;
+    v.setFrequency(220.0);
+    AudioConfig::instance().setSampleRate(44100.0); // broadcasts onSampleRateChanged() to v
+    v.noteOn(0.5);
+    for (int i = 0; i < 50; ++i) { Sample s = v.out(0.0, 0); CHECK(!std::isnan(s)); }
+    resetConfig(1); // restore 48000 for subsequent tests
+}
+
+TEST(PianoVoice_sustain_pedal_defers_damper)
+{
+    resetConfig(1);
+    PianoVoice v;
+    v.setFrequency(220.0);
+    v.setDamperHeld(true); // sustain pedal down
+    v.noteOn(0.7);
+    for (int i = 0; i < 100; ++i) v.out(0.0, 0);
+    v.noteOff(); // damper must NOT engage while held
+    for (int i = 0; i < 100; ++i) { Sample s = v.out(0.0, 0); CHECK(!std::isnan(s)); }
+    v.setDamperHeld(false);
+    v.noteOff(); // pedal released with key already up -> damper engages now
+    for (int i = 0; i < 2000; ++i) { Sample s = v.out(0.0, 0); CHECK(!std::isnan(s)); }
+}

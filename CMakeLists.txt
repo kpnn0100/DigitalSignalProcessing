@@ -51,6 +51,17 @@ add_executable(rack_smoke apps/kitchen_sink/test_rack.cpp apps/kitchen_sink/Rack
 target_link_libraries(rack_smoke PRIVATE arstro_dsp)
 add_test(NAME rack_smoke COMMAND rack_smoke)
 
+# ── Piano demo (the "simple UI" for auditioning PianoVoice — REQ-piano-10) ──
+add_executable(arstro_piano_demo apps/piano_demo/main.cpp apps/piano_demo/PianoEngine.cpp)
+target_link_libraries(arstro_piano_demo PRIVATE arstro_dsp)
+
+if(Python3_Interpreter_FOUND)
+  add_test(NAME piano_demo_smoke
+           COMMAND ${Python3_EXECUTABLE}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_piano_demo.py
+                   $<TARGET_FILE:arstro_piano_demo>)
+endif()
+
 # ── Optional demo app (needs libsndfile; skipped if not present) ──
 find_library(SNDFILE_LIB sndfile)
 if(SNDFILE_LIB)

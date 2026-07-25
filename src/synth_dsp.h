@@ -23,6 +23,13 @@
 #include "envelope/ADSREnvelope.h"
 #include "generator/Oscillator.h"
 
+// Physical modeling (struck-string / piano) — see src/physical/README.md
+#include "physical/StringResonator.h"
+#include "physical/StringPartialBank.h"
+#include "physical/HammerExciter.h"
+#include "physical/PianoBridge.h"
+#include "physical/PianoVoice.h"
+
 // Effects
 #include "effects/Compressor.h"
 #include "effects/Overdrive.h"
