@@ -16,6 +16,9 @@
  *                         partial-4's shift is easy to measure), 1 s render
  *    pianodamper <out> <0|1>  PianoVoice: strike, 100ms, noteOff. arg=0 damper
  *                         engages (not held); arg=1 sustain held (setDamperHeld)
+ *    pianoreuse <out>     PianoVoice: strike C4, release (damper engages+settles),
+ *                         then setFrequency(A4)+noteOn() on the SAME voice —
+ *                         the exact voice-steal sequence PianoEngine uses
  *    pianosympathetic <out> <0|1>  Struck A3 (220Hz) + a silently-depressed voice
  *                         sharing one PianoBridge; arg=0 renders the SAME-pitch
  *                         silent voice, arg=1 the OFF-pitch (233.08Hz) one
@@ -268,6 +271,33 @@ static std::vector<double> renderPianoSympathetic(double whichFlag)
     return out;
 }
 
+// Regression: reuse (voice-steal) a PianoVoice whose damper is fully engaged,
+// via the exact sequence PianoEngine::noteOnMidi uses on a stolen voice
+// (setFrequency() THEN noteOn()) — see the comment on
+// StringPartialBank::reset() / the synthTests.cpp regression test for the
+// full mechanism this guards against (a stale short-decay/high-gain
+// coefficient set producing a large amplitude spike on the reused note).
+static std::vector<double> renderPianoReuse()
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(261.63); // C4
+    v.noteOn(0.8);
+    const int pre = kSampleRate / 10; // 100 ms struck
+    for (int i = 0; i < pre; ++i) v.out(0.0, 0);
+    v.noteOff();                                    // engage damper (no sustain)
+    const int settle = kSampleRate / 10;             // let it fully engage
+    for (int i = 0; i < settle; ++i) v.out(0.0, 0);
+
+    v.setFrequency(440.0); // A4 — voice-stealing order: setFrequency() then noteOn()
+    v.noteOn(0.8);
+    const int n = kSampleRate / 2; // 500 ms of the reused note
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i) out[i] = v.out(0.0, 0);
+    return out;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3)
@@ -296,6 +326,7 @@ int main(int argc, char **argv)
     else if (scenario == "synth") samples = renderSynth();
     else if (scenario == "piano") samples = renderPiano(arg);
     else if (scenario == "pianodamper") samples = renderPianoDamper(arg);
+    else if (scenario == "pianoreuse") samples = renderPianoReuse();
     else if (scenario == "pianosympathetic") samples = renderPianoSympathetic(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 

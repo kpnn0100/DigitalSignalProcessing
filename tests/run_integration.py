@@ -260,6 +260,19 @@ def check_piano_damper(binpath):
     return f"engaged_ratio={ratio_engaged:.3f} held_ratio={ratio_held:.3f}"
 
 
+def check_piano_voice_reuse_bounded(binpath):
+    """Regression: reusing a fully-damped PianoVoice for a new note (the exact
+    setFrequency()-then-noteOn() sequence PianoEngine uses when stealing a voice)
+    must sound like a normal struck note, not a ~20x amplitude spike (a stale
+    short-decay/high-gain resonator coefficient set left over from the previous
+    note's engaged damper — see StringPartialBank::reset())."""
+    y = render(binpath, "pianoreuse")
+    p = peak(y)
+    if p > 0.95:
+        raise Failure(f"reused-voice note peak {p:.3f} — spiking/saturating, expected a normal bounded note")
+    return f"peak={p:.3f}"
+
+
 def check_piano_sympathetic_resonance(binpath):
     """A struck A3 (220Hz) sympathetically excites a silently-held same-pitch string
     far more than an off-pitch (233.08Hz) one — emergent via the shared PianoBridge,
@@ -286,6 +299,7 @@ CHECKS = [
     ("synth_deterministic_nonsilent", check_synth_deterministic_nonsilent),
     ("piano_inharmonicity", check_piano_inharmonicity),
     ("piano_damper_decay", check_piano_damper),
+    ("piano_voice_reuse_bounded", check_piano_voice_reuse_bounded),
     ("piano_sympathetic_resonance", check_piano_sympathetic_resonance),
 ]
 

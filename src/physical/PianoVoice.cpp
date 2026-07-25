@@ -175,7 +175,18 @@ namespace arstro
         if (mUnaCorda)
             force *= kUnaCordaGain;
 
-        Sample feedback = mBridge ? mBridge->feedback() : 0.0;
+        // Gate sympathetic feedback by how engaged the damper is (README ## 8):
+        // a real damper mutes the string's response to ANY driving, not just its
+        // own free decay, and StringResonator's input gain G=(1-r^2)sin(theta)
+        // (README ## 1) necessarily grows as decay shrinks (a lower-Q resonator
+        // needs more input coupling for the same peak response) — so an engaged,
+        // heavily-damped string is numerically MORE sensitive to broadband input
+        // per sample than a ringing one, even though its own free decay is much
+        // faster. Feeding it undamped bridge feedback anyway turns damper
+        // engagement into an unbounded-gain feedback path instead of the
+        // physically-correct "damped strings stop participating" behavior.
+        Sample damping = mStrings[0].damperValue();
+        Sample feedback = mBridge ? mBridge->feedback() * (1.0 - damping) : 0.0;
         Sample totalDrive = force + feedback;
 
         Sample stringSum = 0.0;

@@ -585,6 +585,40 @@ TEST(StringPartialBank_api_bypass_and_setters)
     for (int i = 0; i < 200; ++i) { Sample s = bank2.out(0.0, 0); CHECK(!std::isnan(s)); }
 }
 
+// Regression: reset() must recompute decay coefficients from the just-cleared
+// damper value, not just clear history — see the longer comment on
+// PianoVoice_reused_voice_after_damper_engaged_stays_bounded in synthTests.cpp
+// for the full mechanism. This is the white-box version: drive a bank to a
+// fully-engaged damper, reset() it, then compare an impulse response's peak
+// against a never-damped bank's — they must be close (same coefficients),
+// not ~40x apart (the stale-coefficient bug).
+TEST(StringPartialBank_reset_recomputes_decay_coefficients)
+{
+    resetConfig(1);
+    Sample maxAbsFresh = 0.0;
+    {
+        StringPartialBank fresh;
+        fresh.setFundamentalHz(220.0);
+        fresh.setBaseDecaySeconds(2.0);
+        for (int i = 0; i < 200; ++i)
+            maxAbsFresh = std::max(maxAbsFresh, std::fabs((double)fresh.out((i == 0) ? 1.0 : 0.0, 0)));
+    }
+
+    StringPartialBank damped;
+    damped.setFundamentalHz(220.0);
+    damped.setBaseDecaySeconds(2.0);
+    damped.setDamperEngageMs(2.0);
+    damped.setDamperEngagement(1.0);
+    for (int i = 0; i < 2000; ++i) damped.out(0.0, 0); // fully engaged
+    damped.reset();                                     // must restore natural-decay coefficients
+
+    Sample maxAbsReused = 0.0;
+    for (int i = 0; i < 200; ++i)
+        maxAbsReused = std::max(maxAbsReused, std::fabs((double)damped.out((i == 0) ? 1.0 : 0.0, 0)));
+
+    CHECK(maxAbsReused < maxAbsFresh * 2.0); // same order of magnitude, not a ~40x stale-gain spike
+}
+
 TEST(HammerExciter_api_bypass_and_contact_lifecycle)
 {
     HammerExciter h;

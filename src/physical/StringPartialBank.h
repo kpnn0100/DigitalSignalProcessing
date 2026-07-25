@@ -43,6 +43,14 @@ namespace arstro
         // before striking a reused (voice-stolen) string. See StringResonator::reset().
         void reset();
 
+        // Current damper ramp position, 0 (lifted) .. 1 (fully engaged). Callers
+        // that drive this bank with an external signal besides the hammer (i.e.
+        // PianoVoice's sympathetic-resonance feedback) must gate that input by
+        // (1 - damperValue()) themselves — see README ## 8's "damped strings gate
+        // sympathetic feedback too" note for why this can't be handled internally
+        // by the per-partial decay alone.
+        Sample damperValue() const { return mDamperValue; }
+
         void update() override;
 
     protected:

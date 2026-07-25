@@ -250,6 +250,20 @@ d[n+1] = clamp(d[n] + step, 0, 1)      step = ±1 / (engageMs · f_s / 1000)
 `noteOn()`/sustain-pedal-press sets target `0` (damper lifted) over the same ramp shape. `d`
 feeds §3's `T60_n,eff` formula every sample.
 
+**Voice reuse correctness (found via `apps/piano_demo`/`examples/piano` integration testing,
+`REQ-piano-12` addendum):** `StringPartialBank::reset()` (called from `PianoVoice::noteOn()`
+before every strike, so a voice-stolen bank starts clean — see §"Why new classes") must
+recompute each partial's decay coefficient from the just-cleared `d = 0`, not only zero the
+resonator history. `PianoEngine::noteOnMidi()` calls `setFrequency()` (which recomputes §1's
+`r`/`G` from *whatever `d` currently is*) **before** `noteOn()` (where `reset()` runs); on a
+voice reused from a previous, fully-damped note (`d` was `1`), skipping this left the new
+note's resonators with the *previous* note's short-`T60`/large-`G` coefficients (§1: `G`
+grows as `T60` shrinks) until the *next* decay-affecting property change — so the hammer
+struck a resonator calibrated for ~40× less decay time than the fresh string actually has,
+producing a large spurious amplitude spike instead of a normal note. Fixed by having
+`reset()` end with the same `recomputeEffectivePartials()` call §3's ramp uses, using the
+now-zeroed `d`.
+
 ### 8. Bridge / soundboard coupling + sympathetic resonance (`PianoBridge`)
 
 All `PianoVoice`s in a `PianoEngine` share **one** `PianoBridge`. Each voice's summed
@@ -286,6 +300,14 @@ negligible (1/f_s ≈ 20 µs) delay in the coupling path. Because every voice's 
 near a frequency actually present in `response` — i.e. sympathetic resonance emerges from
 shared-bus feedback into resonant filters, not from a hand-authored per-note-pair coupling
 table (`REQ-piano-6`'s explicit requirement).
+
+**Damped strings gate sympathetic feedback too:** `PianoVoice` scales `response[n-1]` by
+`(1 − d)` (§7's damper ramp value) before adding it as drive. A real damper mutes the
+string's response to *any* driving, not only its own free decay — and since §1's `G` grows
+as a partial's decay shrinks, an engaged (heavily damped) string is numerically *more*
+sensitive to broadband input per sample than a ringing one, even though its own free decay
+is much faster. Without this gate, damper engagement turned sympathetic coupling into a
+disproportionately strong feedback path for exactly the strings that should be going silent.
 
 `PianoBridge` runs mono (`REQ-piano-13`): `PianoEngine` adds `radiated[n]` to every output
 channel identically. Stereo width, if ever added, belongs here (the way `Reverb` decorrelates

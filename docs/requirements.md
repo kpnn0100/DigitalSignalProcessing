@@ -89,6 +89,25 @@ silently reintroduced as bugs or silently promised as done)
   by the existing unit tests since `noteOn()` is exercised everywhere). `PianoEngine`'s voice
   allocator also prefers a never-used voice over reusing an active one before falling back to
   age-based stealing, for the same reason.
+  **Second consequence, found via `examples/piano` interactive play (user report: "without
+  sustain on, the sound is broken... right now all notes just have the same sound"):**
+  resetting history isn't sufficient on its own — `reset()` must also recompute each
+  partial's *decay coefficients* from the cleared damper value. `PianoEngine::noteOnMidi()`
+  calls `setFrequency()` (recomputes coefficients from the *current* damper state) before
+  `noteOn()` (where `reset()` runs), so a voice reused from a previously fully-damped note
+  briefly carried that note's short-decay/high-input-gain coefficients into the new strike —
+  measured up to a ~20–40× amplitude spike, reproducible without sustain (damper engaged)
+  and absent with sustain held (damper never engages) or with the shared `PianoBridge`
+  disabled (confirms this is single-voice, not a sympathetic-coupling instability). Fixed:
+  `reset()` now ends by recomputing effective decay from the just-zeroed damper value; see
+  `src/physical/README.md` §7's addendum for the full mechanism. Regression coverage:
+  `PianoVoice_reused_voice_after_damper_engaged_stays_bounded` (synthTests.cpp),
+  `StringPartialBank_reset_recomputes_decay_coefficients` (coverageTests.cpp),
+  `piano_voice_reuse_bounded` (tests/run_integration.py). Separately, sympathetic feedback
+  (`REQ-piano-6`) is now also gated by `(1 − damper)` in `PianoVoice` — a real damper mutes
+  a string's response to any driving, not only its own decay — see `README.md` §8's addendum;
+  this alone did not fix the reported bug but is a genuine physical-correctness improvement
+  found during the same investigation.
 - `REQ-piano-13` — The physical simulation (hammer + string + bridge state) runs once per
   output frame (computed on channel 0, replicated to other channels) — the voice is a mono
   physical source. Stereo width, if added later, belongs at the bridge/output stage (as

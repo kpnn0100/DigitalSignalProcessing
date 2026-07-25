@@ -45,6 +45,17 @@ namespace arstro
         mDamperValue = 0.0;
         mDamperTarget = 0.0;
         mDamperStep = 0.0;
+        // Re-derive each partial's decay coefficient from the now-lifted damper.
+        // A reused (voice-stolen) bank can still carry heavily-damped coefficients
+        // (short T60 -> large StringResonator input gain G, README ## 1) computed
+        // for the PREVIOUS note's fully-engaged damper — PianoEngine calls
+        // setFrequency() (which recomputes coefficients from the *current*
+        // mDamperValue) before noteOn() (where this reset() runs), so a reused
+        // voice's coefficients are briefly stale/wrong otherwise. Clearing history
+        // above without this would leave the new note's hammer strike driving a
+        // resonator whose gain was calibrated for a ~40x-shorter decay than the
+        // fresh string actually has — a large, spurious amplitude spike.
+        recomputeEffectivePartials();
     }
 
     void StringPartialBank::update()

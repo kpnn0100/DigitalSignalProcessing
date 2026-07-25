@@ -506,6 +506,39 @@ TEST(PianoVoice_velocity_increases_loudness)
     CHECK(peak(0.9) > peak(0.3) * 1.5);
 }
 
+// Regression (REQ-piano-12 addendum): reusing a voice whose damper is fully
+// engaged must NOT spike. PianoEngine's real allocation path calls
+// setFrequency() (recomputes StringPartialBank decay coefficients from
+// whatever mDamperValue currently is) BEFORE noteOn() (where reset() runs) —
+// on a voice-stolen bank that was left fully damped by a previous note, that
+// briefly bakes a short-T60/large-input-gain coefficient set (README ## 1's
+// G=(1-r^2)sin(theta) grows as decay shrinks) into the resonators; the new
+// note's hammer strike then drove that miscalibrated resonator, producing a
+// ~20x amplitude spike (measured) instead of a normal struck note. Fixed by
+// having StringPartialBank::reset() also recompute decay coefficients from
+// the just-cleared damper value. This test exercises the exact sequence
+// PianoEngine::noteOnMidi uses on a stolen voice.
+TEST(PianoVoice_reused_voice_after_damper_engaged_stays_bounded)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(261.63); // C4
+    v.noteOn(0.8);
+    for (int i = 0; i < 4800; ++i) v.out(0.0, 0); // ring 100ms
+    v.noteOff();                                  // engage damper (no pedal held)
+    for (int i = 0; i < 4800; ++i) v.out(0.0, 0); // let it fully engage (>>20ms ramp)
+
+    // Voice-stealing path: setFrequency() first, then noteOn() — matches
+    // PianoEngine::noteOnMidi exactly.
+    v.setFrequency(440.0); // A4
+    v.noteOn(0.8);
+    double maxAbs = 0.0;
+    for (int i = 0; i < 4800; ++i)
+        maxAbs = std::max(maxAbs, std::fabs((double)v.out(0.0, 0)));
+    CHECK(maxAbs < 1.5); // bounded like any normal struck note (README ## Units), not a spike
+}
+
 int main()
 {
     return mini::runAll();
