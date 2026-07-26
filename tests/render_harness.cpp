@@ -20,6 +20,8 @@
  *                         spectral-evolution measurement (high/low band collapse)
  *    pianodoubledecay <out>  PianoVoice C4 held 5 s, 1 unison string — for the M4
  *                         prompt-sound/aftersound (double decay) measurement
+ *    bridgeimpulse <out>  PianoBridge impulse response (normalised) — for the M5
+ *                         soundboard transfer-function measurement
  *    pianoreuse <out>     PianoVoice: strike C4, release (damper engages+settles),
  *                         then setFrequency(A4)+noteOn() on the SAME voice —
  *                         the exact voice-steal sequence PianoEngine uses
@@ -338,6 +340,31 @@ static std::vector<double> renderPianoDoubleDecay()
     return out;
 }
 
+// M5 acceptance (plan §M5): the soundboard must colour the treble. Impulses the
+// shared bridge bus and renders its radiated response, so the measurement runs
+// end-to-end through the real audio path (including 16-bit quantisation).
+static std::vector<double> renderBridgeImpulse()
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoBridge bridge;
+    const int n = kSampleRate / 2;
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i)
+    {
+        bridge.accumulate(i == 0 ? 1.0 : 0.0);
+        bridge.tick();
+        out[i] = bridge.radiatedOutput();
+    }
+    // Normalise so the impulse response uses the WAV's full range rather than
+    // disappearing into quantisation noise.
+    double peak = 0.0;
+    for (double v : out) peak = std::max(peak, std::fabs(v));
+    if (peak > 0.0)
+        for (double &v : out) v *= 0.9 / peak;
+    return out;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3)
@@ -369,6 +396,7 @@ int main(int argc, char **argv)
     else if (scenario == "pianoreuse") samples = renderPianoReuse();
     else if (scenario == "pianospectral") samples = renderPianoSpectral();
     else if (scenario == "pianodoubledecay") samples = renderPianoDoubleDecay();
+    else if (scenario == "bridgeimpulse") samples = renderBridgeImpulse();
     else if (scenario == "pianosympathetic") samples = renderPianoSympathetic(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 

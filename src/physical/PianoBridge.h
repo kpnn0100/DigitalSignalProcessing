@@ -15,7 +15,11 @@ namespace arstro
     class PianoBridge : public SignalProcessor
     {
     public:
-        static constexpr int kBodyModeCount = 8;
+        // README ## 8: plate modal density is constant in Hz, so these are spaced
+        // uniformly in frequency across kBodyLowHz..kBodyHighHz. PianoBridge is a
+        // SINGLE shared instance, so 128 modes cost ~10% of the string resonators —
+        // the count is limited by realism bookkeeping, not by CPU.
+        static constexpr int kBodyModeCount = 128;
 
         enum PropertyIndex
         {
@@ -49,6 +53,7 @@ namespace arstro
 
     private:
         std::array<StringResonator, kBodyModeCount> mModes;
+        std::array<Sample, kBodyModeCount> mModeWeight{}; // radiation(f)/sqrt(M)
         Sample mBus = 0.0;
         Sample mLastResponse = 0.0;
         Sample mCouplingGain = 0.0;

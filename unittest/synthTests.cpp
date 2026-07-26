@@ -1011,6 +1011,84 @@ TEST(PianoVoice_aftersound_rate_matches_horizontal_polarisation)
     CHECK(late < expectedVertRate * 0.5);
 }
 
+// ───────────────── M5: soundboard / bridge ─────────────────
+// Plan §M5; math in src/physical/README.md ## 8.
+
+// Acceptance: the soundboard must COLOUR the treble. Before M5 the bridge had 8
+// modes spanning 80-700 Hz, so everything above 700 Hz radiated completely flat —
+// naked resonators, which is music-box territory rather than an instrument.
+TEST(PianoBridge_colours_the_treble)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    PianoBridge bridge;
+
+    // Impulse the shared bus and capture the radiated response.
+    std::vector<double> y(24000);
+    for (size_t i = 0; i < y.size(); ++i)
+    {
+        bridge.accumulate(i == 0 ? 1.0 : 0.0);
+        bridge.tick();
+        y[i] = bridge.radiatedOutput();
+    }
+
+    auto mag = [&](double f) {
+        const double w = 2.0 * M_PI * f / 48000.0, c = 2.0 * std::cos(w);
+        double s1 = 0, s2 = 0;
+        for (double v : y) { const double s0 = v + c * s1 - s2; s2 = s1; s1 = s0; }
+        return std::hypot(s1 - s2 * std::cos(w), s2 * std::sin(w));
+    };
+
+    std::vector<double> db;
+    double peak = 0.0;
+    for (double f = 700.0; f <= 5000.0; f += 25.0) peak = std::max(peak, mag(f));
+    CHECK(peak > 1e-6); // it radiates up there at all
+    for (double f = 700.0; f <= 5000.0; f += 25.0)
+        db.push_back(20.0 * std::log10(std::max(1e-12, mag(f)) / peak));
+    std::sort(db.begin(), db.end());
+
+    const double variation = db.back() - db[(size_t)(db.size() * 0.05)];
+    CHECK(variation >= 6.0); // measured 10.0 dB — a real board ripples ~10 dB up here
+}
+
+// Plate physics: a soundboard's modal density is CONSTANT in Hz (bending waves give
+// w ~ k^2), so the modes must be spread roughly uniformly in frequency across the
+// range — not bunched at the bottom the way the pre-M5 set was, and not laid out as
+// a harmonic series.
+TEST(PianoBridge_modes_span_the_audible_range_uniformly)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    PianoBridge bridge;
+    std::vector<double> y(24000);
+    for (size_t i = 0; i < y.size(); ++i)
+    {
+        bridge.accumulate(i == 0 ? 1.0 : 0.0);
+        bridge.tick();
+        y[i] = bridge.radiatedOutput();
+    }
+    auto mag = [&](double f) {
+        const double w = 2.0 * M_PI * f / 48000.0, c = 2.0 * std::cos(w);
+        double s1 = 0, s2 = 0;
+        for (double v : y) { const double s0 = v + c * s1 - s2; s2 = s1; s1 = s0; }
+        return std::hypot(s1 - s2 * std::cos(w), s2 * std::sin(w));
+    };
+
+    // Every octave band from 125 Hz to 4 kHz must carry real energy — i.e. modes are
+    // present across the whole range, not just the bottom.
+    double loudest = 0.0;
+    std::vector<double> band;
+    for (double centre : {125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0})
+    {
+        double acc = 0.0;
+        for (double f = centre * 0.75; f <= centre * 1.5; f += centre * 0.05) acc += mag(f);
+        band.push_back(acc);
+        loudest = std::max(loudest, acc);
+    }
+    for (double b : band)
+        CHECK(b > loudest * 0.02); // no band is effectively dead (>-34 dB of the loudest)
+}
+
 int main()
 {
     return mini::runAll();

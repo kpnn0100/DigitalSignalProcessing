@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-25 (M4 complete)
-- **Last commit:** M4 — two transverse polarisations (double decay)
+- **Last updated:** 2026-07-25 (M5 complete)
+- **Last commit:** M5 — soundboard plate modes (treble colouration)
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -17,6 +17,7 @@ file first and updates it last, every session. Spec:
 | **M2** (64 partials + flattened loop) | **19.27× RT** (median 18.57×) | 20.75× | ~1024 | ✅ met |
 | **M3** (hammer↔string coupling) | **14.96× RT** | — | ~1024 | ✅ met (3.7× margin) |
 | **M4** (two polarisations) | **13.15× RT** | — | ~1280 | ✅ met (3.3× margin) |
+| **M5** (128 soundboard modes) | **10.26× RT** | — | ~1408 | ✅ met (2.6× margin) |
 
 Measured by `./build/piano_bench` (5 passes × 10 s, best-of). M2's resonator count is
 pitch-dependent (bass fills the 64 cap, treble uses ~5); ~1024 is the benchmark chord's worst
@@ -27,22 +28,23 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 
 ## ► NEXT
 
-**M5 — Soundboard / bridge.** Everything above 700 Hz currently radiates *completely
-uncoloured*: `PianoBridge` has 8 modes spanning 80–700 Hz, so the treble is naked resonators —
-music-box territory. Extend the modal set to ~30–40 modes covering 50 Hz – 5 kHz with realistic
-plate modal density and radiation rolloff.
+**M6 — Per-register voicing.** The last structural reason notes still sound like transpositions
+of each other: one hammer mass, one felt stiffness, one strike position and one unison count
+serve all 88 keys. Real pianos grade all four across the keyboard.
 
-⚠ **Requirement conflict if you take the shortcut.** Commuted synthesis / convolving a measured
-soundboard impulse response would be cheaper and very effective, but contradicts `REQ-piano-14`
-(measured IR / room acoustics explicitly out of scope). Per rule 5, **amend the requirement
-first** if choosing that route — the modal-extension route has no conflict.
+| Property | Bass | Treble | Today |
+|---|---|---|---|
+| Hammer mass | ~11–12 g | ~4 g | one value |
+| Felt stiffness | softer | harder | one value |
+| Strike position β | ~1/8 | ~1/15 | 0.125 everywhere |
+| Strings per note | 1 → 2 | 3 | 2 everywhere |
 
-Also worth doing here: `PianoBridge`'s coupling gain has now been rescaled twice (M1, M3)
-purely to chase stability as the drive path's units changed. M5's admittance-based bridge —
-where the bridge sets string damping *and* radiation, making the loop self-limiting — is the
-principled fix, and would retire `kVelocityToSignal` too.
+M6 also **replaces `voicingGain`** (README ## Units) — the interim `f^0.8` curve standing in
+for exactly this physics since M1 — with the real thing, and with M2's partial count landed the
+strike-position comb is finally audible and note-dependent.
 
-Budget: M4 leaves **13.15× RT**, 3.3× above the gate.
+Budget: M5 leaves **10.26× RT**, 2.6× above the gate. M6 adds no resonators (it re-parameterises
+existing ones), so the cost should be flat.
 
 ---
 
@@ -55,7 +57,7 @@ Budget: M4 leaves **13.15× RT**, 3.3× above the gate.
 | M2 | Pitch-dependent partial count (bandwidth) | `[x]` |
 | M3 | Coupled hammer↔string interaction | `[x]` |
 | M4 | Two transverse polarisations (double decay) | `[x]` |
-| M5 | Soundboard / bridge | `[ ]` |
+| M5 | Soundboard / bridge | `[x]` |
 | M6 | Per-register voicing | `[ ]` |
 | M7 | Longitudinal modes & phantom partials | `[ ]` |
 | M8 | Tension modulation (attack pitch glide) | `[ ]` |
@@ -152,11 +154,28 @@ some acceptance criterion could not be verified here (see Verification notes).
 - [x] Re-run M0 benchmark: **13.15× RT** — budget met with 3.3× margin
 - [x] 100 % line coverage held on all five `physical/` sources
 
-### M5 — Soundboard / bridge `[ ]`
-- [ ] Choose approach; if commuted/measured IR → **amend `REQ-piano-14` first**
-- [ ] Extend modal set to ~30–40 modes, 50 Hz – 5 kHz, realistic density + radiation rolloff
-- [ ] Test: bridge transfer function shows ≥ 6 dB variation above 700 Hz
-- [ ] Re-run M0 benchmark, record
+### M5 — Soundboard / bridge `[x]`
+- [x] Chose the **modal-extension** route — no `REQ-piano-14` conflict (the commuted/measured-IR
+      shortcut would have needed the requirement amended first)
+- [x] 8 modes (80–700 Hz) → **128 modes (50 Hz – 5 kHz)**, spaced uniformly in FREQUENCY
+      because a plate's modal density is constant in Hz (`ω ∝ k²`) — a harmonic series is the
+      wrong model here — with deterministic golden-ratio jitter so the grid cannot ring as a comb
+- [x] Frequency-dependent mode damping so **modal overlap** grows with frequency: isolated
+      resonances low (overlap 0.16 at 100 Hz, as a real board has), smooth coloured continuum
+      high (overlap ~1.0 at 5 kHz). This is how a real board compensates our ~5× undersampling
+      of its true modal density
+- [x] **`1/sqrt(M)` per-mode normalisation** — modes sum incoherently, so a bare sum scales as
+      `sqrt(M)` and any mode-count change silently rescales the string→bridge→string loop gain.
+      That is exactly why the coupling gain had to be re-tuned at M1 *and* M3; it did **not**
+      need re-tuning here despite 16× more modes
+- [x] Unit test: transfer function **10.0 dB variation** above 700 Hz (≥6), plus a test that
+      every octave band 125 Hz – 4 kHz carries real energy
+- [x] Integration test: same 10.0 dB measured end-to-end through the WAV path
+- [x] Sympathetic selectivity improved **66× → 288×** (denser bridge = sharper discrimination)
+- [x] Loop stability re-verified at the worst case (8 sustained bass voices): stable at the
+      **unchanged** coupling gain of 5.0; diverges only at 50
+- [x] Re-run M0 benchmark: **10.26× RT** — budget met with 2.6× margin
+- [x] 100 % line coverage held on all five `physical/` sources
 
 ### M6 — Per-register voicing `[ ]`
 - [ ] Hammer mass(f0), felt stiffness(f0), strike position β(f0), strings-per-note(f0)
@@ -188,6 +207,26 @@ some acceptance criterion could not be verified here (see Verification notes).
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
 
+- **2026-07-25 (M5) — normalise a modal bank by `1/sqrt(M)`, or its mode count becomes a hidden
+  stability parameter.** Modes at different frequencies sum incoherently, so a bare sum scales
+  as `sqrt(M)`. Going 8 → 128 modes would have multiplied the string→bridge→string loop gain 4×
+  and forced a *third* coupling-gain re-tune (after M1 and M3). With the normalisation the gain
+  of 5.0 was left untouched and the worst case (8 sustained bass voices) stayed stable. The mode
+  count is now a realism knob, not a stability knob.
+- **2026-07-25 (M5) — modal OVERLAP, not mode count, controls how smooth a plate sounds.** A real
+  board has 250–500 modes in 50 Hz–5 kHz; 128 undersamples that ~5×, and at realistic Q it rings
+  as a row of isolated resonances. Measured the trade-off directly: at damping slope 0.9 the
+  response was over-smoothed to **4.8 dB** variation (failing the ≥6 criterion from the wrong
+  direction — too flat, not too peaky); at slope 0.45 with 128 modes it lands at **10.0 dB**,
+  matching a real board's ripple, with overlap ~1.0 at 5 kHz and 0.16 at 100 Hz. Damping slope
+  turned out to be the dominant control, not mode count.
+- **2026-07-25 (M5) — the admittance-based bridge is deferred, deliberately.** Plan §M5's stretch
+  goal (bridge admittance sets string damping *and* radiation, making the loop self-limiting and
+  retiring `kVelocityToSignal`) would rewrite M1's calibrated pitch→decay curve, since string
+  decay would stop being an independent parameter. That is a milestone-sized change with real
+  regression risk against M1/M3/M4, not a stretch on top of M5. Recorded here so it is not
+  silently forgotten: it remains the principled fix for the coupling-gain rescaling and for
+  `kVelocityToSignal`.
 - **2026-07-25 (M4) — the polarisation split belongs to the BRIDGE loss term, not to the whole
   decay rate.** The obvious first implementation applied one flat `R_pol` to all of `alpha_n`,
   shortening every partial's prompt decay by 2.83× — including the high partials, whose decay
@@ -322,6 +361,11 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M5** — fully verified; nothing marked `[!]`. The treble is no longer radiating naked: the
+  soundboard now colours 700 Hz – 5 kHz by ~10 dB where it was previously flat. **M6 is the last
+  structural gap** — one hammer and one strike position still serve all 88 notes, so notes remain
+  transpositions of each other in character. After M6 the model should be judged on its timbre
+  rather than on missing mechanisms.
 - **M4** — fully verified; nothing marked `[!]`. Notes now **bloom**: a fast prompt sound
   giving way to a long quiet aftersound, strongest in the bass/mid as on a real instrument.
   Still missing before this can be judged as intended timbre: **M5** (everything above 700 Hz

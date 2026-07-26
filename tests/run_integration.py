@@ -392,6 +392,27 @@ def check_piano_double_decay(binpath):
     return f"prompt {early:.2f}/s -> aftersound {late:.2f}/s (ratio {early / late:.2f})"
 
 
+def check_soundboard_colours_treble(binpath):
+    """M5 acceptance (plan §M5): the soundboard must COLOUR the treble. Before M5 the
+    bridge had 8 modes spanning 80-700 Hz, so everything above 700 Hz radiated
+    completely flat — naked resonators, i.e. music box rather than instrument. A real
+    board ripples ~10 dB up there."""
+    y = render(binpath, "bridgeimpulse")
+    freqs = [700.0 + 25.0 * i for i in range(int((5000 - 700) / 25) + 1)]
+    mags = [goertzel_mag(y, f) for f in freqs]
+    peak = max(mags)
+    if peak <= 0:
+        raise Failure("bridge radiates nothing above 700 Hz")
+    db = sorted(20.0 * math.log10(max(m, 1e-12) / peak) for m in mags)
+    variation = db[-1] - db[int(len(db) * 0.05)]
+    if variation < 6.0:
+        raise Failure(
+            f"treble is uncoloured: only {variation:.1f} dB variation above 700 Hz "
+            "(need >= 6) — the soundboard is not shaping the top end"
+        )
+    return f"{variation:.1f} dB variation across 700 Hz - 5 kHz"
+
+
 def check_piano_sympathetic_resonance(binpath):
     """A struck A3 (220Hz) sympathetically excites a silently-held same-pitch string
     far more than an off-pitch (233.08Hz) one — emergent via the shared PianoBridge,
@@ -431,6 +452,7 @@ CHECKS = [
     ("piano_bandwidth", check_piano_bandwidth),
     ("piano_spectral_evolution", check_piano_spectral_evolution),
     ("piano_double_decay", check_piano_double_decay),
+    ("soundboard_colours_treble", check_soundboard_colours_treble),
     ("piano_sympathetic_resonance", check_piano_sympathetic_resonance),
 ]
 

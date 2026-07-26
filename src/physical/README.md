@@ -540,11 +540,47 @@ response[n]   = Σ_(m=1..M) StringResonator_m.process(busIn[n])     M = kBodyMod
 radiated[n]   = response[n] · radiationGain
 ```
 
-Body-mode frequencies/decays are a **documented generic placeholder set**, not measured from
-a real instrument (`REQ-piano-14` — no measured IR / room acoustics in scope):
-`{80, 130, 190, 250, 340, 420, 550, 700} Hz`, `T60 ≈ 0.3–0.6 s` each (shorter than string
-`T60`s, so the board itself doesn't ring forever — it's a lossy coupling path, not a second
-set of strings).
+**The mode set follows plate physics (M5).** A soundboard is a thin plate: bending waves give
+`ω ∝ k²`, so the number of modes below `f` grows **linearly** with `f` and the modal density is
+**constant in Hz**. Modes are therefore spaced uniformly in frequency — a harmonic series is
+the wrong mental model here — across 50 Hz – 5 kHz:
+
+```
+spacing  D   = (f_high − f_low) / M                    M = kBodyModeCount = 64
+f_m          = f_low + (m + jitter_m)·D                jitter_m ∈ [−0.35, 0.35], deterministic
+T60_body(f)  = clamp( 0.35 · (100/f)^0.9,  0.015 s,  0.5 s )
+weight_m     = radiation(f_m) / sqrt(M)
+radiation(f) = 1 / sqrt(1 + (f/2500)²)                 gentle HF rolloff
+response[n]  = Σ_m weight_m · StringResonator_m(busIn[n])
+```
+
+**Why 64 modes and why they must overlap.** A real board has ~0.05–0.1 modes/Hz — 250–500 in
+this range — so 64 undersamples the true density ~5×. Left at realistic Q that would ring as a
+row of isolated resonances rather than a plate. The fix is the behaviour the real plate already
+has: **modal overlap**. `T60_body` falls with frequency, so mode bandwidth grows toward the
+spacing:
+
+| f | T60 | bandwidth | overlap | regime |
+|---|---|---|---|---|
+| 100 Hz | 0.35 s | 6 Hz | 0.08 | isolated modes — as a real board has at low frequency |
+| 1 kHz | 0.044 s | 50 Hz | 0.65 | transition |
+| 5 kHz | 0.015 s | 147 Hz | 1.9 | smooth continuum |
+
+That is qualitatively how real soundboards behave: individually audible low resonances giving
+way to a statistically smooth coloured plateau higher up. Frequencies carry a deterministic
+low-discrepancy jitter so the uniform spacing cannot ring as an audible comb.
+
+`PianoBridge` is a **single shared instance**, so 64 modes cost ~5 % of the string resonators
+(~1280 across 8 voices) — the mode count is limited by realism bookkeeping, not by CPU.
+
+**`1/sqrt(M)` is load-bearing, not cosmetic.** Modes at different frequencies sum incoherently,
+so a bare sum would scale as `sqrt(M)` and changing the mode count would silently rescale the
+string→bridge→string loop gain. That is precisely how the coupling gain came to be re-tuned at
+M1 *and* M3. Normalising per mode makes the bridge's output level — and therefore the loop
+gain — independent of `M`, so the mode count can be changed without re-tuning stability.
+
+Values are a **documented generic set**, not measured from an instrument (`REQ-piano-14` — no
+measured IR in scope).
 
 **Sympathetic resonance** (`REQ-piano-6`): the *previous* sample's `response[n-1]`, scaled by
 a small `couplingGainID`, is added into every voice's §4 excitation as extra drive, on top of
