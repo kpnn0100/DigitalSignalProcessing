@@ -120,6 +120,11 @@ package functional {
   class ProcessorRepeater<T>
 }
 package physical {
+  class LongitudinalBank {
+    + setFundamentalHz / setTensionCoupling
+    + firstModeHz(f0) / registerGainFor(f0)
+    ' longitudinal modes -> phantom partials (README ## 12)
+  }
   class StringResonator {
     + setFrequencyHz(hz) / setDecaySeconds(t60)
     ' matched-Z 2-pole resonator: y[n]=2r*cos(th)*y[n-1]-r^2*y[n-2]+G*x[n]
@@ -184,11 +189,34 @@ Chorus --|> SignalProcessor
 Repeater --|> SignalProcessor
 
 ' ─────────────────────────── Synth engine ───────────────────────────
+package compute {
+  interface ParallelExecutor {
+    + run(task, ctx, shards)   ' blocking, no allocation
+    + concurrency()
+    + shouldParallelise(frames)
+  }
+  class SerialExecutor {
+    ' default; the reference for bit-identity
+  }
+  class ThreadPoolExecutor {
+    + workerCount()
+    ' persistent workers; lock-free shard claiming
+  }
+  class ComputeConfig <<singleton>> {
+    + executor() / setExecutor(e)
+  }
+}
+ParallelExecutor <|-- SerialExecutor
+ParallelExecutor <|-- ThreadPoolExecutor
+ComputeConfig o--> ParallelExecutor : active
+ThreadPoolExecutor *--> "N" Thread : platform adapter
+
 package synth {
   class SynthEngine {
     + pushParam/pushNoteOn/pushNoteOff   ' comms thread (lock-free)
     + renderBlockBytes(out, frames)
-    + beginBlock/renderVoiceHalf/finishBlock  ' multi-core voice split
+    + renderBlockBytesParallel(out, frames)
+    + beginBlock/renderVoiceShard/finishBlock  ' N-way voice split
   }
   class VoiceManager
   class Voice
@@ -203,6 +231,7 @@ SynthEngine *--> Repeater
 SynthEngine *--> Reverb
 SynthEngine *--> OutputBlock
 SynthEngine *--> LockFreeQueue : control commands
+SynthEngine ..> ComputeConfig : "picks executor per block"
 VoiceManager *--> "N" Voice
 Voice *--> Oscillator
 

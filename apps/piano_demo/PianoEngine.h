@@ -35,7 +35,15 @@ namespace arstro
         // Renders `frames` stereo samples as interleaved 16-bit PCM, appended to `out`.
         void renderBlockBytes(std::vector<uint8_t> &out, int frames);
 
+        // Renders `frames` stereo samples straight into a caller-owned interleaved
+        // float buffer. Preferred on a live audio thread: it allocates nothing, and
+        // it skips the round trip through 16-bit PCM that renderBlockBytes() does
+        // (a live float sink would only have to convert straight back, losing
+        // resolution on the way through for no reason).
+        void renderBlockFloat(float *interleaved, int frames);
+
     private:
+        void renderFrame(Sample &outL, Sample &outR); // one sample, both paths
         int allocateVoice();
         void refreshDamperHeld(int i);
         static Sample midiToHz(int note);

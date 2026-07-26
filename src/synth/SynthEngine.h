@@ -60,6 +60,25 @@ namespace arstro
         void packBytes(std::vector<uint8_t> &outBytes, int frames);
         int channels() const;
 
+        // ---- N-way voice split (generalises the halves above) ----
+        // Same contract, any shard count: shard `s` of `n` renders a disjoint set
+        // of Voice objects into its own accumulator, so shards may run on
+        // different cores with no shared object access. finishBlock() sums the
+        // accumulators in FIXED SHARD ORDER — float addition is not associative,
+        // so completion-order summation would make the output depend on thread
+        // timing (REQ-compute-3). See docs/parallel-architecture.md ## 1.2.
+        void renderVoiceShard(int shard, int shardCount, int frames);
+        /** Tells finishBlock() how many shard accumulators to sum. Set it before
+         *  rendering the shards; renderVoiceHalf() and renderBlockBytesParallel()
+         *  set it for you. */
+        void setVoiceShardCount(int n);
+        static constexpr int kMaxVoiceShards = 8;
+
+        // Renders one block through ComputeConfig's executor, falling back to a
+        // serial pass when the block is too small to be worth splitting
+        // (ParallelExecutor::shouldParallelise). Bit-identical to the serial path.
+        void renderBlockBytesParallel(std::vector<uint8_t> &outBytes, int frames);
+
         int activeVoices() { return mVoices.activeVoices(); }
 
     private:
@@ -71,9 +90,15 @@ namespace arstro
             int note = 0;
         };
         void drainCommands();
+        static void shardTask(void *ctx, int shard); // ParallelExecutor::Task trampoline
+        struct ShardJob { SynthEngine *self; int shardCount; int frames; };
+
         std::vector<std::vector<Sample>> mScratch;  // per-channel summed/effects buffer
-        std::vector<std::vector<Sample>> mScratchA; // voice-half 0 accumulator [ch][frames]
-        std::vector<std::vector<Sample>> mScratchB; // voice-half 1 accumulator [ch][frames]
+        // Per-shard voice accumulators [shard][ch][frames]. Shards 0/1 are what
+        // renderVoiceHalf() writes, so the older two-way API is just this with
+        // shardCount = 2 and needs no separate buffers.
+        std::vector<std::vector<std::vector<Sample>>> mShardAcc;
+        int mActiveShards = 2; // how many of mShardAcc finishBlock() must sum
 
         VoiceManager mVoices;
         Block mEffects; // serial: comp -> od -> chorus -> repeater -> reverb

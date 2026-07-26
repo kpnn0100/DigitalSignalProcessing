@@ -29,6 +29,11 @@
 #include "physical/HammerExciter.h"
 #include "physical/PianoBridge.h"
 #include "physical/LongitudinalBank.h"
+
+// Parallel & accelerated compute — see docs/parallel-architecture.md
+#include "compute/ParallelExecutor.h"
+#include "compute/ThreadPoolExecutor.h"
+#include "compute/ComputeConfig.h"
 #include "physical/PianoVoice.h"
 
 // Effects

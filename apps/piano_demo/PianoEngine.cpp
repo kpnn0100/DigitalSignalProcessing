@@ -21,6 +21,8 @@ namespace arstro
     // large transient) instead of hard-clipping into a harsh digital click.
     static Sample softLimit(Sample s) { return std::tanh(s); }
 
+    static constexpr Sample kMasterGain = 0.6;
+
     Sample PianoEngine::midiToHz(int note)
     {
         return 440.0 * std::pow(2.0, (note - 69) / 12.0);
@@ -131,33 +133,54 @@ namespace arstro
             v.setUnaCorda(on);
     }
 
+    // One sample of the whole engine: every voice, then the shared bridge. Kept in
+    // one place so the byte and float paths cannot drift apart.
+    void PianoEngine::renderFrame(Sample &outL, Sample &outR)
+    {
+        Sample sumL = 0.0, sumR = 0.0;
+        for (auto &v : mVoices)
+        {
+            sumL += v.out(0.0, 0); // channel 0 first: drives the physics + bridge push
+            sumR += v.out(0.0, 1);
+        }
+        mBridge.tick();
+        const Sample rad = mBridge.radiatedOutput();
+        sumL += rad;
+        sumR += rad;
+
+        // Demo-level mixing headroom + soft limiter (not physical-modeling
+        // constants — see src/physical/README.md ## Units for PianoVoice's own
+        // per-note calibration, which already stays near +-1 on its own).
+        outL = softLimit(sumL * kMasterGain);
+        outR = softLimit(sumR * kMasterGain);
+    }
+
     void PianoEngine::renderBlockBytes(std::vector<uint8_t> &out, int frames)
     {
         out.clear();
         out.reserve((size_t)frames * 4); // stereo, 16-bit
         for (int n = 0; n < frames; ++n)
         {
-            Sample sumL = 0.0, sumR = 0.0;
-            for (auto &v : mVoices)
-            {
-                sumL += v.out(0.0, 0); // channel 0 first: drives the physics + bridge push
-                sumR += v.out(0.0, 1);
-            }
-            mBridge.tick();
-            Sample rad = mBridge.radiatedOutput();
-            sumL += rad;
-            sumR += rad;
+            Sample l, r;
+            renderFrame(l, r);
+            const int16_t li = toPcm16(l), ri = toPcm16(r);
+            out.push_back((uint8_t)(li & 0xFF));
+            out.push_back((uint8_t)((li >> 8) & 0xFF));
+            out.push_back((uint8_t)(ri & 0xFF));
+            out.push_back((uint8_t)((ri >> 8) & 0xFF));
+        }
+        for (int i = 0; i < kVoiceCount; ++i)
+            mAge[i] += frames;
+    }
 
-            // Demo-level mixing headroom + soft limiter (not physical-modeling
-            // constants — see src/physical/README.md ## Units for PianoVoice's own
-            // per-note calibration, which already stays near +-1 on its own).
-            const Sample kMasterGain = 0.6;
-            int16_t l = toPcm16(softLimit(sumL * kMasterGain));
-            int16_t r = toPcm16(softLimit(sumR * kMasterGain));
-            out.push_back((uint8_t)(l & 0xFF));
-            out.push_back((uint8_t)((l >> 8) & 0xFF));
-            out.push_back((uint8_t)(r & 0xFF));
-            out.push_back((uint8_t)((r >> 8) & 0xFF));
+    void PianoEngine::renderBlockFloat(float *interleaved, int frames)
+    {
+        for (int n = 0; n < frames; ++n)
+        {
+            Sample l, r;
+            renderFrame(l, r);
+            interleaved[n * 2] = (float)l;
+            interleaved[n * 2 + 1] = (float)r;
         }
         for (int i = 0; i < kVoiceCount; ++i)
             mAge[i] += frames;

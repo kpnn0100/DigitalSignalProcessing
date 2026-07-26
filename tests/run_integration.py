@@ -564,6 +564,32 @@ def check_piano_phantom_partials(binpath):
     )
 
 
+def check_parallel_render_is_identical(binpath):
+    """REQ-compute-3: rendering through a worker pool must be BIT-IDENTICAL to
+    rendering serially — not merely similar. Anything less would make the audio a
+    function of thread scheduling, and would silently invalidate every numeric
+    acceptance criterion the piano milestones rest on.
+
+    This is what forces fixed shard-order summation in finishBlock(): float
+    addition is not associative, so summing accumulators in completion order would
+    fail this intermittently — the worst possible way to find out."""
+    ref = render(binpath, "synthparallel", 0)   # serial executor
+    if peak(ref) < 1e-3:
+        raise Failure(f"serial reference is silent (peak {peak(ref):.2e})")
+    for workers in (1, 3, 7):
+        got = render(binpath, "synthparallel", workers)
+        if len(got) != len(ref):
+            raise Failure(f"{workers} workers: length {len(got)} != {len(ref)}")
+        if got != ref:
+            diffs = sum(1 for a, b in zip(ref, got) if a != b)
+            worst = max(abs(a - b) for a, b in zip(ref, got))
+            raise Failure(
+                f"{workers} workers: {diffs}/{len(ref)} samples differ from serial "
+                f"(worst {worst:.3e}) — parallel rendering changed the audio"
+            )
+    return f"serial == 1/3/7 workers, bit-identical over {len(ref)} samples"
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -582,6 +608,7 @@ CHECKS = [
     ("piano_sympathetic_resonance", check_piano_sympathetic_resonance),
     ("piano_register_voicing", check_piano_register_voicing),
     ("piano_phantom_partials", check_piano_phantom_partials),
+    ("parallel_render_is_identical", check_parallel_render_is_identical),
 ]
 
 

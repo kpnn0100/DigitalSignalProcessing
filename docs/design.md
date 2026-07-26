@@ -24,6 +24,7 @@ the verified build here.
 | Modules | `simpleProcessor/`, `equalizer/`, `reverb/`, `effects/`, `envelope/` | Concrete processors. |
 | Physical modeling | `physical/` | Struck-string synthesis (piano): modal resonators, nonlinear hammer contact, shared bridge/sympathetic coupling. See [`../src/physical/README.md`](../src/physical/README.md) for the full math. Not sample playback. |
 | Engine | `synth/SynthEngine`, `VoiceManager`, `Voice` | Polyphony → shared effects → output. |
+| Compute | `compute/` | Block-grain work scheduling: `ParallelExecutor` (interface) + `SerialExecutor` (default) + `ThreadPoolExecutor`, selected via `ComputeConfig`. No OS calls — built on the platform adapter. See [`parallel-architecture.md`](parallel-architecture.md). |
 | Platform | `base/platform/` | Thin thread/mutex adapter (the only OS-specific code). |
 
 See [`architecture.puml`](architecture.puml) for the class diagram (render with PlantUML).
@@ -47,8 +48,25 @@ See [`architecture.puml`](architecture.puml) for the class diagram (render with 
 ## Concurrency
 
 One audio (render) thread + one control (comms) thread. Graph construction happens before the
-audio thread starts. Multi-core rendering splits the voice pool into disjoint halves
-(`renderVoiceHalf`), then sums + runs shared effects single-core (`finishBlock`).
+audio thread starts. Multi-core rendering splits the voice pool into disjoint **shards**
+(`renderVoiceShard(shard, shardCount, frames)`, generalising the original two-way
+`renderVoiceHalf`), then sums + runs shared effects single-core (`finishBlock`).
+
+`renderBlockBytesParallel()` drives that split through `ComputeConfig::instance().executor()`.
+Three rules govern it, and all three are requirements (`REQ-compute-*`) rather than conventions:
+
+- **Parallel output is bit-identical to serial.** Shards touch disjoint state and `finishBlock`
+  sums the accumulators in fixed shard order — float addition is not associative, so
+  completion-order summation would make the audio depend on thread timing. Asserted by both a
+  unit test and an integration check.
+- **Parallelism is opt-in and off by default.** Measured, it does not yet pay for `SynthEngine`'s
+  oscillator voices (break-even at 512 frames, 0.68× at 64) — a block is simply too little work
+  to amortise fan-out. It is headroom for heavier graphs, not a free win.
+- **Latency ≠ throughput.** Threads buy throughput; perceived lag is set by the output buffer.
+  Adding threads to fix lag makes it worse.
+
+Porting: implement `platform::Thread` and nothing else. A platform with no threads uses
+`SerialExecutor` and is fully functional.
 
 ## Verification
 

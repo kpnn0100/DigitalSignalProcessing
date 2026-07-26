@@ -11,6 +11,8 @@
  *    lpf  <out> <freqHz>  0.5-amplitude sine at <freqHz> through LPF cutoff 500
  *    adsr <out>           constant 1.0 through an ADSR (note on, then off)
  *    synth <out>          8-note SynthEngine scenario (full path)
+ *    synthparallel <out> <workers>  the same render driven through a worker pool
+ *                         (0 = serial reference) — REQ-compute-3 bit-identity
  *    reverb <out>         mono burst -> STEREO reverb (width 1); writes a 2-ch WAV
  *    piano <out> <freqHz> PianoVoice struck note (large inharmonicity override so
  *                         partial-4's shift is easy to measure), 1 s render
@@ -214,6 +216,34 @@ static std::vector<double> renderSynth()
         eng.renderBlockDouble(blk, 128);
         out.insert(out.end(), blk.begin(), blk.end());
     }
+    return out;
+}
+
+// REQ-compute-3: the same SynthEngine render, driven through a worker pool
+// instead of serially. arg = worker count (0 = serial reference). The two must
+// come out BIT-IDENTICAL, which Python checks by comparing the WAV bytes.
+static std::vector<double> renderSynthParallel(double workers)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    AudioConfig::instance().setOutputBitDepth(16);
+
+    SerialExecutor serial;
+    ThreadPoolExecutor pool((int)(workers + 0.5));
+    ComputeConfig::instance().setExecutor(workers < 0.5 ? (ParallelExecutor *)&serial
+                                                        : (ParallelExecutor *)&pool);
+    SynthEngine eng;
+    int notes[8] = {48, 52, 55, 60, 64, 67, 72, 76};
+    for (int i = 0; i < 8; ++i) eng.noteOn(notes[i], 0.8);
+    std::vector<double> out;
+    std::vector<uint8_t> blk;
+    for (int b = 0; b < 200; ++b) // ~0.5 s
+    {
+        eng.renderBlockBytesParallel(blk, 128);
+        for (size_t i = 0; i + 1 < blk.size(); i += 2)
+            out.push_back((double)(int16_t)(blk[i] | (blk[i + 1] << 8)) / 32767.0);
+    }
+    ComputeConfig::instance().setExecutor(nullptr);
     return out;
 }
 
@@ -429,6 +459,7 @@ int main(int argc, char **argv)
     else if (scenario == "lpf")   samples = renderLpf(arg);
     else if (scenario == "adsr")  samples = renderAdsr();
     else if (scenario == "synth") samples = renderSynth();
+    else if (scenario == "synthparallel") samples = renderSynthParallel(arg);
     else if (scenario == "piano") samples = renderPiano(arg);
     else if (scenario == "pianodamper") samples = renderPianoDamper(arg);
     else if (scenario == "pianoreuse") samples = renderPianoReuse();

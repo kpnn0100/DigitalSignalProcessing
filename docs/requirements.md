@@ -169,3 +169,53 @@ silently reintroduced as bugs or silently promised as done)
   a milestone that breaches it is not done until it is optimised or its scope is cut, with
   the decision recorded in `docs/piano-physics-progress.md`. Measured by `tools/piano_bench.cpp`
   (target `piano_bench`); each milestone re-runs it and records the figure in the ledger.
+
+## Parallel & accelerated compute
+
+**Source:** user request (2026-07-26) — "suggest me architecture for using multithreading in DSP
+lib and gpu computing that if someone want to adapt to their platform only need to implement the
+adapter; for now implement for linux", prompted by the interactive app feeling laggy. Design and
+the measurements behind it: [`parallel-architecture.md`](parallel-architecture.md).
+
+- `REQ-compute-1` — **Latency and throughput are separate requirements.** Perceived lag is set by
+  the output buffer, not by DSP cost; measured, the engine used 17–20 % of the real-time budget at
+  every block size while the app still lagged (a 50 ms ALSA buffer). Parallelism is therefore
+  specified as *headroom for growth*, never as the remedy for latency, and no parallel work may be
+  justified by a latency argument.
+- `REQ-compute-2` — **The porting seam is `base/platform/Platform.h` and stays there.** Adapting
+  the library to a new platform must require implementing `platform::Thread` (and `Mutex`) and
+  nothing else. No engine, module, or the compute layer itself may contain an OS call. A platform
+  with no threads at all must remain fully functional via the serial executor.
+- `REQ-compute-3` — **Parallel rendering must not change the audio.** Rendering a given input
+  through the serial executor and through any parallel executor must produce **bit-identical**
+  output. This requires shards over disjoint state and summation in fixed shard order (float
+  addition is not associative, so completion-order summation would make output depend on thread
+  timing). Verified by a unit test that runs both executors in one binary and compares exactly.
+- `REQ-compute-4` — **Nothing on the audio thread allocates or blocks unboundedly.** The
+  executor's dispatch path takes a plain function pointer plus a `void*` context (not
+  `std::function`, which heap-allocates when it captures) and performs no allocation.
+  **Amended 2026-07-26 during implementation.** The original text also said the dispatch path
+  "takes no mutex", extending `docs/design.md`'s "audio thread never locks" rule to fan-out/join.
+  That was written before the handshake was built, and it is the wrong rule for this path. An
+  all-atomic handshake was implemented first and proved subtly racy: a worker waking late for job
+  N would claim against job N+1's cursor with a stale snapshot, and its final failed claim still
+  advanced the cursor, skipping a shard of the new job so `run()` waited forever. The requirement
+  now reads: **shard claiming — the hot path, executed once per shard — must be lock-free; the
+  dispatch/join handshake may take a short mutex, provided it is never held while DSP work runs
+  and never held by a thread that can be descheduled mid-computation.** The design rule it
+  extends is unchanged in intent — the audio thread must never wait on a lock held by a slow
+  or lower-priority thread — and this handshake cannot, because every critical section is a
+  handful of integer operations.
+- `REQ-compute-5` — **Parallelism is opt-in and bounded by the dependency graph.** The default
+  executor is serial. Workers are clamped to `min(shardCount, hardware_concurrency)` because
+  Amdahl's law yields nothing beyond the shard count (measured serial fraction `s = 0.133` for the
+  piano graph → a 7.5× ceiling however many cores are added). Below a documented block-size floor
+  (~64 frames) fan-out overhead exceeds the gain and the executor must run serially.
+- `REQ-compute-6` — **GPU/accelerator support is specified as a separate, narrower interface, and
+  is not claimed until it is testable.** A GPU cannot execute a C++ function pointer, so it is not
+  served by `ParallelExecutor`; it requires a fixed kernel contract (advance M resonators over B
+  samples). No accelerator backend ships without a toolchain to compile and test it — this machine
+  has an integrated GPU but no OpenCL/CUDA/Vulkan SDK, so §4 of the design doc records the
+  analysis, the attack/decay decomposition that would make it viable, and the verdict that this
+  workload is latency-bound rather than throughput-bound. An untested backend is worse than none,
+  because it looks like a feature.

@@ -1,4 +1,5 @@
 #include "SynthEngine.h"
+#include "../compute/ComputeConfig.h"
 #include "ParamId.h"
 #include "../base/AudioConfig.h"
 
@@ -178,51 +179,113 @@ namespace arstro
     }
 
     // beginBlock: apply queued control + size buffers. Must finish before any
-    // renderVoiceHalf() so the parallel section sees stable parameters.
+    // renderVoiceShard() so the parallel section sees stable parameters — and so
+    // that no shard ever resizes a buffer (that would allocate on a worker, and
+    // race with its neighbours). REQ-compute-4.
     void SynthEngine::beginBlock(int frames)
     {
         drainCommands();
         int ch = channels();
         ensureBufs(mScratch, ch, frames);
-        ensureBufs(mScratchA, ch, frames);
-        ensureBufs(mScratchB, ch, frames);
+        if ((int)mShardAcc.size() != kMaxVoiceShards)
+            mShardAcc.resize(kMaxVoiceShards);
+        for (auto &acc : mShardAcc)
+            ensureBufs(acc, ch, frames);
     }
 
-    // renderVoiceHalf: render a DISJOINT subset of voices into its own accumulator
-    // (half 0 -> mScratchA, half 1 -> mScratchB), for all channels. Because the
-    // two halves touch different Voice objects, the two halves may run on
-    // different cores concurrently with no shared object access.
-    void SynthEngine::renderVoiceHalf(int half, int frames)
+    // renderVoiceShard: render a DISJOINT subset of voices into shard `shard`'s own
+    // accumulator, for all channels. Shards touch different Voice objects, so they
+    // may run concurrently with no shared object access and no locking — a stronger
+    // guarantee than locking correctly. docs/parallel-architecture.md ## 1.2.
+    void SynthEngine::renderVoiceShard(int shard, int shardCount, int frames)
     {
-        int n = VoiceManager::kVoiceCount;
-        int v0 = half ? n / 2 : 0;
-        int v1 = half ? n : n / 2;
-        auto &acc = half ? mScratchB : mScratchA;
-        int ch = channels();
+        const int n = VoiceManager::kVoiceCount;
+        if (shardCount < 1) shardCount = 1;
+        if (shardCount > kMaxVoiceShards) shardCount = kMaxVoiceShards;
+        // Split as evenly as possible; the first (n % shardCount) shards take one
+        // extra voice, so no shard is ever more than one voice heavier than another.
+        const int base = n / shardCount, extra = n % shardCount;
+        const int v0 = shard * base + (shard < extra ? shard : extra);
+        const int v1 = v0 + base + (shard < extra ? 1 : 0);
+
+        auto &acc = mShardAcc[(size_t)shard];
+        const int ch = channels();
         for (int c = 0; c < ch; ++c)
         {
             Sample *buf = acc[c].data();
             arstroVecZero(buf, frames);
-            mVoices.renderBlockRange(buf, frames, c, v0, v1);
+            if (v1 > v0)
+                mVoices.renderBlockRange(buf, frames, c, v0, v1);
         }
     }
 
-    // finishBlock: sum the two voice halves, run the shared effects chain + master
-    // (single core — no concurrent access to the shared effect objects), advance ages.
+    void SynthEngine::setVoiceShardCount(int n)
+    {
+        if (n < 1) n = 1;
+        if (n > kMaxVoiceShards) n = kMaxVoiceShards;
+        mActiveShards = n;
+    }
+
+    // Retained two-way API (docs/design.md describes it): the N-way split with
+    // shardCount = 2. Kept so existing callers and the ESP32 dual-core firmware
+    // path are unaffected.
+    void SynthEngine::renderVoiceHalf(int half, int frames)
+    {
+        setVoiceShardCount(2);
+        renderVoiceShard(half, 2, frames);
+    }
+
+    // finishBlock: sum the shard accumulators, run the shared effects chain +
+    // master (single core — no concurrent access to the shared effect objects),
+    // advance ages. The sum runs in FIXED SHARD ORDER: float addition is not
+    // associative, so summing in completion order would make the rendered audio
+    // depend on thread scheduling (REQ-compute-3).
     void SynthEngine::finishBlock(int frames)
     {
         int ch = channels();
+        const int shards = mActiveShards;
         for (int c = 0; c < ch; ++c)
         {
             Sample *dst = mScratch[c].data();
-            const Sample *a = mScratchA[c].data();
-            const Sample *b = mScratchB[c].data();
+            const Sample *first = mShardAcc[0][c].data();
             for (int i = 0; i < frames; ++i)
-                dst[i] = a[i] + b[i];
+                dst[i] = first[i];
+            for (int s = 1; s < shards; ++s)
+            {
+                const Sample *src = mShardAcc[(size_t)s][c].data();
+                for (int i = 0; i < frames; ++i)
+                    dst[i] += src[i];
+            }
             mEffects.processBlock(dst, frames, c); // comp->od->chorus->repeater->reverb
             arstroVecMulC(dst, mMasterLevel, frames);  // master
         }
         mVoices.advance(frames);
+    }
+
+    void SynthEngine::shardTask(void *ctx, int shard)
+    {
+        auto *job = static_cast<ShardJob *>(ctx);
+        job->self->renderVoiceShard(shard, job->shardCount, job->frames);
+    }
+
+    void SynthEngine::renderBlockBytesParallel(std::vector<uint8_t> &outBytes, int frames)
+    {
+        ParallelExecutor &ex = ComputeConfig::instance().executor();
+        beginBlock(frames);
+
+        // No point splitting more finely than the executor can actually run, nor
+        // more finely than there are voices (docs/parallel-architecture.md ## 2).
+        int shards = ex.shouldParallelise(frames) ? ex.concurrency() : 1;
+        if (shards > kMaxVoiceShards) shards = kMaxVoiceShards;
+        if (shards > VoiceManager::kVoiceCount) shards = VoiceManager::kVoiceCount;
+        if (shards < 1) shards = 1;
+        setVoiceShardCount(shards);
+
+        ShardJob job{this, shards, frames};
+        ex.run(&SynthEngine::shardTask, &job, shards);
+
+        finishBlock(frames);
+        packBytes(outBytes, frames);
     }
 
     void SynthEngine::packBytes(std::vector<uint8_t> &outBytes, int frames)

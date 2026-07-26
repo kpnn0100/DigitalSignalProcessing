@@ -1608,6 +1608,195 @@ TEST(LongitudinalBank_does_not_destabilise_the_bridge_loop)
     CHECK(peak < 100.0); // measured 6.13 at 10x; 3.14 at the shipped value
 }
 
+// ───────────────── compute: parallel executor ─────────────────
+// Design + measurements: docs/parallel-architecture.md. REQ-compute-1..6.
+
+namespace {
+// A deterministic, order-sensitive workload: each shard writes only its own slot,
+// so a correct executor must run every shard exactly once.
+struct ShardProbe
+{
+    static constexpr int kSlots = 64;
+    int calls[kSlots] = {};
+    long long sums[kSlots] = {};
+};
+bool serialFloorCheck(const ParallelExecutor &ex, int frames)
+{
+    return ex.shouldParallelise(frames);
+}
+void shardProbeTask(void *ctx, int shard)
+{
+    auto *p = static_cast<ShardProbe *>(ctx);
+    p->calls[shard] += 1;
+    long long acc = 0;
+    for (int i = 0; i < 5000; ++i) // enough work that racing shards would overlap
+        acc += (long long)shard * i;
+    p->sums[shard] = acc;
+}
+}
+
+// Every shard runs exactly once, on both executors. This is the base contract —
+// a work-stealing claim cursor that double-claimed or dropped a shard would show
+// up here and nowhere else in the suite.
+TEST(ParallelExecutor_runs_every_shard_exactly_once)
+{
+    SerialExecutor serial;
+    ThreadPoolExecutor pool(4);
+    CHECK(serial.concurrency() == 1);
+    CHECK(pool.concurrency() == pool.workerCount() + 1); // the caller participates
+
+    for (ParallelExecutor *ex : {(ParallelExecutor *)&serial, (ParallelExecutor *)&pool})
+    {
+        for (int shards : {1, 2, 3, 8, 17, 64})
+        {
+            ShardProbe p;
+            ex->run(&shardProbeTask, &p, shards);
+            for (int i = 0; i < shards; ++i)
+            {
+                CHECK(p.calls[i] == 1);
+                long long expect = 0;
+                for (int k = 0; k < 5000; ++k) expect += (long long)i * k;
+                CHECK(p.sums[i] == expect);
+            }
+            for (int i = shards; i < ShardProbe::kSlots; ++i)
+                CHECK(p.calls[i] == 0); // never ran a shard it wasn't asked to
+        }
+    }
+}
+
+// Degenerate configurations must be harmless, not special-cased by callers: a
+// pool with no workers is just a serial executor, and 0 shards is a no-op.
+TEST(ParallelExecutor_degenerate_configurations)
+{
+    ThreadPoolExecutor none(0); // explicit 0 = no worker threads (single-core target)
+    CHECK(none.workerCount() == 0);
+    CHECK(none.concurrency() == 1);
+    ShardProbe p;
+    none.run(&shardProbeTask, &p, 4);
+    for (int i = 0; i < 4; ++i) CHECK(p.calls[i] == 1);
+
+    ShardProbe q;
+    ThreadPoolExecutor pool(2);
+    pool.run(&shardProbeTask, &q, 0); // no shards: must not hang or touch anything
+    for (int i = 0; i < ShardProbe::kSlots; ++i) CHECK(q.calls[i] == 0);
+
+    // Oversized requests are clamped rather than trusted.
+    ThreadPoolExecutor huge(10000);
+    CHECK(huge.workerCount() <= ThreadPoolExecutor::kMaxWorkers);
+
+    // Default construction (kAutoWorkers) sizes to the hardware, leaving one
+    // thread for the caller. Scoped so the destructor's join path runs here.
+    {
+        ThreadPoolExecutor autoPool;
+        CHECK(autoPool.workerCount() >= 0);
+        CHECK(autoPool.concurrency() == autoPool.workerCount() + 1);
+        ShardProbe a;
+        autoPool.run(&shardProbeTask, &a, 6);
+        for (int i = 0; i < 6; ++i) CHECK(a.calls[i] == 1);
+    }
+
+    // The block-size floor: fanning out a tiny block costs more than it saves.
+    CHECK(!serialFloorCheck(pool, 16));
+    CHECK(!serialFloorCheck(pool, ParallelExecutor::kMinFramesForParallel - 1));
+    CHECK(serialFloorCheck(pool, ParallelExecutor::kMinFramesForParallel));
+    SerialExecutor s;
+    CHECK(!serialFloorCheck(s, 4096)); // concurrency 1 never parallelises
+}
+
+// THE requirement (REQ-compute-3): rendering through a thread pool must produce
+// BIT-IDENTICAL audio to rendering serially. Not "close" — identical. Anything
+// less would silently invalidate every numeric acceptance criterion the piano
+// milestones established, and would make failures depend on thread timing.
+//
+// This is what forces shard-order summation in finishBlock(): floating-point
+// addition is not associative, so summing accumulators in completion order would
+// fail this test intermittently, which is the worst possible way to learn it.
+TEST(SynthEngine_parallel_render_is_bit_identical_to_serial)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(2);
+    AudioConfig::instance().setOutputBitDepth(16);
+
+    auto render = [](ParallelExecutor *ex) {
+        ComputeConfig::instance().setExecutor(ex);
+        SynthEngine e;
+        std::vector<uint8_t> out, all;
+        // A chord plus a change of pitch, so voices are unevenly loaded and the
+        // shard split is not trivially balanced.
+        for (int n : {48, 52, 55, 59, 62, 65})
+            e.pushNoteOn(n, 0.8);
+        for (int b = 0; b < 12; ++b)
+        {
+            if (b == 6) e.pushNoteOff(52);
+            e.renderBlockBytesParallel(out, 128);
+            all.insert(all.end(), out.begin(), out.end());
+        }
+        ComputeConfig::instance().setExecutor(nullptr);
+        return all;
+    };
+
+    SerialExecutor serial;
+    ThreadPoolExecutor pool(4);
+    const std::vector<uint8_t> a = render(&serial);
+    const std::vector<uint8_t> b = render(&pool);
+
+    CHECK(a.size() == b.size());
+    CHECK(!a.empty());
+    bool nonSilent = false;
+    for (uint8_t v : a) if (v != 0) { nonSilent = true; break; }
+    CHECK(nonSilent); // a bit-identity test on two silent buffers proves nothing
+    CHECK(a == b);
+}
+
+// The N-way split must agree with the two-way API it generalises, for every shard
+// count — otherwise the shard boundary arithmetic is wrong for uneven divisions
+// (kVoiceCount = 8 over 3 shards is 3/3/2, not 2/2/2 with two voices dropped).
+TEST(SynthEngine_shard_count_does_not_change_the_output)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(2);
+    AudioConfig::instance().setOutputBitDepth(16);
+    SerialExecutor serial;
+    ComputeConfig::instance().setExecutor(&serial);
+
+    auto renderWithShards = [](int shards) {
+        SynthEngine e;
+        for (int n : {48, 55, 62, 67})
+            e.pushNoteOn(n, 0.75);
+        std::vector<uint8_t> out, all;
+        for (int b = 0; b < 8; ++b)
+        {
+            e.beginBlock(128);
+            for (int s = 0; s < shards; ++s)
+                e.renderVoiceShard(s, shards, 128);
+            e.setVoiceShardCount(shards);
+            e.finishBlock(128);
+            e.packBytes(out, 128);
+            all.insert(all.end(), out.begin(), out.end());
+        }
+        return all;
+    };
+
+    const std::vector<uint8_t> ref = renderWithShards(1);
+    CHECK(!ref.empty());
+    for (int shards : {2, 3, 4, 5, 8})
+        CHECK(renderWithShards(shards) == ref);
+
+    ComputeConfig::instance().setExecutor(nullptr);
+}
+
+// ComputeConfig is the single authority (REQ-compute-2/5) and defaults to serial,
+// so a platform with no threads works untouched.
+TEST(ComputeConfig_defaults_to_serial_and_restores)
+{
+    CHECK(ComputeConfig::instance().executor().concurrency() == 1);
+    ThreadPoolExecutor pool(2);
+    ComputeConfig::instance().setExecutor(&pool);
+    CHECK(ComputeConfig::instance().executor().concurrency() == 3);
+    ComputeConfig::instance().setExecutor(nullptr); // nullptr restores the default
+    CHECK(ComputeConfig::instance().executor().concurrency() == 1);
+}
+
 int main()
 {
     return mini::runAll();
