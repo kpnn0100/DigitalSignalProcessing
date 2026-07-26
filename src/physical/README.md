@@ -41,6 +41,7 @@ seed note `REQ-effects-1`). What *is* reused:
 | `StringPartialBank` | `SignalProcessor` | N `StringResonator`s = one physical string: inharmonic partial frequencies (§2), frequency-dependent + damper damping (§3), strike-position mode-shape excitation (§4). |
 | `HammerExciter` | `SignalProcessor` | Nonlinear hysteretic hammer-felt contact ODE (§6). |
 | `PianoBridge` | `SignalProcessor` | Shared per-note-set soundboard modal bank + sympathetic-resonance feedback bus (§8). One instance shared by every `PianoVoice` in a `PianoEngine`. |
+| `LongitudinalBank` | `SignalProcessor` | The string's *longitudinal* modes and the quasi-static tension response (§12), driven by the square of the transverse displacement. Bass-weighted; the source of phantom partials. |
 | `PianoVoice` | `SignalGenerator` | Owns U unison `StringPartialBank`s (§5) + one `HammerExciter` + damper state (§7) + pedal state (§9 pedals) + secondary-noise bursts (§9 noise); ties §1–§9 together; `generate(channel)` is the physical step. |
 
 ---
@@ -818,6 +819,146 @@ it is what a piano would do if every string had the same mass — and the instru
 to it is 11.1–11.3, which the model now has. What remains is `kVelocityToSignal`, one overall
 loudness constant, recalibrated once here because 11.1 changed the unit system's anchor.
 
+### 12. Longitudinal modes & phantom partials (M7)
+
+Everything above §11 describes the string moving *sideways*. A real string also vibrates
+**along its own length**, and those modes are the metallic growl/clang of the bottom octaves —
+one of the most recognisable things about a real piano, and structurally unreachable from
+§2's transverse series no matter how it is tuned. (`REQ-piano-15` declared this out of scope
+until M7; it was amended first, per rule 5.)
+
+#### 12.1 Where the longitudinal modes sit
+
+Longitudinal waves travel at the material's bar speed, which for steel is essentially a
+constant and **does not depend on tension**:
+
+```
+c_L = √(E/ρ) ≈ 5200 m/s          steel; unchanged by how hard the string is tuned
+f_long,m = m · c_L / (2L)        m = 1, 2, 3, …
+```
+
+That last point is why they are audible at all: the transverse series is set by tension and
+lands on the note, while the longitudinal series is set by geometry alone and lands *wherever
+it lands* — inharmonic with respect to everything else, which is what makes it read as
+"clang" rather than as pitch.
+
+The model has no `L`, so it is fitted from the same concert-grand scaling data §11.1 used, over
+the range where the effect is audible (the bass), and anchored at C4:
+
+```
+L(f0)      = 0.62 m · (f_ref/f0)^0.52
+f_long,1   = c_L / (2L) = 4194 Hz · (f0/f_ref)^0.52
+```
+
+| note | law → `f_long,1` | measured on real strings | `f_long,1 / f0` |
+|---|---|---|---|
+| A0 | 1300 Hz | ~1.3 kHz | 47× |
+| C2 | 2040 Hz | ~1.5–2.5 kHz | 31× |
+| C4 | 4194 Hz | — | 16× |
+
+Note the ratio is **not** constant — the plan's "10–20× f0" holds in the mid register but the
+bottom octave runs nearer 50×, because bass strings are shortened far below ideal scaling and
+overwound to compensate (§11.1). Fitting `L` rather than the ratio is what gets that right.
+
+#### 12.2 The coupling — why the partials are *phantom*
+
+Transverse motion stretches the string, and stretching is a **second-order** effect: a
+displacement `y` lengthens the string by `≈ ½(∂y/∂x)²`, so the tension modulation goes as the
+*square* of transverse amplitude.
+
+```
+ΔT(t) ∝ ∫ (∂y/∂x)² dx                    the exact driving term
+```
+
+**Which transverse signal to square is not a free choice — it is the whole milestone.** The
+driving term integrates the string's *slope*, so in modal terms it weights mode `n` by `n`:
+
+```
+∂y/∂x = Σ_n q_n · (nπ/L)·cos(nπx/L)      slope: mode n enters weighted by n
+y_n   = ω_n·q_n ∝ n·q_n                  §6: the bank already outputs modal VELOCITY
+```
+
+so the bank's own audio sum `Σ_n y_n` **is** the string slope, up to the mode-shape factor, and
+it is already computed every sample. That is the signal this model squares:
+
+```
+drive(t) = κ · HP( (Σ_n y_n)² )
+```
+
+> **The obvious alternative is measurably wrong.** `displacementAtStrike` (§6) is right there and
+> was tried first — but it weights mode `n` by `g_n/ω_n`, i.e. by `1/n`, the *opposite* extreme.
+> Its spectrum is dominated by the fundamental, so its square lands almost entirely below 500 Hz
+> and leaves the longitudinal modes at 1.3 kHz and above essentially undriven. Measured: **zero
+> phantom energy** at a test frequency in the transverse series' widest gap — the effect simply
+> did not exist. One power of `ω` is the difference between the mechanism working and not.
+
+Squaring is the entire mechanism. A product of two partials generates sum and difference
+frequencies, so `y²` contains energy at
+
+```
+2·f_i     and     f_i ± f_j
+```
+
+— frequencies at which the transverse series `f_n` (§2) predicts **no partial whatsoever**.
+Those are the phantom partials, and they are *emergent*: nothing places a partial there, the
+nonlinearity produces them. Two consequences follow for free and are exactly what the
+acceptance criteria check:
+
+- they scale as **amplitude²**, so they grow far faster with strike velocity than any real
+  partial does, and
+- they **vanish** at near-zero velocity, where a linearly-driven partial would not.
+
+**`HP(·)` is not cosmetic.** `y²` is non-negative, so it carries a large DC term — physically
+the *static* tension rise of a struck string, which shifts pitch (that is M8's subject) rather
+than driving longitudinal vibration. Left in, it would also reach the output as a DC offset,
+because a two-pole resonator's DC gain is not zero (measured ≈ 6 at 1.3 kHz). It is removed by
+subtracting a low-passed copy — `HP(x) = x − LPF(x)`, reusing `equalizer::LowPassFilter`
+(rule 1: no new filter class).
+
+**Documented simplification:** the exact projection of `(∂y/∂x)²` onto longitudinal mode `m`
+selects particular transverse pairs `(i, j)` by an orthogonality rule, so a faithful model needs
+per-pair coupling — `O(N²)` at `N` = 64 partials, which is not affordable here. Squaring the
+summed slope keeps every product term but gives them all the same weight into every longitudinal
+mode. It changes how strongly each pair contributes; it does not change *which* frequencies are
+generated, which is what makes the partials phantom.
+
+#### 12.3 Response — resonant *and* quasi-static
+
+A bank of high-Q resonators alone would be wrong here. The longitudinal system responds to
+tension modulation at **every** frequency, with peaks at `f_long,m`; below the first
+longitudinal resonance the response is quasi-static (stiffness-controlled), and that
+non-resonant part is what carries the phantom partials at `2·f_i` in the first place — most
+combination frequencies do not happen to coincide with a longitudinal mode.
+
+```
+out(t) = g_reg(f0) · [ w_direct·drive(t) + Σ_m w_m · Resonator(f_long,m, T60_long,m)[drive(t)] ]
+```
+
+so both are present: phantom partials everywhere, *amplified* where a combination frequency
+lands on a longitudinal resonance — which is how real phantom partials behave.
+
+`T60_long,m` is short (longitudinal modes are heavily damped — they couple strongly to the
+bridge and are gone in a fraction of a second, which is why they are an *attack* colour):
+
+```
+T60_long,m = clamp( T60_long,1 · (f_long,1/f_long,m)^0.5 ,  0.05 s,  1.0 s )
+```
+
+#### 12.4 Register weighting
+
+```
+g_reg(f0) = clamp( (f_cross / f0)^1.5,  0,  1 )        f_cross = 130.8 Hz (C3)
+```
+
+Full strength through the bottom two octaves, ~0.35 by C4, ~0.04 by C6 — matching where the
+effect is audible on a real instrument. It is also what keeps the cost off the treble: notes
+above the crossover run **no longitudinal resonators at all** (see §Parameters), so the
+milestone adds ~48 resonators to the benchmark chord rather than one bank per voice.
+
+One bank per **voice**, not per string: the `U` unison strings are within a cent of each other
+and the hammer already drives them from their *mean* displacement (§6), so a second per-string
+copy would cost 3× to model a difference smaller than the detuning it came from.
+
 ---
 
 ## Parameters
@@ -839,6 +980,10 @@ loudness constant, recalibrated once here because 11.1 changed the unit system's
 | | `setNonlinearExponent` | — | `p` |
 | | `setHysteresisLoss` | 0..1 | `ε` |
 | | `strike(velocity)` | 0..1 | → `v0` |
+| `LongitudinalBank` | `setFundamentalHz` | Hz | the *transverse* `f0`; `f_long,m` and `g_reg` both derive from it (§12) |
+| | `setTensionCoupling` | normalised | `κ` — slope² → tension modulation; 0 disables the stage (§12.2) |
+| | `firstModeHz(f0)` / `registerGainFor(f0)` *(static)* | — | the §12.1 / §12.4 laws, exposed for tests |
+| | `isActive()` / `activeModeCount()` | — | false/0 above the §12.4 crossover: no resonators run |
 | `PianoBridge` | `setCouplingGain` | linear | sympathetic feedback gain |
 | | `setRadiationGain` | linear | output gain |
 | `PianoVoice` | `setFrequency` (override) | Hz | `f0` (→ all unison banks, and the §3 default `T60_1` unless overridden) |
@@ -846,6 +991,7 @@ loudness constant, recalibrated once here because 11.1 changed the unit system's
 | | `setUnisonDetuneCents` | cents | `c` |
 | | `setBaseDecaySeconds` | s (T60) | `T60_fundamental` (latches an override, §3) |
 | | `setBrightnessDecaySeconds` | s (T60 @ 5 kHz) | `T60_ref` (§3) |
+| | `setTensionCoupling` | normalised | `κ` → the owned `LongitudinalBank` (§12.2) |
 | | `setUnaCorda` | bool | soft-pedal gate |
 | | `setDamperHeld` | bool | sustain/sostenuto gate |
 | | `setStrikePosition` / `setModalMass` / `setHammerMass` / `setHammerStiffness` | — | each **latches an override** of the matching §11 law |

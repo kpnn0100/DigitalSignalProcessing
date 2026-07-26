@@ -26,6 +26,16 @@ namespace arstro
 
     void StringResonator::onChannelCountChanged() { ensureChannels(); }
 
+    void StringResonator::reset()
+    {
+        // Re-added at M7. This existed before M2, which deleted it once it had lost
+        // its only caller rather than keep dead code alive for coverage. It has one
+        // again: LongitudinalBank (README ## 12) must clear its modes when a
+        // voice-stolen note is restruck, for the same reason StringPartialBank does.
+        std::fill(mY1.begin(), mY1.end(), (Sample)0);
+        std::fill(mY2.begin(), mY2.end(), (Sample)0);
+    }
+
     void StringResonator::setFrequencyHz(Sample hz) { setProperty(frequencyID, hz); }
     void StringResonator::setDecaySeconds(Sample t60) { setProperty(decayID, t60); }
 

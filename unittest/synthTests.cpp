@@ -1336,6 +1336,278 @@ TEST(PianoVoice_spectral_centroid_rises_across_the_keyboard)
     CHECK(firstRatio > lastRatio * 20.0);
 }
 
+// ───────────────── M7: longitudinal modes & phantom partials ─────────────────
+// Plan §M7; math in src/physical/README.md ## 12. REQ-piano-15 amended first.
+
+namespace {
+// The longitudinal contribution, ISOLATED exactly: render the same note twice,
+// once with the tension coupling and once with it zeroed, and subtract. Anything
+// in the difference came from README ## 12 and from nothing else — which is what
+// makes "this energy is not a transverse partial" provable rather than arguable.
+struct PhantomRun
+{
+    std::vector<double> total;
+    std::vector<double> longitudinalOnly;
+};
+PhantomRun runPhantom(double f0, double velocity, double seconds)
+{
+    auto render = [&](double kappa) {
+        AudioConfig::instance().setSampleRate(48000);
+        AudioConfig::instance().setChannelCount(1);
+        PianoVoice v;
+        v.setFrequency(f0);
+        v.setTensionCoupling(kappa);
+        v.noteOn(velocity);
+        const int n = (int)(seconds * 48000);
+        std::vector<double> y((size_t)n);
+        for (int i = 0; i < n; ++i) y[(size_t)i] = v.out(0);
+        return y;
+    };
+    PhantomRun r;
+    r.total = render(8.0e-3); // the shipped default (LongitudinalBank ctor)
+    const std::vector<double> off = render(0.0);
+    r.longitudinalOnly.resize(r.total.size());
+    for (size_t i = 0; i < r.total.size(); ++i)
+        r.longitudinalOnly[i] = r.total[i] - off[i];
+    return r;
+}
+
+double bandMag(const std::vector<double> &x, double f, int len)
+{
+    const double w = 2.0 * M_PI * f / 48000.0, c = 2.0 * std::cos(w);
+    double s1 = 0, s2 = 0;
+    for (int i = 0; i < len && i < (int)x.size(); ++i)
+    { const double s0 = x[(size_t)i] + c * s1 - s2; s2 = s1; s1 = s0; }
+    return std::sqrt(std::fabs(s1 * s1 + s2 * s2 - c * s1 * s2));
+}
+
+// README ## 2's transverse series, replicated so the test can prove a frequency
+// is NOT in it rather than assume so.
+std::vector<double> transverseSeries(double f0)
+{
+    double b = 0.00056 * std::pow(100.0 / f0, 1.25);
+    if (b < 0.00005) b = 0.00005;
+    if (b > 0.02) b = 0.02;
+    std::vector<double> f;
+    for (int n = 1; n <= StringPartialBank::kMaxPartials; ++n)
+    {
+        const double fn = n * f0 * std::sqrt(1.0 + b * (double)n * n);
+        if (fn >= 0.45 * 48000.0) break;
+        f.push_back(fn);
+    }
+    return f;
+}
+
+double gapToSeries(double f, const std::vector<double> &series)
+{
+    double d = 1e30;
+    for (double p : series) d = std::min(d, std::fabs(f - p));
+    return d;
+}
+}
+
+// THE M7 acceptance criterion (plan §M7): a genuine phantom partial — measurable
+// energy at a frequency where the transverse series predicts NO partial at all.
+// This is what a bank of extra resonators could never be, and it is why the
+// milestone is about a nonlinearity rather than about more modes.
+TEST(LongitudinalBank_produces_genuine_phantom_partials)
+{
+    const double f0 = 27.5; // A0 — where the effect lives
+    const PhantomRun r = runPhantom(f0, 1.0, 1.0);
+    const std::vector<double> series = transverseSeries(f0);
+    const int win = (int)(0.3 * 48000);
+
+    // Floor first, per the M1/M3 lesson: a ratio between two silent signals is
+    // arithmetic, not evidence.
+    double peak = 0.0;
+    for (double s : r.longitudinalOnly) peak = std::max(peak, std::fabs(s));
+    CHECK(peak > 1e-5);
+
+    // Find where the isolated longitudinal signal is strongest, away from the
+    // dense low end of the partial series.
+    double bestF = 0.0, bestMag = 0.0;
+    for (double f = 400.0; f < 6000.0; f += 2.0)
+    {
+        const double m = bandMag(r.longitudinalOnly, f, win);
+        if (m > bestMag) { bestMag = m; bestF = f; }
+    }
+    CHECK(bestMag > 0.0);
+    // It should land on the first longitudinal resonance, which is set by the
+    // string's GEOMETRY (## 12.1) and has no relationship to the note's pitch.
+    const double fLong = LongitudinalBank::firstModeHz(f0);
+    CHECK(std::fabs(bestF - fLong) < 0.15 * fLong);
+
+    // Now the criterion itself: sweep the neighbourhood of that resonance for a
+    // frequency that is genuinely NOT a transverse partial, and require the
+    // longitudinal signal to dominate the transverse one there.
+    bool foundPhantom = false;
+    for (double f = fLong * 0.9; f <= fLong * 1.1 && !foundPhantom; f += 2.0)
+    {
+        if (gapToSeries(f, series) < 12.0)
+            continue; // too close to a real partial to attribute anything
+        const double lon = bandMag(r.longitudinalOnly, f, win);
+        const double tra = bandMag(r.total, f, win) - lon;
+        if (lon > 1e-4 && lon > std::fabs(tra) * 3.0)
+            foundPhantom = true;
+    }
+    CHECK(foundPhantom); // measured: 1280 Hz, longitudinal ~10x the transverse content
+}
+
+// The other half of the criterion, and the part that separates a phantom from any
+// ordinary added partial: the coupling is through the SQUARE of the transverse
+// motion (## 12.2), so it grows quadratically with strike velocity and vanishes at
+// near-zero velocity, where a linearly-driven partial would simply be quiet.
+TEST(LongitudinalBank_grows_quadratically_and_vanishes_when_barely_struck)
+{
+    const double f0 = 27.5;
+    auto longitudinalRms = [&](double vel) {
+        const PhantomRun r = runPhantom(f0, vel, 0.6);
+        double e = 0.0;
+        for (double s : r.longitudinalOnly) e += s * s;
+        return std::sqrt(e / (double)r.longitudinalOnly.size());
+    };
+    auto fundamentalMag = [&](double vel) {
+        const PhantomRun r = runPhantom(f0, vel, 0.6);
+        return bandMag(r.total, transverseSeries(f0)[0], (int)(0.3 * 48000));
+    };
+
+    const double lLo = longitudinalRms(0.35), lHi = longitudinalRms(0.70);
+    const double fLo = fundamentalMag(0.35), fHi = fundamentalMag(0.70);
+    CHECK(lLo > 0.0 && fLo > 0.0);
+
+    // Doubling velocity: the phantom must grow markedly faster than the note does.
+    const double phantomExp = std::log2(lHi / lLo);      // measured 2.39
+    const double linearExp = std::log2(fHi / fLo);       // measured 0.85
+    CHECK(phantomExp > 1.5);
+    CHECK(phantomExp > linearExp * 2.0);
+
+    // ...and a whisper-struck note has essentially none of it. Relative, not
+    // absolute: everything is quiet at velocity 0.02, so the claim is that the
+    // phantom is a far SMALLER SHARE of a soft note than of a loud one.
+    auto share = [&](double vel) {
+        const PhantomRun r = runPhantom(f0, vel, 0.6);
+        double e = 0.0, t = 0.0;
+        for (size_t i = 0; i < r.total.size(); ++i)
+        { e += r.longitudinalOnly[i] * r.longitudinalOnly[i]; t += r.total[i] * r.total[i]; }
+        return std::sqrt(e / std::max(1e-30, t));
+    };
+    CHECK(share(1.0) > share(0.02) * 20.0); // measured 0.062 vs 0.0001
+}
+
+// ## 12.1: the longitudinal series is set by the string's GEOMETRY and the bar
+// speed of steel — not by its tension — which is exactly why it is inharmonic
+// against the note and reads as clang rather than as pitch.
+TEST(LongitudinalBank_frequencies_follow_geometry_not_pitch)
+{
+    // Real bass strings resonate longitudinally around 1.3 kHz; the top of the
+    // compass runs far higher. The ratio to f0 must therefore NOT be constant —
+    // a constant ratio would make it just another harmonic series.
+    const double a0 = LongitudinalBank::firstModeHz(27.5);
+    const double c4 = LongitudinalBank::firstModeHz(261.6);
+    CHECK_NEAR(a0, 1300.0, 30.0);
+    CHECK_NEAR(c4, 4194.0, 30.0);
+    const double ratioA0 = a0 / 27.5, ratioC4 = c4 / 261.6;
+    CHECK(ratioA0 > ratioC4 * 2.0); // 47x vs 16x — emphatically not a fixed ratio
+
+    // Monotonic in pitch, and every mode kept is below Nyquist.
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    double prev = 0.0;
+    for (double f0 : {27.5, 55.0, 110.0, 220.0})
+    {
+        const double f1 = LongitudinalBank::firstModeHz(f0);
+        CHECK(f1 > prev);
+        prev = f1;
+        LongitudinalBank b;
+        b.setFundamentalHz(f0);
+        CHECK(b.activeModeCount() > 0);
+        CHECK(f1 * b.activeModeCount() < 0.45 * 48000.0);
+    }
+}
+
+// ## 12.4: bass-weighted, and switched fully OFF in the treble — which is both the
+// physics (the effect is a bass phenomenon) and what keeps M7 off the CPU budget
+// that REQ-piano-17 gates. Measured: 44 longitudinal resonators across the whole
+// 8-voice benchmark chord.
+TEST(LongitudinalBank_is_bass_weighted_and_disabled_in_the_treble)
+{
+    CHECK(LongitudinalBank::registerGainFor(27.5) > 0.99);   // A0 — full strength
+    CHECK(LongitudinalBank::registerGainFor(130.8) > 0.99);  // C3 — still full
+    CHECK(LongitudinalBank::registerGainFor(261.6) < 0.5);   // C4 — fading
+    CHECK(LongitudinalBank::registerGainFor(1046.5) < 0.06); // C6 — gone
+
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    LongitudinalBank bass, treble;
+    bass.setFundamentalHz(27.5);
+    treble.setFundamentalHz(2093.0);
+    CHECK(bass.isActive() && bass.activeModeCount() > 0);
+    // Not merely quiet — no resonators run at all.
+    CHECK(!treble.isActive());
+    CHECK(treble.activeModeCount() == 0);
+    // ...and a disabled bank is silent rather than passing its input through.
+    for (int i = 0; i < 64; ++i)
+        CHECK(treble.out(0.5, 0) == 0.0);
+}
+
+// The drive is a SQUARE, so it is non-negative by construction and carries a large
+// DC term — physically the static tension rise (M8's subject), and electrically an
+// output offset, since a two-pole resonator's DC gain is not zero. ## 12.2 removes
+// it with HP(x) = x - LPF(x); this is the assertion that it stays removed.
+TEST(LongitudinalBank_squared_drive_leaves_no_dc_offset)
+{
+    for (double f0 : {27.5, 65.4, 130.8})
+    {
+        AudioConfig::instance().setSampleRate(48000);
+        AudioConfig::instance().setChannelCount(1);
+        PianoVoice v;
+        v.setFrequency(f0);
+        v.noteOn(1.0);
+        double mean = 0.0, peak = 0.0;
+        const int n = 48000;
+        for (int i = 0; i < n; ++i)
+        {
+            const double s = v.out(0);
+            mean += s;
+            peak = std::max(peak, std::fabs(s));
+        }
+        mean /= n;
+        CHECK(peak > 1e-3);
+        CHECK(std::fabs(mean) < 0.01 * peak); // measured ~0.19 %
+    }
+}
+
+// A squared signal sits inside the string->bridge->string loop (§8), so M7 can
+// destabilise a path M1/M3/M5 each had to re-tune. Worst case, with a wide margin
+// on the coupling constant.
+TEST(LongitudinalBank_does_not_destabilise_the_bridge_loop)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    PianoBridge bridge;
+    std::vector<PianoVoice> voices(8);
+    const double f[8] = {27.5, 29.1, 30.9, 32.7, 34.6, 36.7, 38.9, 41.2};
+    for (int i = 0; i < 8; ++i)
+    {
+        voices[i].setBridge(&bridge);
+        voices[i].setFrequency(f[i]);
+        voices[i].setTensionCoupling(8.0e-2); // 10x the shipped default
+        voices[i].setDamperHeld(true);
+        voices[i].noteOn(1.0);
+    }
+    double peak = 0.0;
+    for (int i = 0; i < 48000 * 4; ++i)
+    {
+        double mix = 0.0;
+        for (auto &v : voices) mix += v.out(0);
+        bridge.tick();
+        mix += bridge.radiatedOutput();
+        CHECK(std::isfinite(mix));
+        peak = std::max(peak, std::fabs(mix));
+    }
+    CHECK(peak < 100.0); // measured 6.13 at 10x; 3.14 at the shipped value
+}
+
 int main()
 {
     return mini::runAll();

@@ -28,6 +28,7 @@
 #include "physical/StringPartialBank.h"
 #include "physical/HammerExciter.h"
 #include "physical/PianoBridge.h"
+#include "physical/LongitudinalBank.h"
 #include "physical/PianoVoice.h"
 
 // Effects

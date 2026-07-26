@@ -34,6 +34,10 @@ namespace arstro
          *  set by the hammer force and mode shape, not by how slowly it later decays. */
         void setImpulseNormalized(bool impulse);
 
+        /** Zeroes the per-channel recurrence history. Needed before a reused
+         *  (voice-stolen) resonator is driven again — see LongitudinalBank. */
+        void reset();
+
 
         void update() override;
         void onChannelCountChanged() override;

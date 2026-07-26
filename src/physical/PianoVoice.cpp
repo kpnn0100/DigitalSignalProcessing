@@ -128,6 +128,7 @@ namespace arstro
         const Sample f0 = frequency();
         if (!mUnisonOverridden)
             mUnisonCount = defaultUnisonCount(f0);
+        mLongitudinal.setFundamentalHz(f0); // README ## 12: mode set + register gain
         if (!mHammerMassOverridden)
             mHammer.setMass(defaultHammerMass(f0));
         if (!mHammerStiffnessOverridden)
@@ -199,6 +200,8 @@ namespace arstro
             mStrings[k].setStrikePosition(beta);
     }
 
+    void PianoVoice::setTensionCoupling(Sample kappa) { mLongitudinal.setTensionCoupling(kappa); }
+
     void PianoVoice::setModalMass(Sample m)
     {
         mModalMassOverridden = true; // stop setFrequency() reapplying README ## 11.1
@@ -247,6 +250,7 @@ namespace arstro
         // a large transient. A fresh string's damper also starts lifted.
         for (int k = 0; k < kMaxUnison; ++k)
             mStrings[k].reset();
+        mLongitudinal.reset(); // same voice-steal reasoning (README ## 12)
     }
 
     void PianoVoice::noteOff()
@@ -313,6 +317,15 @@ namespace arstro
         Sample stringSum = 0.0;
         for (int k = 0; k < mUnisonCount; ++k)
             stringSum += mStrings[k].out(totalDrive, 0);
+
+        // M7 (README ## 12): longitudinal modes. Driven by the SQUARE of the summed
+        // modal velocity — which is the string's slope, since y_n = omega_n*q_n
+        // weights mode n by n exactly as d(y)/dx does, so no new state is needed.
+        // The nonlinearity puts energy at 2*f_i and f_i +/- f_j, where the
+        // transverse series has no partial at all. The bank switches itself off
+        // above the ## 12.4 crossover, so the treble pays nothing for it.
+        const Sample longitudinal = mLongitudinal.out(stringSum, 0);
+        stringSum += longitudinal;
 
         Sample noise = 0.0;
         if (mThumpAmp > 1e-6)

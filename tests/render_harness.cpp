@@ -340,6 +340,25 @@ static std::vector<double> renderPianoRegister(double hz)
     return out;
 }
 
+// M7 acceptance (plan §M7): phantom partials. A0 struck at <velocity*100>, with
+// the tension coupling either at its default or forced to zero, so Python can
+// subtract the two renders and isolate README ## 12's contribution exactly.
+// Encoding: arg = velocity*100, negated to mean "coupling off".
+static std::vector<double> renderPianoPhantom(double arg)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(27.5); // A0 — where longitudinal colour lives
+    if (arg < 0.0)
+        v.setTensionCoupling(0.0); // the reference render
+    v.noteOn(std::fabs(arg) / 100.0);
+    const int n = (int)(0.6 * kSampleRate);
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i) out[i] = v.out(0.0, 0);
+    return out;
+}
+
 // M4 acceptance (plan §M4): double decay. C4 held with the damper lifted for 5 s,
 // ONE unison string so unison beating (README ## 5) does not modulate the envelope
 // on a timescale comparable to the measurement — this targets the polarisation
@@ -418,6 +437,7 @@ int main(int argc, char **argv)
     else if (scenario == "bridgeimpulse") samples = renderBridgeImpulse();
     else if (scenario == "pianosympathetic") samples = renderPianoSympathetic(arg);
     else if (scenario == "pianoregister") samples = renderPianoRegister(arg);
+    else if (scenario == "pianophantom") samples = renderPianoPhantom(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

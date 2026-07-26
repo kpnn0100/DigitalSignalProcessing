@@ -135,9 +135,25 @@ silently reintroduced as bugs or silently promised as done)
 - `REQ-piano-14` — Room acoustics / radiation directivity / convolution with a measured
   impulse response are out of scope; the bridge/soundboard stage (`REQ-piano-5`) is the final
   physical stage modeled.
-- `REQ-piano-15` — Longitudinal string vibration and phantom partials are out of scope (a
+- `REQ-piano-15` — ~~Longitudinal string vibration and phantom partials are out of scope (a
   documented sub-detail of `REQ-piano-3`'s "string vibration" stage, not a missing anatomy
-  stage in itself).
+  stage in itself).~~
+  **Amended 2026-07-26 (M7) — now IN scope, and required.** The original text was written
+  before the model had been listened to. The user's report after M0–M6 is that bass notes still
+  read as a *bass-guitar-like* plucked string rather than a piano: the low register lacks the
+  metallic **growl/clang** that is one of the most recognisable things about a real piano's
+  bottom octaves. That character is not a refinement of the transverse series — it is a
+  physically distinct family of modes, so no amount of tuning `REQ-piano-3`'s stage can produce
+  it, and calling it a "sub-detail" of that stage was the mistake.
+  The requirement now reads: **each string carries longitudinal modes at
+  `f_long,m ≈ m·(1/2L)·√(E/ρ)`, driven by tension modulation — which depends on the *square* of
+  transverse displacement, so the coupling generates energy at `2·f_i` and `f_i ± f_j`. The
+  resulting partials must be genuinely *phantom*: measurable at frequencies where the
+  transverse series `f_n` predicts no partial at all, growing with strike velocity, and absent
+  at near-zero velocity.** As with `REQ-piano-3`'s multi-stage decay, the intent is that this
+  emerge from a nonlinear coupling between two physical mode families — never from added
+  synthetic partials at hand-picked frequencies. Strong in the bass and negligible in the
+  treble, as on a real instrument.
 - `REQ-piano-16` — Una corda's real mechanism (hammer shifts to strike fewer of the unison
   strings) is approximated as a reduced hammer excitation gain + reduced contact hardness,
   not literal dynamic unison-count switching mid-performance.

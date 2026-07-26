@@ -17,6 +17,7 @@
 #include "StringPartialBank.h"
 #include "HammerExciter.h"
 #include "PianoBridge.h"
+#include "LongitudinalBank.h"
 #include "../equalizer/LowPassFilter.h"
 #include <array>
 #include <cstdint>
@@ -57,6 +58,10 @@ namespace arstro
 
         void setStrikePosition(Sample beta);
         void setModalMass(Sample m);
+        // README ## 12.2: displacement^2 -> tension modulation. 0 disables the
+        // longitudinal stage entirely (useful for isolating it in tests).
+        void setTensionCoupling(Sample kappa);
+        const LongitudinalBank &longitudinal() const { return mLongitudinal; }
         void setDamperEngageMs(Sample ms);
 
         void setHammerMass(Sample m);
@@ -88,6 +93,10 @@ namespace arstro
 
         std::array<StringPartialBank, kMaxUnison> mStrings;
         HammerExciter mHammer;
+        // README ## 12.4: one bank per VOICE, not per string — the U unison strings
+        // are within a cent of each other and the hammer already drives them from
+        // their mean displacement (## 6).
+        LongitudinalBank mLongitudinal;
         LowPassFilter mThumpFilter;
         LowPassFilter mDamperNoiseFilter;
         PianoBridge *mBridge = nullptr;

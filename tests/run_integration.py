@@ -487,6 +487,83 @@ def check_piano_register_voicing(binpath):
     )
 
 
+def check_piano_phantom_partials(binpath):
+    """M7 acceptance (plan §M7): phantom partials — measurable energy at a frequency
+    where the transverse series predicts NO partial at all, growing faster than
+    linearly with strike velocity.
+
+    Isolated exactly by rendering A0 twice, with and without the tension coupling,
+    and subtracting: whatever is in the difference came from README ## 12 and from
+    nothing else. That is what makes "this is not a transverse partial" provable
+    rather than a matter of interpretation."""
+    f0 = 27.5
+    b = min(0.02, max(0.00005, 0.00056 * (100.0 / f0) ** 1.25))
+    series = []
+    n = 1
+    while True:
+        fn = n * f0 * math.sqrt(1.0 + b * n * n)
+        if fn >= 0.45 * SR or n > 64:
+            break
+        series.append(fn)
+        n += 1
+
+    def isolate(vel):
+        on = render(binpath, "pianophantom", round(vel * 100))
+        off = render(binpath, "pianophantom", -round(vel * 100))
+        return on, [a - c for a, c in zip(on, off)]
+
+    total, longitudinal = isolate(1.0)
+    if peak(longitudinal) < 1e-4:
+        raise Failure(
+            f"longitudinal stage contributes nothing (peak {peak(longitudinal):.2e}) — "
+            "tension coupling lost, or below WAV quantisation"
+        )
+
+    # f_long,1 = 4194*(f0/261.6)^0.52, README ## 12.1 — set by string geometry.
+    f_long = 4194.0 * (f0 / 261.6) ** 0.52
+    seg_l = longitudinal[: int(0.3 * SR)]
+    seg_t = total[: int(0.3 * SR)]
+
+    # Sweep the first longitudinal resonance for a frequency that is genuinely not
+    # a transverse partial, and require the longitudinal signal to dominate there.
+    best = None
+    f = f_long * 0.9
+    while f <= f_long * 1.1:
+        gap = min(abs(f - p) for p in series)
+        if gap >= 12.0:
+            lon = goertzel_mag(seg_l, f)
+            tra = abs(goertzel_mag(seg_t, f) - lon)
+            if lon > 1e-3 and lon > tra * 3.0 and (best is None or lon > best[1]):
+                best = (f, lon, tra, gap)
+        f += 2.0
+    if best is None:
+        raise Failure(
+            f"no phantom found near the longitudinal resonance {f_long:.0f} Hz — "
+            "energy is only landing on frequencies the transverse series already has"
+        )
+    fp, lon, tra, gap = best
+
+    # Velocity scaling: the phantom is driven by a SQUARE, so doubling velocity
+    # must grow it markedly faster than it grows the note itself.
+    def lrms(vel):
+        _, d = isolate(vel)
+        return rms(d)
+
+    lo, hi = lrms(0.35), lrms(0.70)
+    if lo <= 0:
+        raise Failure("phantom is silent at velocity 0.35 — cannot measure scaling")
+    exponent = math.log2(hi / lo)
+    if exponent < 1.5:
+        raise Failure(
+            f"phantom grows only as v^{exponent:.2f} (need >= 1.5) — that is a linear "
+            "partial, not a nonlinear phantom"
+        )
+    return (
+        f"phantom at {fp:.0f} Hz ({gap:.0f} Hz from any partial), "
+        f"longitudinal/transverse {lon / max(1e-12, tra):.1f}x, grows as v^{exponent:.2f}"
+    )
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -504,6 +581,7 @@ CHECKS = [
     ("soundboard_colours_treble", check_soundboard_colours_treble),
     ("piano_sympathetic_resonance", check_piano_sympathetic_resonance),
     ("piano_register_voicing", check_piano_register_voicing),
+    ("piano_phantom_partials", check_piano_phantom_partials),
 ]
 
 

@@ -396,6 +396,19 @@ signal, with gain strong in the bass and negligible in the treble. This is the m
 **no** transverse partial (a genuine phantom), rising with strike velocity and absent at
 near-zero velocity.
 
+> **Implementation note (2026-07-26).** "Driven by the squared transverse signal" underspecifies
+> the milestone: *which* transverse signal decides whether the effect exists at all. The
+> strike-point displacement — already computed for §M3 and the obvious candidate — weights mode
+> `n` by `1/n` and produced **zero** phantom energy. The driving term integrates the string's
+> *slope* (weight `n`), and §6's modal-velocity output already is that signal. See README §12.2
+> and the ledger's decisions log.
+>
+> **Verified by differencing**, not by reading a single spectral bin: the same note is rendered
+> with the coupling on and off and subtracted, so the remainder is the longitudinal stage's
+> output exactly. A single bin cannot settle it — the attack transient is broadband and swamps
+> any one frequency, which is precisely how the first (silent) implementation still looked
+> plausible.
+
 ---
 
 ## M8 — Tension modulation (attack pitch glide)

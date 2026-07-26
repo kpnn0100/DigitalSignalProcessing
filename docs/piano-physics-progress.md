@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-26 (M6 complete)
-- **Last commit:** M6 — per-register scaling (string mass, hammer, strike point, stringing)
+- **Last updated:** 2026-07-26 (M7 complete)
+- **Last commit:** M7 — longitudinal modes & phantom partials (the bass clang)
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -19,6 +19,7 @@ file first and updates it last, every session. Spec:
 | **M4** (two polarisations) | **13.15× RT** | — | ~1280 | ✅ met (3.3× margin) |
 | **M5** (128 soundboard modes) | **10.26× RT** | — | ~1408 | ✅ met (2.6× margin) |
 | **M6** (per-register scaling) | **8.81× RT** | 9.56× | ~1900 | ✅ met (2.2× margin) |
+| **M7** (longitudinal modes) | **7.92× RT** | — | ~1944 | ✅ met (2.0× margin) |
 
 Measured by `./build/piano_bench` (5 passes × 10 s, best-of). M2's resonator count is
 pitch-dependent (bass fills the 64 cap, treble uses ~5); ~1024 is the benchmark chord's worst
@@ -29,26 +30,30 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 
 ## ► NEXT
 
-**M7 — Longitudinal modes & phantom partials.** ⚠️ **Amend `REQ-piano-15` first** — it currently
-declares this out of scope, and per `arstro.dsp.implement` rule 5 the requirement is updated
-*before* the code, with the reason (user feedback: bass notes read as bass-guitar-like without
-it) and the date.
+**M8 — Tension modulation (attack pitch glide).** The small one, and it shares its physics with
+M7: a hard blow raises the string's average tension, so the note starts **sharp** and glides down
+as it decays.
 
-Longitudinal string modes sit at `f_long,m ≈ m·(1/2L)·√(E/ρ)`, typically 10–20× `f0`, and are
-driven by **tension modulation** — which depends on the *square* of transverse displacement, so
-they generate **phantom partials** at `2·f_i` and `f_i ± f_j`, at frequencies where no transverse
-partial exists at all. This is the metallic **growl/clang of low piano notes**, and with M6
-landed it is the single most missing bass characteristic.
+```
+f0(t) = f0·(1 + κ_t·E_transverse(t))
+```
 
-M6 left a directly relevant finding: the bass is now the *quietest* register (300 ms RMS 15.6 dB
-below the mid), and it is also the register with the least spectral content per unit energy. M7
-adds exactly the kind of energy that makes real bass notes carry.
+M7 has already built most of what this needs and then deliberately **thrown it away**: §12.2's
+DC blocker removes exactly the static tension rise that M8 is about (`HP(x) = x − LPF(x)` — the
+low-passed copy *is* the M8 signal). So M8 should tap `LongitudinalBank`'s existing DC tracker
+rather than compute a second envelope, and the two milestones will finally use both halves of one
+quantity. Check that framing first; it may make M8 nearly free.
 
-Budget: M6 leaves **8.81× RT**, 2.2× above the gate — the tightest margin so far. M7 *does* add
-resonators (a longitudinal bank per string), so unlike M6 it must be costed before implementing:
-at ~1900 resonators today, the 4× gate affords roughly 4200 total. Keep the longitudinal bank
-small (it is a handful of modes, not a second full series) and bass-weighted, since the gain is
-negligible in the treble anyway.
+**Acceptance** (plan §M8): hard bass blow measures ≥ 2 cents sharp in the first 50 ms versus
+t = 1 s; soft blow < 0.5 cents. Measure via Goertzel or zero-crossing on windowed segments.
+
+Budget: M7 leaves **7.92× RT**, 2.0× above the gate — the tightest yet. M8 adds no resonators
+(it re-tunes existing ones), but re-tuning `f0` per block means recomputing partial coefficients
+during the attack, which is not free. Cost it before implementing, as M7 was.
+
+One caution worth carrying in: M6 and M7 both changed the coefficient path's *inputs*; M8 changes
+how often it runs. `StringPartialBank::update()` is a 64-partial loop with `pow`/`sin`/`cos` in
+it — calling it per sample would be far more expensive than the physics is worth.
 
 ---
 
@@ -63,7 +68,7 @@ negligible in the treble anyway.
 | M4 | Two transverse polarisations (double decay) | `[x]` |
 | M5 | Soundboard / bridge | `[x]` |
 | M6 | Per-register voicing | `[x]` |
-| M7 | Longitudinal modes & phantom partials | `[ ]` |
+| M7 | Longitudinal modes & phantom partials | `[x]` |
 | M8 | Tension modulation (attack pitch glide) | `[ ]` |
 | M9 | Tier-3 detail | `[ ]` |
 
@@ -216,11 +221,36 @@ some acceptance criterion could not be verified here (see Verification notes).
 - [x] Re-run M0 benchmark: **8.81× RT** — budget met with 2.2× margin
 - [x] 100 % line coverage held on all five `physical/` sources
 
-### M7 — Longitudinal modes & phantom partials `[ ]`
-- [ ] **Amend `REQ-piano-15` first** (currently declares this out of scope)
-- [ ] Longitudinal resonator bank driven by squared transverse signal
-- [ ] Test: phantom energy where `f_n` predicts no transverse partial; scales with velocity
-- [ ] Re-run M0 benchmark, record
+### M7 — Longitudinal modes & phantom partials `[x]`
+- [x] **`REQ-piano-15` amended first** — it declared this out of scope; rewritten to *require*
+      genuinely phantom partials, emergent from a nonlinear coupling rather than added at
+      hand-picked frequencies
+- [x] Derived README `## 12` **before coding**: `f_long,m = m·c_L/(2L)` from the steel bar speed
+      (5200 m/s) and §11.1's string-length fit — **1300 Hz at A0**, matching real bass strings
+- [x] New `LongitudinalBank`, built from `StringResonator` + `equalizer::LowPassFilter` — **no
+      new primitives** (rule 1); the same reuse pattern `PianoBridge` established
+- [x] **Which signal to square turned out to be the whole milestone** — the strike-point
+      displacement (the obvious choice, already computed for M3) weights mode `n` by `1/n` and
+      produced *zero* phantom energy. The driving term integrates the string's **slope**, which
+      weights by `n`, and the bank's velocity sum already **is** that. See decisions log
+- [x] Quasi-static (direct) response **plus** resonances, so phantoms exist at combination
+      frequencies that do not happen to land on a longitudinal mode — which is most of them
+- [x] DC blocker `HP(x) = x − LPF(x)`: `y²` is non-negative, and a two-pole resonator's DC gain
+      is ~6, not 0. Residual offset **0.19 % of peak**, asserted < 1 %
+- [x] Unit tests: phantom at a frequency ≥ 12 Hz from every `f_n` with longitudinal dominating
+      transverse; velocity exponent **2.39** vs the fundamental's 0.85; phantom share 620× larger
+      at full velocity than at 0.02; geometry-not-pitch (`f_long/f0` is 47× at A0, 16× at C4);
+      treble bank fully disabled; no DC; loop stable at **10× the shipped coupling**
+- [x] Integration test: **phantom at 1280 Hz (17 Hz from any partial), 62× the transverse
+      content there, growing as v^2.35** — measured end-to-end through the WAV path
+- [x] Bass-weighted and switched fully OFF above ~C5: **44 longitudinal resonators** across the
+      entire benchmark chord (+2.3 % of the resonator count)
+- [x] `StringResonator::reset()` re-added — M2 deleted it as dead code when it lost its only
+      caller; it has one again, and that is the right reason to bring it back
+- [x] M1 spectral evolution 19.9 dB, M4 double decay 3.89, M5 treble colour 10.0 dB, M6
+      centroid collapse 78×, sympathetic 726× — all held
+- [x] Re-run M0 benchmark: **7.92× RT** — budget met with 2.0× margin
+- [x] 100 % line coverage held on all **six** `physical/` sources
 
 ### M8 — Tension modulation `[ ]`
 - [ ] f0(t) = f0(1 + κ·E_transverse(t))
@@ -241,6 +271,27 @@ some acceptance criterion could not be verified here (see Verification notes).
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
 
+- **2026-07-26 (M7) — WHICH transverse signal you square is the entire milestone, and the
+  obvious choice produces nothing.** The strike-point displacement was already computed for M3's
+  hammer coupling, so squaring *that* was the natural implementation — and it yielded **zero**
+  phantom energy: measured at the widest gap in A0's partial series, turning the coupling on
+  changed the spectrum by 0.0 %. The reason is a single power of `ω`. `displacementAtStrike`
+  weights mode `n` by `g_n/ω_n`, so its spectrum is dominated by the fundamental and its square
+  lands almost entirely below 500 Hz — nowhere near the longitudinal modes at 1.3 kHz and up.
+  The true driving term `∫(∂y/∂x)²dx` integrates the *slope*, which weights mode `n` by `n`, and
+  since §6 already outputs modal **velocity** (`y_n = ω_n·q_n ∝ n·q_n`), the bank's own audio sum
+  *is* the slope — free, and correct. **The fix was a better derivation, not a bigger constant.**
+- **2026-07-26 (M7) — a nonlinear stage needs its coupling constant calibrated against the
+  SQUARE of the signal scale, which is not where intuition puts it.** The first `κ` was chosen by
+  reasoning about the transverse amplitude and came out ~5 orders of magnitude too small, so the
+  stage was inaudible and looked broken in exactly the same way the wrong drive signal did — two
+  distinct failures presenting identically. Worth separating next time: check *whether* a stage
+  contributes (isolate it by differencing) before tuning *how much* it contributes.
+- **2026-07-26 (M7) — differencing two renders is the right way to test an added stage.** Render
+  the same note with the coupling on and off, subtract, and the remainder *is* the new stage's
+  output, exactly. That turned "is this a phantom partial or just spectral leakage?" — which the
+  first attempt could not answer, because the attack transient is broadband and swamps a single
+  bin — into a provable statement, and it is what both the unit and integration tests now use.
 - **2026-07-26 (M6) — a "voicing" milestone had to grade the STRING, or it would have made the
   physics worse.** Plan §M6's table lists four properties, all of them hammer/geometry; none is
   the string's modal mass. But README §6 records that the contact is governed by the **ratio**
@@ -437,6 +488,20 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M7** — fully verified; nothing marked `[!]`. The bass now has a genuinely nonlinear
+  component: 1280 Hz energy on an A0 whose partial series has nothing within 17 Hz, 62× the
+  transverse content there, growing as v^2.35 and effectively absent when the key is whispered.
+  Two honest limitations. (1) **The pair-selection rule is not modelled** — the exact projection
+  of `(∂y/∂x)²` onto longitudinal mode `m` picks particular transverse pairs by orthogonality,
+  which is `O(N²)` at 64 partials; squaring the summed slope keeps every product term but gives
+  them all equal weight. The phantom *frequencies* are right; their relative strengths are
+  approximate. (2) **`κ` is calibrated, not derived** — its SI value is `EA/2L`, but every term
+  is in §6/§11.1's normalised system, so it was set against the level a real bass note shows
+  (−19.8 dB at A0, full velocity) rather than computed.
+  Perf is now the thing to watch: **2.0× margin** is the tightest of the project, and the
+  longitudinal bank runs `StringResonator` objects through virtual dispatch — the same cost M2
+  removed from the string partials by flattening. If M8/M9 need headroom, flattening this bank is
+  the obvious ~10 % back.
 - **M6** — fully verified; nothing marked `[!]`, but two limitations are worth carrying forward
   rather than burying. (1) **The treble felt is stability-capped**, so above ~C5 it is softer
   than a real piano's and the top end is correspondingly duller; the fix (oversampling the
