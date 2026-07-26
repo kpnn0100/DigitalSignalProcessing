@@ -11,17 +11,33 @@ namespace arstro
         return (int16_t)std::lround(s * 32767.0);
     }
 
-    // Soft limiter for the summed output: with up to 8 independently-resonant
-    // voices sharing one PianoBridge, occasional coincidental in-phase alignment
-    // across many partials/voices (a normal multi-voice crest-factor effect, not
-    // a bug — measured up to ~20x a single note's peak at rare transients) can
-    // momentarily exceed the +-1 range that a single struck note stays within
-    // (see src/physical/README.md ## Units). tanh saturates smoothly (near-linear,
-    // transparent for normal single/few-note playing; only compresses the rare
-    // large transient) instead of hard-clipping into a harsh digital click.
+    // Soft limiter for the summed output. tanh saturates smoothly instead of
+    // hard-clipping into a harsh digital click — but it is a SAFETY CATCH for rare
+    // coincident transients, not a gain stage, and kMasterGain is what keeps it in
+    // that role.
+    //
+    // Recalibrated 2026-07-26, because it had drifted badly out of that role. M6
+    // and M7 changed per-voice levels and this gain was never restaged against
+    // them; measured squash (how much tanh compresses the loudest peak) at the old
+    // 0.6 was 35 % at two voices, 58 % at three and 91 % at eight — chords were
+    // being driven close to a square wave. Audible as crunch, and a direct
+    // contradiction of what this comment used to claim.
+    //
+    // Measured peaks, 1 s from a SIMULTANEOUS strike (worst case: every voice hit
+    // on the same sample, so attacks add coherently):
+    //   1 voice 0.85 | 2 2.25 | 3 3.87 | 5 8.89 | 8 19.25
+    // Eight voices peak ~22x one voice rather than 8x — simultaneous attacks are
+    // phase aligned, and the shared bridge (README ## 8) adds to it.
+    //
+    // At 0.22 the limiter is a safety catch again. Share of a 1 s render in which
+    // tanh compresses at all, same worst case:
+    //   1-3 voices  0.000 %  — never engages; fully linear
+    //   5 voices    0.133 %  — clean after 1.8 ms
+    //   8 voices    0.210 %  — clean after 49 ms
+    // i.e. only the coincident attack of a large chord, which is what it is for.
     static Sample softLimit(Sample s) { return std::tanh(s); }
 
-    static constexpr Sample kMasterGain = 0.6;
+    static constexpr Sample kMasterGain = 0.22;
 
     Sample PianoEngine::midiToHz(int note)
     {
