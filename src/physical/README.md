@@ -52,37 +52,38 @@ SI-calibrated to real newtons — every "N" below is normalized so `StringResona
 stays in the same ±1-ish range as every other `SignalGenerator` in this codebase); time in
 seconds unless stated; `f_s` = `AudioConfig::sampleRate()`, `dt = 1/f_s`.
 
-**Two empirical calibration constants** (measured against the actual implementation, not
-derived — documented per rule 2 rather than left as unexplained magic numbers):
+**One empirical calibration constant** (measured against the actual implementation, not
+derived — documented per rule 2 rather than left as unexplained magic number):
 
 ```
-force_into_strings = HammerExciter.out() · voicingGain(f0) / U        (U = unison count)
+force_into_strings = HammerExciter.out() / U                  (U = unison count, §11.5)
 audio_out          = Σ partial velocities · kVelocityToSignal
-voicingGain(f0)    = clamp( (f0 / 261.6 Hz)^0.8,  0.1,  10.0 )
-kVelocityToSignal  = 0.055
+kVelocityToSignal  = 0.0116
 ```
 
-**`kHammerToStringGain` is gone (M3).** The force→displacement path is now fixed by the modal
-mass (§6), so no arbitrary scalar bridges "hammer force units" and "signal units" any more.
+**`kHammerToStringGain` is gone (M3).** The force→displacement path is fixed by the modal mass
+(§6, §11.1), so no arbitrary scalar bridges "hammer force units" and "signal units".
+
+**`voicingGain` is gone (M6).** It was a `(f0/261.6)^0.8` curve introduced at M1 as an
+explicitly temporary stand-in for per-register voicing, flattening the fact that
+impulse-normalised partials (§1) make a struck mode's amplitude scale as roughly `1/ω` — so at
+equal hammer velocity the bass came out ~78× louder than the top octave. That spread was never
+an implementation artifact: it is what a piano *would* do if every string had the same mass. The
+instrument's own answer is per-register scaling, and §11 now implements it, so the curve has
+nothing left to compensate.
+
+> **Neither was it the `registerGain` curve M1 deleted.** *That* one compensated a genuine
+> *bug* — §1's sustained-drive gain normalisation made loudness track decay time, invisible
+> while every note decayed in 3 s and a 95× imbalance (with clipping at 880 Hz) the moment M1
+> gave each note its own T60. Three different scalars, three different reasons, all now gone.
+
 What remains is `kVelocityToSignal`: the bank outputs modal *velocity* in the normalised unit
 system, and turning that into a line-level signal is a radiation/transduction constant, not a
-fudge — `M5`'s bridge is where it properly belongs.
-
-`voicingGain` compensates a **real** physical trend rather than an implementation artifact.
-With impulse-normalised partials (§1) a struck mode's amplitude scales as roughly `1/ω`, so at
-equal hammer velocity the bass is *genuinely* far louder than the treble — measured, a ~78×
-peak spread from A0 to C8, closely tracking the expected `1/ω` (128× over that range). Real
-pianos flatten the same trend with **per-register voicing**: lighter, harder hammers and
-higher tension toward the treble. Until `M6` models that properly
-(`docs/piano-physics-plan.md` §M6), one documented curve stands in for it — measured peak
-`f^-0.9`, so `f^0.8` flattens the keyboard to a ~2.5× spread (0.34 → 0.86 at full velocity,
-nothing clipping) while keeping a natural mild bass emphasis.
-
-> **This is not the `registerGain` curve M1 deleted.** That one compensated a *bug* — §1's
-> sustained-drive gain normalisation made loudness track decay time, which was invisible while
-> every note decayed in 3 s and became a 95× imbalance (and clipping at 880 Hz) the moment M1
-> gave each note its own T60. `voicingGain` compensates physics the instrument itself
-> compensates, and is *replaced* by M6 rather than deleted.
+fudge. It sets the instrument's overall loudness and nothing else. The measured consequence is
+that the keyboard is flat in **loudness** rather than in peak — 300 ms RMS spans 6× with its
+maximum in the mid register, falling toward both ends, which is a real piano's contour at
+constant key velocity, while *peak* spans 15.7× because the treble's 5 partials align into a
+high crest factor where the bass's 64 do not.
 
 ### 1. String / body mode — `StringResonator`
 
@@ -304,14 +305,20 @@ position `x = βL` (β = fractional strike position, `0 < β < 0.5`) excites mod
 proportion to the mode shape's value there:
 
 ```
-g_n = | sin(n π β) |                  StringPartialBank::setStrikePosition(β), default β ≈ 1/8
-force_into_partial_n[t] = F_hammer[t] · g_n · (2/N)
+g_n = | sin(n π β) |                  StringPartialBank::setStrikePosition(β)
+force_into_partial_n[t] = F_hammer[t] · g_n
 ```
 
-`(2/N)` is the standard mode-superposition normalization for N truncated modes (keeps total
-injected energy from scaling with the arbitrary partial count `N`). This is the real
-comb-filter mechanism (`REQ-piano-4`): whenever `β ≈ k/n` for integer `k`, `g_n ≈ 0` and that
-partial is suppressed — e.g. striking at `1/8` suppresses partials 8, 16, 24…
+This is the real comb-filter mechanism (`REQ-piano-4`): whenever `β ≈ k/n` for integer `k`,
+`g_n ≈ 0` and that partial is suppressed — e.g. striking at `1/8` suppresses partials 8, 16, 24…
+`β` is **graded by register** (§11.4), from 1/8 in the bass to 1/15 at the top.
+
+> **There is deliberately no `(2/N)` factor.** This section previously carried one, described as
+> "the standard mode-superposition normalization for N truncated modes." It was removed at M2 and
+> the reasoning is worth keeping: modal superposition has no `1/N` term. `N` is a *truncation
+> choice*, and adding a 64th partial must not quieten the first 63. The factor was harmless while
+> `N` was a fixed 12 and became a spurious pitch-dependent gain the moment §2 made `N` vary with
+> pitch — leaving the bass ~5× quieter than the treble, the opposite of a real piano.
 
 ### 5. Unison strings — detuning and beating
 
@@ -483,20 +490,25 @@ so `process()` accumulates two sums over the same loop — the audio sum and, wi
 precomputed weight `g_n/ω_n`, the strike-point displacement. One extra multiply-add per
 partial.
 
-**`kHammerToStringGain` is deleted.** The force→displacement path is now fixed by `m`
-(`kModalMass`), so the arbitrary scalar that used to bridge "hammer force units" and "signal
-units" has nothing left to do. `m`, `m_h` and `K` form one consistent *normalised* unit system
-(this is still a signal-level model, not SI — see ## Units); what remains free is only the
-instrument's overall loudness, which is a legitimate control rather than a fudge factor.
+**`kHammerToStringGain` is deleted.** The force→displacement path is now fixed by `m`, so the
+arbitrary scalar that used to bridge "hammer force units" and "signal units" has nothing left to
+do. `m`, `m_h` and `K` form one consistent *normalised* unit system (this is still a
+signal-level model, not SI — see ## Units); what remains free is only the instrument's overall
+loudness, which is a legitimate control rather than a fudge factor.
+
+> **`m` is not a constant (M6).** M3 fixed the *structure* — the drive gain must carry a real
+> `1/m` — but left `m = 1` at every pitch, which says the top C string and the bottom A string
+> have the same inertia. §11.1 grades it by register, and §11.2 explains why `m_h` cannot be
+> graded without it. `StringPartialBank::kModalMassAtRef` is now only the C4 anchor.
 
 **Properties (empirical/typical, documented as such — not measured from an instrument):**
 `massID` → `m_h`, `stiffnessID` → `K`, `nonlinearExponentID` → `p` (default 2.5; real felt is
 commonly cited in the 2–3.5 range), `hysteresisLossID` → `ε` (default 0.2 — 20 % of loading
-stiffness lost on rebound). `m_h` and `K` are calibrated **together with `kModalMass`** against
-the coupled loop, targeting real contact durations of 1–5 ms that shorten with impact velocity;
-the ratio `m_h/m` matters more than either alone (a real hammer is a few times the mass of the
-string length it strikes, so the string yields comparably to the hammer). `kMaxContactMs`
-(15 ms) is a numerical safety bound, not a physical target.
+stiffness lost on rebound). `m_h` and `K` are set per note by §11.2/§11.3 and
+calibrated **together with `m`** against the coupled loop, targeting real contact durations of
+1–5 ms that shorten with impact velocity; the ratio `m_h/m` matters more than either alone (see
+§11.2, where it spans 0.15 → 184 across the keyboard). `kMaxContactMs` (15 ms) is a numerical
+safety bound, not a physical target.
 
 ### 7. Damper engagement ramp
 
@@ -658,6 +670,154 @@ output   = LowPassFilter(cutoff).out(noise(t))
 `whiteNoise(t)` is a small xorshift32 PRNG (no new module — a private helper, deterministic
 per voice instance so unit tests can assert boundedness/reproducibility).
 
+### 11. Per-register scaling — why 88 notes are not 88 transpositions (M6)
+
+Everything above §10 describes **one** note. Applied with the same parameters at every pitch it
+produces a keyboard whose notes differ only in frequency — the last structural reason the model
+sounded uniform. A real piano is *graded*: the builder changes the string, the hammer and the
+striking geometry continuously from A0 to C8. All five gradings below are functions of `f0`
+alone, applied by `PianoVoice::setFrequency()` and each individually overridable (the same
+override-latch pattern §3's `T60_1` uses).
+
+Reference pitch throughout: `f_ref` = 261.6 Hz (C4).
+
+#### 11.1 String scaling → the modal mass `m(f0)`
+
+§6 introduced `m = ρL/2`, the modal mass, and held it at 1.0 for every note. That is the single
+most unphysical constant left in the model: it says the top C string and the bottom A string
+have the same inertia, when in reality they differ by three orders of magnitude.
+
+Piano strings are **not** ideally scaled (`L ∝ 1/f0` would need a 12 m bass string); builders
+compress the bass length and restore the missing mass by overwinding, so `L` and `μ` each follow
+a different, awkward curve. Their *product* does not — the modal mass is very nearly a single
+power law across the whole compass:
+
+```
+m(f0) = (f_ref / f0)^1.62                       normalised so m(C4) = 1
+```
+
+Fitted to representative concert-grand design values (typical scaling, not a measurement of one
+instrument). One normalised mass unit = 1.9 g, the C4 modal mass:
+
+| note | `f0` | real `L` | real `μ` | real `m = μL/2` | law → `m` | law in grams | error |
+|---|---|---|---|---|---|---|---|
+| A0 | 27.5 | 2.0 m | 60 g/m | 60 g | 38.4 | 73 g | +22 % |
+| C4 | 261.6 | 0.62 m | 6.2 g/m | 1.9 g | 1.00 | 1.9 g | (anchor) |
+| C8 | 4186 | 0.05 m | 0.7 g/m | 0.0175 g | 0.0112 | 0.021 g | +22 % |
+
+A 3400× real span reproduced within ±22 % by one exponent. Only the resonator's **input** gain
+carries it — §6's velocity gain becomes
+
+```
+G_n^vel = sinθ_n · g_n / (m(f0) · f_s)
+```
+
+and displacement recovery (`q_n = y_n/ω_n`) needs no second factor, since `y_n` already carries
+the `1/m`. So a heavy bass string yields less under the same hammer force *and* responds less to
+the bridge's sympathetic feedback (§8) — both physically right, both free.
+
+#### 11.2 Hammer mass `m_h(f0)` — and why it must be graded *with* `m`
+
+```
+m_h(f0) = 3.7 · (f_ref / f0)^0.21               normalised units (3.7 = 7 g / 1.9 g)
+```
+
+giving 11.3 g at A0, 7.0 g at C4, 3.9 g at C8 — real hammers run ~11–12 g in the bass to ~4 g in
+the top octave. The exponent is small because hammer mass barely halves across a compass over
+which string mass falls 3400-fold, and *that mismatch is the point*. §6 states that the contact
+is governed by the **ratio** `m_h/m`, not by either mass alone; dividing the two laws gives it in
+closed form:
+
+```
+m_h(f0)/m(f0) = 3.7 · (f0 / f_ref)^1.41         0.15 at A0 → 3.7 at C4 → 184 at C8
+```
+
+Real pianos: ≈ 0.19 at A0 and ≈ 230 at C8. The two ends are physically *opposite* regimes — the
+bass hammer is light compared to the string it strikes and bounces off a wall of inertia, while
+the treble hammer is ~200× heavier than its string and simply throws it. Grading `m_h` while
+holding `m` at 1.0 would have inverted this (bass ratio 5.9, treble ratio 2.1) and made the model
+*less* correct than uniform values, which is why 11.1 is not optional scope.
+
+Nothing here scripts the two regimes: §6's coupled ODE was already capable of both, and only ever
+saw one because `m` was constant.
+
+#### 11.3 Felt stiffness `K(f0)`
+
+Treble hammers are smaller, more tightly packed and lacquered harder; bass hammers are softer.
+
+```
+K_physical(f0) = K_ref · (f0 / f_ref)^0.75              K_ref = 1.0e12  (normalised units)
+```
+
+`K_ref` and the exponent are **calibrated, not derived** — measured against the two observables
+felt stiffness controls: contact duration (real pianos ~1–5 ms, longest in the bass; measured
+here 2.08–5.38 ms across the compass) and §1/M1's spectral-evolution figure, which a softer
+felt directly dulls (measured 20.0 dB at this value, 12.1 dB at a 30× softer one).
+
+**But `K_physical` is not what the model uses in the top registers**, and this is the sharpest
+limitation in §11. The contact ODE (§6) is integrated explicitly against a **one-sample-delayed**
+string displacement. Combine that with §11.1's grading — a top-octave string is ~3400× lighter
+than a bass string — and the contact gets so brief that the loop stops resolving it. Measured at
+C8 with the pre-M6 felt stiffness: contact 0.38 ms (18 samples) and the string leaving the
+collision with **201× more energy than the hammer arrived with**. Downstream that appeared, very
+indirectly, as one note 85× louder than its neighbours.
+
+Contact time scales as `(m_red/K)^(1/(p+1))`, so bounding `K/m_red` bounds it from below:
+
+```
+m_red(f0) = m_h·m / (m_h + m)                    reduced mass the felt works against
+K(f0)     = min( K_physical(f0),  C_stab · m_red(f0) )        C_stab = 3.0e12
+```
+
+`C_stab` is measured (the loop crosses into energy creation at ≈ 1.08e13) with a 3.6× margin.
+The cap binds from roughly C5 upward, so across the top ~2.5 octaves the felt is **softer than
+the real instrument's** — the model's treble is duller than a real piano's, and that is a
+sample-rate limitation, not a voicing choice. Oversampling the contact loop is the principled
+fix; it converges by 4× (measured: the C8 energy ratio goes 201 → 15.3 → 0.002 at 1×/2×/4×).
+
+The cap is asserted **by its consequence** rather than by its formula — a unit test requires
+that no key, at any velocity, leaves the string with more energy than the hammer brought.
+
+#### 11.4 Strike position `β(f0)`
+
+```
+β(f0) = clamp( 0.125 · (f_ref / f0)^0.227,  1/15,  1/8 )
+```
+
+Real strike ratios sit near 1/8 through the bass and tenor and fall through the top two octaves
+to ≈ 1/15. The upper clamp is what holds the bass flat at 1/8, so β is genuinely constant over
+the lower half of the keyboard and only moves where real designs move it. Via §4's comb
+`g_n = |sin(nπβ)|` this shifts the suppressed partials with pitch — β = 1/8 nulls partials
+8, 16, 24…, β = 1/15 nulls 15, 30, 45… — which is only audible at all because M2 gave the bank
+enough partials to reach those indices.
+
+#### 11.5 Unison count `U(f0)`
+
+```
+U(f0) = 1   for f0 <  56.6 Hz     (A0 … A1     — single wound bass strings)
+        2   for f0 <  89.9 Hz     (A#1 … F2    — bichords)
+        3   otherwise             (F#2 … C8    — trichords)
+```
+
+The thresholds sit **between** the boundary notes (A1 = 55.00, A#1 = 58.27; F2 = 87.31,
+F#2 = 92.50) rather than on them — a threshold placed on a note's own frequency decides that
+note by floating-point luck.
+
+matching standard stringing-scale break points. The bass losing its unison partner is a
+*feature*, not a loss: single-strung notes have no unison beating, and their multi-stage decay
+comes from the two polarisations of §5b instead — exactly the split of mechanisms M4 established.
+Total drive is unchanged by `U` (§6 divides the hammer force by `U` and the `U` banks sum), so
+this changes texture, not level.
+
+#### 11.6 What this retires
+
+`voicingGain` (## Units) is **gone**. It was introduced at M1 as an explicitly labelled stand-in
+for this section: a `f^0.8` curve compensating the fact that impulse-normalised partials make the
+bass ~78× louder at equal hammer velocity. That loudness spread was never a modelling artifact —
+it is what a piano would do if every string had the same mass — and the instrument's own answer
+to it is 11.1–11.3, which the model now has. What remains is `kVelocityToSignal`, one overall
+loudness constant, recalibrated once here because 11.1 changed the unit system's anchor.
+
 ---
 
 ## Parameters
@@ -671,6 +831,7 @@ per voice instance so unit tests can assert boundedness/reproducibility).
 | | `setBaseDecaySeconds` | s (T60) | `T60_fundamental` (latches an override, §3) |
 | | `setBrightnessDecaySeconds` | s (T60 @ 5 kHz) | `T60_ref` → solves `c₃`/`c₁` (§3) |
 | | `setStrikePosition` | 0..0.5 | `β` |
+| | `setModalMass` | normalised (C4 = 1) | `m` (§11.1) |
 | | `setDamperEngagement` | 0..1 target | `d` (ramped) |
 | | `setDamperEngageMs` | ms | ramp time |
 | `HammerExciter` | `setMass` | normalized | `m_h` |
@@ -687,7 +848,9 @@ per voice instance so unit tests can assert boundedness/reproducibility).
 | | `setBrightnessDecaySeconds` | s (T60 @ 5 kHz) | `T60_ref` (§3) |
 | | `setUnaCorda` | bool | soft-pedal gate |
 | | `setDamperHeld` | bool | sustain/sostenuto gate |
+| | `setStrikePosition` / `setModalMass` / `setHammerMass` / `setHammerStiffness` | — | each **latches an override** of the matching §11 law |
 | | `defaultBaseDecaySeconds(f0)` *(static)* | s (T60) | the §3 pitch→decay curve, exposed for tests |
+| | `defaultModalMass` / `defaultHammerMass` / `defaultHammerStiffness` / `defaultStrikePosition` / `defaultUnisonCount` *(static)* | — | the §11 register-scaling laws, exposed for tests |
 
 Code cross-reference: every formula above is implemented in the `update()`/`process()` of the
 class named in its section header — see the class map table for the file. §3's per-partial

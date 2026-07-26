@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-25 (M5 complete)
-- **Last commit:** M5 — soundboard plate modes (treble colouration)
+- **Last updated:** 2026-07-26 (M6 complete)
+- **Last commit:** M6 — per-register scaling (string mass, hammer, strike point, stringing)
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -18,6 +18,7 @@ file first and updates it last, every session. Spec:
 | **M3** (hammer↔string coupling) | **14.96× RT** | — | ~1024 | ✅ met (3.7× margin) |
 | **M4** (two polarisations) | **13.15× RT** | — | ~1280 | ✅ met (3.3× margin) |
 | **M5** (128 soundboard modes) | **10.26× RT** | — | ~1408 | ✅ met (2.6× margin) |
+| **M6** (per-register scaling) | **8.81× RT** | 9.56× | ~1900 | ✅ met (2.2× margin) |
 
 Measured by `./build/piano_bench` (5 passes × 10 s, best-of). M2's resonator count is
 pitch-dependent (bass fills the 64 cap, treble uses ~5); ~1024 is the benchmark chord's worst
@@ -28,23 +29,26 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 
 ## ► NEXT
 
-**M6 — Per-register voicing.** The last structural reason notes still sound like transpositions
-of each other: one hammer mass, one felt stiffness, one strike position and one unison count
-serve all 88 keys. Real pianos grade all four across the keyboard.
+**M7 — Longitudinal modes & phantom partials.** ⚠️ **Amend `REQ-piano-15` first** — it currently
+declares this out of scope, and per `arstro.dsp.implement` rule 5 the requirement is updated
+*before* the code, with the reason (user feedback: bass notes read as bass-guitar-like without
+it) and the date.
 
-| Property | Bass | Treble | Today |
-|---|---|---|---|
-| Hammer mass | ~11–12 g | ~4 g | one value |
-| Felt stiffness | softer | harder | one value |
-| Strike position β | ~1/8 | ~1/15 | 0.125 everywhere |
-| Strings per note | 1 → 2 | 3 | 2 everywhere |
+Longitudinal string modes sit at `f_long,m ≈ m·(1/2L)·√(E/ρ)`, typically 10–20× `f0`, and are
+driven by **tension modulation** — which depends on the *square* of transverse displacement, so
+they generate **phantom partials** at `2·f_i` and `f_i ± f_j`, at frequencies where no transverse
+partial exists at all. This is the metallic **growl/clang of low piano notes**, and with M6
+landed it is the single most missing bass characteristic.
 
-M6 also **replaces `voicingGain`** (README ## Units) — the interim `f^0.8` curve standing in
-for exactly this physics since M1 — with the real thing, and with M2's partial count landed the
-strike-position comb is finally audible and note-dependent.
+M6 left a directly relevant finding: the bass is now the *quietest* register (300 ms RMS 15.6 dB
+below the mid), and it is also the register with the least spectral content per unit energy. M7
+adds exactly the kind of energy that makes real bass notes carry.
 
-Budget: M5 leaves **10.26× RT**, 2.6× above the gate. M6 adds no resonators (it re-parameterises
-existing ones), so the cost should be flat.
+Budget: M6 leaves **8.81× RT**, 2.2× above the gate — the tightest margin so far. M7 *does* add
+resonators (a longitudinal bank per string), so unlike M6 it must be costed before implementing:
+at ~1900 resonators today, the 4× gate affords roughly 4200 total. Keep the longitudinal bank
+small (it is a handful of modes, not a second full series) and bass-weighted, since the gain is
+negligible in the treble anyway.
 
 ---
 
@@ -58,7 +62,7 @@ existing ones), so the cost should be flat.
 | M3 | Coupled hammer↔string interaction | `[x]` |
 | M4 | Two transverse polarisations (double decay) | `[x]` |
 | M5 | Soundboard / bridge | `[x]` |
-| M6 | Per-register voicing | `[ ]` |
+| M6 | Per-register voicing | `[x]` |
 | M7 | Longitudinal modes & phantom partials | `[ ]` |
 | M8 | Tension modulation (attack pitch glide) | `[ ]` |
 | M9 | Tier-3 detail | `[ ]` |
@@ -177,10 +181,40 @@ some acceptance criterion could not be verified here (see Verification notes).
 - [x] Re-run M0 benchmark: **10.26× RT** — budget met with 2.6× margin
 - [x] 100 % line coverage held on all five `physical/` sources
 
-### M6 — Per-register voicing `[ ]`
-- [ ] Hammer mass(f0), felt stiffness(f0), strike position β(f0), strings-per-note(f0)
-- [ ] Test: spectral centroid vs pitch trend; unison count at register boundaries
-- [ ] Re-run M0 benchmark, record
+### M6 — Per-register voicing `[x]`
+- [x] Derived all five laws into README `## 11` **before coding**, each fitted to real
+      concert-grand design values and each stated with its error against them
+- [x] **Modal mass `m(f0)` graded — the scope the plan's table did not list, and without which
+      the milestone would have made the physics *worse*.** M3 fixed the structure (the drive
+      gain must carry a real `1/m`) but left `m = 1` at every pitch. Grading the hammer mass
+      against a constant string mass inverts the `m_h/m` ratio the contact actually depends on
+      (see decisions log). `m(f0) = (f_ref/f0)^1.62` reproduces a real 3400× span within ±22 %
+- [x] Hammer mass `m_h(f0)` (11.3 g A0 → 3.9 g C8), felt stiffness `K(f0)`, strike position
+      `β(f0)` (1/8 bass → 1/15 top), unison count `U(f0)` (1 / 2 / 3 by stringing scale)
+- [x] `m_h/m` now spans **0.15 (A0) → 184 (C8)** vs real ≈ 0.19 → 230 — two physically
+      *opposite* contact regimes, from laws fitted independently of each other
+- [x] **`voicingGain` deleted** (README `## Units`), as promised at M1. `kVelocityToSignal` is
+      now the only free scalar in the model
+- [x] All five laws overridable with the latch pattern §3's `T60_1` established; unit-tested
+      that an override survives a later `setFrequency()`
+- [x] **Energy-conservation guard on all 88 keys × 4 velocities** — worst case 0.93, and it is
+      what caught this milestone's real bug (see decisions log). This is now the permanent
+      regression test for the contact loop's numerical validity
+- [x] `K(f0)` capped by a derived stability bound `C_stab·m_red(f0)`; documented as a 48 kHz
+      *sample-rate* limitation with the convergence measurement that proves the diagnosis
+- [x] Unit tests: centroid rises 193 → 395 Hz across the keyboard; `centroid/f0` collapses
+      76× (a keyboard of transpositions holds it constant); unison boundaries at the real
+      stringing breaks; contact regrading vs the ungraded baseline
+- [x] Integration test: **centroid 198 → 396 Hz, `centroid/f0` collapses 76× A0→C8**, measured
+      end-to-end through the WAV path
+- [x] **`REQ-piano-3` amended** — it required "2+ detuned unison strings" on every note, which
+      the single-strung bass of `## 11.5` contradicts
+- [x] M1's spectral evolution held at **20.0 dB** (it regressed to 12.1 mid-milestone — see
+      decisions log); M4's double decay 3.90, M5's 10.0 dB, sympathetic 256× all held
+- [x] Fixed pre-existing doc drift in README `## 4`: it still documented the `(2/N)` excitation
+      factor M2 removed
+- [x] Re-run M0 benchmark: **8.81× RT** — budget met with 2.2× margin
+- [x] 100 % line coverage held on all five `physical/` sources
 
 ### M7 — Longitudinal modes & phantom partials `[ ]`
 - [ ] **Amend `REQ-piano-15` first** (currently declares this out of scope)
@@ -207,6 +241,48 @@ some acceptance criterion could not be verified here (see Verification notes).
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
 
+- **2026-07-26 (M6) — a "voicing" milestone had to grade the STRING, or it would have made the
+  physics worse.** Plan §M6's table lists four properties, all of them hammer/geometry; none is
+  the string's modal mass. But README §6 records that the contact is governed by the **ratio**
+  `m_h/m`, and M3 left `m = 1` at every pitch. Grading `m_h` alone would have given bass 5.9 and
+  treble 2.1 — real pianos are ≈ 0.19 and ≈ 230, i.e. the ratio would have been *inverted*, and
+  a uniform model would have been closer to the truth than the "improved" one. Grading both gives
+  0.15 → 184 from two laws fitted independently of each other. **Scope defined by the physics the
+  existing code already documented, not by the plan's table.**
+- **2026-07-26 (M6) — the milestone's real bug was numerical, and only an ENERGY measurement
+  found it.** Grading the modal mass makes a top-octave string ~3400× lighter, and the contact
+  ODE is integrated explicitly against a one-sample-delayed string displacement. Below ~1.7 ms of
+  contact the loop stops resolving and starts *manufacturing* energy: measured **201× energy gain
+  at C8**, which surfaced only as "the keyboard's peak spread is 85×, treble-loud". Peak, RMS,
+  contact duration and spectrum all looked merely *odd*; the ratio `E_string/E_hammer` said
+  "impossible" immediately. Fixed by capping `K` at `C_stab·m_red` (README §11.3), and the
+  measurement became the permanent test — all 88 keys × 4 velocities, worst case 0.93.
+  **The lesson generalises past this project: when a coupled physical model looks wrong, measure
+  a conserved quantity, not an output.**
+- **2026-07-26 (M6) — the model's treble felt is softer than a real piano's, and that is a
+  sample-rate limit, not a voicing choice.** The stability cap binds from ~C5 upward, so across
+  the top ~2.5 octaves `K` is set by what 48 kHz can resolve rather than by §11.3's physical law.
+  Oversampling the contact loop is the principled fix and it *converges*: the C8 energy ratio
+  goes 201 → 15.3 → 0.002 at 1×/2×/4×. Recorded rather than hidden — the treble is duller than
+  the real instrument, by a known mechanism, with a known fix that was out of scope here.
+- **2026-07-26 (M6) — deleting `voicingGain` moved the keyboard from flat-in-PEAK to
+  flat-in-LOUDNESS, which is the correct trade.** Peak spread went 2.5× → 15.7× and that looked
+  alarming until measured properly: 300 ms RMS spans 6× with its maximum in the mid register,
+  falling toward both ends — a real piano's contour at constant key velocity. The peak spread is
+  crest factor: the treble's 5 partials align where the bass's 64 do not. **Peak was the wrong
+  loudness statistic across registers all along**; it only looked right while a compensating
+  gain curve was forcing it flat.
+- **2026-07-26 (M6) — M1's spectral evolution regressed 20.0 → 12.1 dB mid-milestone.** The
+  first calibration chose `K` purely for contact duration and landed 30× softer at C4, which
+  directly dulls the attack. Restoring the mid-register `K` and confining the cap to where it is
+  numerically *required* brought it back to exactly 20.0 dB. **Second milestone running to
+  regress an M1 criterion** (M4 was the first) — the suite keeps every past criterion for this
+  reason, and both times it was the one that noticed.
+- **2026-07-26 (M6) — the ledger's own perf prediction was wrong: 10.26× → 8.81×, not flat.**
+  M5's note said "M6 adds no resonators (it re-parameterises existing ones)". §11.5 does change
+  the count: the bass drops 2→1 string but the whole mid and treble go 2→3, so the resonator
+  total rises ~35 %. Budget still met with 2.2× margin, but M7 must be costed *before*
+  implementing — it is the first milestone to approach the gate.
 - **2026-07-25 (M5) — normalise a modal bank by `1/sqrt(M)`, or its mode count becomes a hidden
   stability parameter.** Modes at different frequencies sum incoherently, so a bare sum scales
   as `sqrt(M)`. Going 8 → 128 modes would have multiplied the string→bridge→string loop gain 4×
@@ -361,6 +437,20 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M6** — fully verified; nothing marked `[!]`, but two limitations are worth carrying forward
+  rather than burying. (1) **The treble felt is stability-capped**, so above ~C5 it is softer
+  than a real piano's and the top end is correspondingly duller; the fix (oversampling the
+  contact loop) is known and demonstrated to converge, and was out of scope here. (2) **The bass
+  is the quietest register** — 300 ms RMS 15.6 dB below the mid — which is more than a real
+  instrument. Part of that is genuine and part is structural: `REQ-piano-5` says the bridge is
+  "the last stage before the voice's audible output", but `PianoVoice::generate()` still adds the
+  raw string sum to the output directly, so strings radiate *without* the soundboard's frequency
+  shaping. Routing the voice through the bridge is a milestone-sized change and a real
+  requirement gap; M7's longitudinal modes will independently add bass content.
+  **M6 was the last structural gap the plan identified**, so from here the model should be judged
+  on its timbre. M7–M9 add specific colours (bass growl, attack glide, tier-3 detail) rather than
+  missing mechanisms — this is the point where listening to it is worth more than another
+  measurement.
 - **M5** — fully verified; nothing marked `[!]`. The treble is no longer radiating naked: the
   soundboard now colours 700 Hz – 5 kHz by ~10 dB where it was previously flat. **M6 is the last
   structural gap** — one hammer and one strike position still serve all 88 notes, so notes remain

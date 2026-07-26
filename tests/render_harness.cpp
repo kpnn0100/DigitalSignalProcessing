@@ -22,6 +22,9 @@
  *                         prompt-sound/aftersound (double decay) measurement
  *    bridgeimpulse <out>  PianoBridge impulse response (normalised) — for the M5
  *                         soundboard transfer-function measurement
+ *    pianoregister <out> <hz>  One PianoVoice struck at <hz> with every default —
+ *                         so README ## 11's register scaling is what differs
+ *                         between renders. For the M6 timbre-vs-pitch measurement.
  *    pianoreuse <out>     PianoVoice: strike C4, release (damper engages+settles),
  *                         then setFrequency(A4)+noteOn() on the SAME voice —
  *                         the exact voice-steal sequence PianoEngine uses
@@ -321,6 +324,22 @@ static std::vector<double> renderPianoSpectral()
     return out;
 }
 
+// M6 acceptance (plan §M6): per-register voicing. One voice, one velocity, ALL
+// defaults — the only thing that differs between two renders at two pitches is
+// README ## 11's register scaling. Python compares the timbre of the renders.
+static std::vector<double> renderPianoRegister(double hz)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(hz);
+    v.noteOn(1.0);
+    const int n = (int)(0.5 * kSampleRate);
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i) out[i] = v.out(0.0, 0);
+    return out;
+}
+
 // M4 acceptance (plan §M4): double decay. C4 held with the damper lifted for 5 s,
 // ONE unison string so unison beating (README ## 5) does not modulate the envelope
 // on a timescale comparable to the measurement — this targets the polarisation
@@ -398,6 +417,7 @@ int main(int argc, char **argv)
     else if (scenario == "pianodoubledecay") samples = renderPianoDoubleDecay();
     else if (scenario == "bridgeimpulse") samples = renderBridgeImpulse();
     else if (scenario == "pianosympathetic") samples = renderPianoSympathetic(arg);
+    else if (scenario == "pianoregister") samples = renderPianoRegister(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

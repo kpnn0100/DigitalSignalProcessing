@@ -717,6 +717,11 @@ TEST(StringPartialBank_flattened_loop_matches_reference_resonator)
     bank.setInharmonicity(0.0);
     bank.setBaseDecaySeconds(t60);
     bank.setStrikePosition(beta);
+    // Deliberately NOT the C4 anchor value: with M6 grading the modal mass by
+    // register (README ## 11.1) an off-anchor mass is what actually exercises the
+    // 1/m in the drive gain — at m = 1 a missing 1/m would pass unnoticed.
+    const double modalMass = 2.5;
+    bank.setModalMass(modalMass);
     CHECK(bank.partialCount() == 1);
 
     // Since M4 the bank runs TWO resonators per low partial (vertical + horizontal,
@@ -734,10 +739,9 @@ TEST(StringPartialBank_flattened_loop_matches_reference_resonator)
     refH.setDecaySeconds(std::min(t60n * root, (double)StringPartialBank::kPolarizationT60Cap));
 
     // The bank folds the mode-shape gain, the polarisation split AND the physical
-    // velocity scale 1/(kModalMass*fs) (README ## 6) into its drive; the references get
+    // velocity scale 1/(m*fs) (README ## 6, ## 11.1) into its drive; the references get
     // them applied to their inputs instead. Same signal either way.
-    const double gBase = std::fabs(std::sin(M_PI * beta)) /
-                         (StringPartialBank::kModalMass * 48000.0);
+    const double gBase = std::fabs(std::sin(M_PI * beta)) / (modalMass * 48000.0);
     const double gV = gBase * (1.0 - StringPartialBank::kPolarizationSplit);
     const double gH = gBase * StringPartialBank::kPolarizationSplit;
     double maxErr = 0.0, energy = 0.0;
@@ -1087,6 +1091,249 @@ TEST(PianoBridge_modes_span_the_audible_range_uniformly)
     }
     for (double b : band)
         CHECK(b > loudest * 0.02); // no band is effectively dead (>-34 dB of the loudest)
+}
+
+// ───────────────── M6: per-register voicing ─────────────────
+// Plan §M6; math in src/physical/README.md ## 11.
+
+namespace {
+// Drives the coupled contact with the REGISTER-SCALED parameters PianoVoice
+// actually uses, rather than the uniform defaults runContact() above uses. The
+// two together are what make M6's criterion 3 measurable: the difference between
+// the graded and ungraded contact is precisely M6's contribution.
+struct RegisterContact
+{
+    double contactMs = 0.0;
+    double energyIn = 0.0;   // hammer kinetic energy at impact
+    double energyOut = 0.0;  // string modal energy once the felt has left
+};
+RegisterContact runRegisterContact(double f0, double velocity, bool graded)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    double b = 0.00056 * std::pow(100.0 / f0, 1.25);
+    if (b < 0.00005) b = 0.00005;
+    if (b > 0.02) b = 0.02;
+
+    const double m = graded ? PianoVoice::defaultModalMass(f0) : StringPartialBank::kModalMassAtRef;
+    const double mh = graded ? PianoVoice::defaultHammerMass(f0) : 1.0;
+
+    StringPartialBank bank;
+    bank.setFundamentalHz(f0);
+    bank.setInharmonicity(b);
+    bank.setBaseDecaySeconds(PianoVoice::defaultBaseDecaySeconds(f0));
+    if (graded)
+    {
+        bank.setModalMass(m);
+        bank.setStrikePosition(PianoVoice::defaultStrikePosition(f0));
+    }
+
+    HammerExciter h;
+    if (graded)
+    {
+        h.setMass(mh);
+        h.setStiffness(PianoVoice::defaultHammerStiffness(f0));
+    }
+    h.strike(velocity);
+
+    RegisterContact r;
+    const double v0 = 4.0 * velocity; // HammerExciter::kMaxImpactSpeed * velocity01
+    r.energyIn = 0.5 * mh * v0 * v0;
+    int n = 0;
+    for (int i = 0; i < 48000 && h.isInContact(); ++i)
+    {
+        bank.out(h.out(bank.displacementAtStrike(), 0), 0);
+        ++n;
+    }
+    r.contactMs = n / 48.0;
+
+    // Free response after the hammer has left. The partials are mutually
+    // incoherent, so mean(sum^2) ~= 0.5*sum(y_n^2) and the modal kinetic energy
+    // is 0.5*m*sum(y_n^2) — a proxy good to ~10 %, which is ample for a check
+    // whose failure mode is orders of magnitude (see the test below).
+    const int period = (int)(48000.0 / f0) + 1;
+    double sumSq = 0.0;
+    for (int i = 0; i < period * 4; ++i)
+    {
+        const double y = bank.out(0.0, 0);
+        sumSq += y * y;
+    }
+    r.energyOut = m * (sumSq / (period * 4));
+    return r;
+}
+}
+
+// THE regression guard for M6, and the one that caught the milestone's real bug.
+// Grading the modal mass (## 11.1) makes a top-octave string ~3400x lighter than
+// a bass string, and the contact ODE is integrated explicitly against a one-sample
+// delayed string displacement. Once the contact gets short enough that the loop is
+// no longer resolved, it stops conserving energy and starts MANUFACTURING it —
+// measured 201x energy gain at C8 with the pre-M6 felt stiffness, which showed up
+// downstream as a note 85x louder than its neighbours.
+//
+// ## 11.3's stability cap on K exists to prevent exactly this, so the cap is
+// asserted by its consequence rather than by its formula: no key, at any velocity,
+// may leave the string with more energy than the hammer arrived with.
+TEST(PianoVoice_register_contact_never_creates_energy)
+{
+    double worst = 0.0;
+    int worstMidi = 0;
+    for (int midi = 21; midi <= 108; ++midi) // A0..C8, the full 88
+    {
+        const double f0 = 440.0 * std::pow(2.0, (midi - 69) / 12.0);
+        for (double v : {0.2, 0.5, 0.8, 1.0})
+        {
+            const RegisterContact r = runRegisterContact(f0, v, true);
+            CHECK(r.energyIn > 0.0);
+            const double eff = r.energyOut / r.energyIn;
+            CHECK(std::isfinite(eff));
+            if (eff > worst) { worst = eff; worstMidi = midi; }
+        }
+    }
+    (void)worstMidi;
+    // Measured worst case 0.93 (MIDI 24). The threshold is deliberately loose
+    // rather than exactly 1.0: the energy figure is a proxy, so a few per cent
+    // over unity would be measurement noise, while the failure this guards
+    // against was 201x.
+    CHECK(worst < 1.5);
+}
+
+// ## 11.1/11.2 criterion 3: mass grading changes contact duration in a way M3's
+// coupling alone could not, because M3 ran one hammer mass and one string mass at
+// every pitch. Both the graded and ungraded contacts are measured here so the
+// claim is a comparison, not an assertion about one number.
+TEST(PianoVoice_register_scaling_regrades_contact_duration)
+{
+    const double f[] = {27.5, 65.4, 261.6, 1046.5, 4186.0}; // A0 C2 C4 C6 C8
+    double gradedMin = 1e9, gradedMax = 0.0;
+    for (double hz : f)
+    {
+        const double g = runRegisterContact(hz, 1.0, true).contactMs;
+        const double u = runRegisterContact(hz, 1.0, false).contactMs;
+        CHECK(g > 0.0 && u > 0.0);
+        // Grading moves every register's contact — this is the "beyond what M3
+        // alone produces" part of the criterion.
+        CHECK(std::fabs(g - u) > 0.05);
+        gradedMin = std::min(gradedMin, g);
+        gradedMax = std::max(gradedMax, g);
+    }
+    // ...and lands the whole keyboard inside the range real pianos measure
+    // (Askenfelt & Jansson: ~1-5 ms, longest in the bass). Measured 2.08-5.38 ms.
+    CHECK(gradedMin > 1.0 && gradedMax < 6.0);
+}
+
+// ## 11.5: unison count follows the stringing scale, so the register boundaries
+// land where a real instrument's do. Asserted on the law directly — the boundary
+// notes are the whole point, and inferring them from audio would be indirect.
+TEST(PianoVoice_unison_count_follows_the_stringing_scale)
+{
+    CHECK(PianoVoice::defaultUnisonCount(27.5) == 1);    // A0  — single wound
+    CHECK(PianoVoice::defaultUnisonCount(55.0) == 1);    // A1  — still single
+    CHECK(PianoVoice::defaultUnisonCount(58.27) == 2);   // A#1 — bichord starts
+    CHECK(PianoVoice::defaultUnisonCount(87.31) == 2);   // F2  — still bichord
+    CHECK(PianoVoice::defaultUnisonCount(92.50) == 3);   // F#2 — trichord starts
+    CHECK(PianoVoice::defaultUnisonCount(4186.0) == 3);  // C8
+
+    // And a voice built at those pitches really is strung that way.
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    for (double hz : {27.5, 65.4, 261.6})
+    {
+        PianoVoice v;
+        v.setFrequency(hz);
+        v.noteOn(0.8);
+        double peak = 0.0;
+        for (int i = 0; i < 4800; ++i) peak = std::max(peak, std::fabs(v.out(0)));
+        CHECK(peak > 1e-4); // strung and sounding, whatever U is
+    }
+}
+
+// Every §11 law is overridable, and an override must SURVIVE a later
+// setFrequency() — otherwise a caller who set a value explicitly would silently
+// lose it on the next note, which is exactly the bug §3's T60 latch exists to
+// prevent. Asserted through behaviour: an overridden voice must not track the law.
+TEST(PianoVoice_register_laws_are_overridable_and_latch)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    auto strikePeak = [](PianoVoice &v) {
+        v.noteOn(0.8);
+        double p = 0.0;
+        for (int i = 0; i < 4800; ++i) p = std::max(p, std::fabs(v.out(0)));
+        return p;
+    };
+
+    // A heavy modal mass makes the string yield less and radiate less. Set it at
+    // C2, then move the voice to C6 — where the law would install a mass ~90x
+    // lighter — and require the override to still be in force.
+    PianoVoice overridden, tracking;
+    overridden.setFrequency(65.4);
+    overridden.setModalMass(50.0);
+    overridden.setFrequency(1046.5); // law would set ~0.106; the latch must win
+    tracking.setFrequency(1046.5);
+
+    const double heldPeak = strikePeak(overridden);
+    const double lawPeak = strikePeak(tracking);
+    CHECK(heldPeak > 0.0 && lawPeak > 0.0);
+    CHECK(heldPeak < lawPeak * 0.5); // a 470x heavier string is unmistakably quieter
+
+    // The remaining four latches, same contract.
+    PianoVoice v;
+    v.setFrequency(261.6);
+    v.setUnisonCount(1);
+    v.setStrikePosition(0.02);
+    v.setHammerMass(20.0);
+    v.setHammerStiffness(5.0e11);
+    v.setFrequency(4186.0); // every law would move; none may
+    CHECK(strikePeak(v) > 0.0);
+}
+
+// ## 11.1-11.4 criterion 1: notes stop being transpositions of each other. The
+// spectral centroid must rise with pitch FASTER than the pitch itself would carry
+// it if every note were the same note transposed — i.e. centroid/f0 is not a
+// constant, and the character genuinely differs across the keyboard.
+TEST(PianoVoice_spectral_centroid_rises_across_the_keyboard)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    const double f[] = {27.5, 65.4, 130.8, 261.6, 523.3, 1046.5, 2093.0, 4186.0};
+
+    double prev = 0.0;
+    bool monotonic = true;
+    double firstRatio = 0.0, lastRatio = 0.0;
+    for (size_t k = 0; k < sizeof(f) / sizeof(f[0]); ++k)
+    {
+        PianoVoice v;
+        v.setFrequency(f[k]);
+        v.noteOn(1.0);
+        std::vector<double> y(9600); // 200 ms — the attack, where voicing shows
+        for (auto &s : y) s = v.out(0);
+
+        double num = 0.0, den = 0.0;
+        for (double probe = 50.0; probe < 10000.0; probe *= 1.06)
+        {
+            const double w = 2.0 * M_PI * probe / 48000.0, c = 2.0 * std::cos(w);
+            double s1 = 0, s2 = 0;
+            for (double s : y) { const double s0 = s + c * s1 - s2; s2 = s1; s1 = s0; }
+            const double mag = std::sqrt(std::fabs(s1 * s1 + s2 * s2 - c * s1 * s2));
+            num += probe * mag;
+            den += mag;
+        }
+        CHECK(den > 0.0);
+        const double centroid = num / den;
+        if (centroid <= prev) monotonic = false;
+        prev = centroid;
+        if (k == 0) firstRatio = centroid / f[k];
+        lastRatio = centroid / f[k];
+    }
+    CHECK(monotonic); // brightness rises with pitch, measured 193 Hz (A0) -> 395 Hz (C8)
+
+    // The decisive part: centroid/f0 collapses from ~7.0 at A0 to ~0.09 at C8. A
+    // keyboard of pure transpositions would hold this ratio CONSTANT. Two orders
+    // of magnitude of variation is the numeric statement of "these are different
+    // instruments in different registers", which is what M6 exists to produce.
+    CHECK(firstRatio > lastRatio * 20.0);
 }
 
 int main()

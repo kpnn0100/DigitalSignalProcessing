@@ -438,6 +438,55 @@ def check_piano_sympathetic_resonance(binpath):
     return f"same-pitch/off-pitch energy ratio={mag_same / max(1e-9, mag_off):.2f}"
 
 
+def check_piano_register_voicing(binpath):
+    """M6 acceptance (plan §M6): notes must stop being transpositions of each other.
+    Rendered end to end at four pitches with every default, so README ## 11's register
+    scaling is the only difference between the renders.
+
+    Measured as the spectral centroid RELATIVE to the note's own fundamental. A
+    keyboard of pure transpositions holds centroid/f0 constant by construction — that
+    is what "transposition" means — so a large collapse in that ratio across the
+    compass is the numeric statement of per-register character."""
+    notes = [("A0", 27.5), ("C3", 130.8), ("C5", 523.3), ("C8", 4186.0)]
+    ratios, centroids = [], []
+    for name, f0 in notes:
+        y = render(binpath, "pianoregister", f0)
+        # Coarse log-spaced spectrum over the attack, where voicing shows most.
+        seg = y[: int(0.2 * SR)]
+        num = den = 0.0
+        f = 50.0
+        while f < 10000.0:
+            m = goertzel_mag(seg, f)
+            num += f * m
+            den += m
+            f *= 1.06
+        if den <= 0:
+            raise Failure(f"{name} rendered no measurable spectrum")
+        c = num / den
+        # Floor check beside the ratio, per the M1/M3 lesson: a ratio between two
+        # near-silent renders is arithmetic, not evidence.
+        if max(abs(v) for v in y) < 1e-3:
+            raise Failure(f"{name} is effectively silent — peak {max(abs(v) for v in y):.2e}")
+        centroids.append((name, c))
+        ratios.append(c / f0)
+
+    if any(centroids[i][1] >= centroids[i + 1][1] for i in range(len(centroids) - 1)):
+        raise Failure(
+            "spectral centroid is not rising with pitch: "
+            + ", ".join(f"{n}={c:.0f}Hz" for n, c in centroids)
+        )
+    collapse = ratios[0] / ratios[-1]
+    if collapse < 20.0:
+        raise Failure(
+            f"notes still read as transpositions: centroid/f0 varies only {collapse:.1f}x "
+            "across the keyboard (need >= 20) — per-register voicing is not taking effect"
+        )
+    return (
+        f"centroid {centroids[0][1]:.0f}->{centroids[-1][1]:.0f} Hz, "
+        f"centroid/f0 collapses {collapse:.0f}x A0->C8"
+    )
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -454,6 +503,7 @@ CHECKS = [
     ("piano_double_decay", check_piano_double_decay),
     ("soundboard_colours_treble", check_soundboard_colours_treble),
     ("piano_sympathetic_resonance", check_piano_sympathetic_resonance),
+    ("piano_register_voicing", check_piano_register_voicing),
 ]
 
 

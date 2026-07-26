@@ -13,6 +13,7 @@ namespace arstro
         initProperty(baseDecayID, 3.0);
         initProperty(brightnessDecayID, 0.08); // T60 at 5 kHz — real highs die in ~50-150 ms
         initProperty(strikePositionID, 0.125);
+        initProperty(modalMassID, kModalMassAtRef);
         ensureChannels();
         update();
     }
@@ -34,6 +35,15 @@ namespace arstro
     void StringPartialBank::setBaseDecaySeconds(Sample t60) { setProperty(baseDecayID, t60); }
     void StringPartialBank::setBrightnessDecaySeconds(Sample t60AtRef) { setProperty(brightnessDecayID, t60AtRef); }
     void StringPartialBank::setStrikePosition(Sample beta) { setProperty(strikePositionID, beta); }
+
+    void StringPartialBank::setModalMass(Sample m)
+    {
+        // A zero/negative modal mass is not a physical string; it would also divide
+        // the drive gain by zero. Clamp rather than assert — same policy as the
+        // other setters here.
+        if (m < 1e-6) m = 1e-6;
+        setProperty(modalMassID, m);
+    }
 
     Sample StringPartialBank::partialFrequencyHz(int index) const
     {
@@ -86,6 +96,10 @@ namespace arstro
         Sample t60_1 = getProperty(baseDecayID);
         Sample t60Ref = getProperty(brightnessDecayID);
         Sample beta = getProperty(strikePositionID);
+        // README ## 11.1: graded by register, no longer a constant. Guard mirrors
+        // setModalMass() so a direct setProperty() cannot divide by zero below.
+        Sample modalMass = getProperty(modalMassID);
+        if (modalMass < 1e-6) modalMass = 1e-6;
 
         const Sample sr = AudioConfig::instance().sampleRate();
         const Sample nyquistLimit = kNyquistFraction * sr;
@@ -191,7 +205,7 @@ namespace arstro
             mCosTheta[i] = std::cos(theta);
             // Velocity gain (README ## 6): sin(theta)*g_n/(m*fs). The 1/omega_n that
             // would appear for displacement cancels here — velocity is what radiates.
-            mDrive[i] = std::sin(theta) * gn * vertShare / (kModalMass * sr);
+            mDrive[i] = std::sin(theta) * gn * vertShare / (modalMass * sr);
             mDispWeight[i] = gn / wn; // ...displacement recovered by weighting
             mEntryT60[i] = kT60Constant / alphaVert;
 
@@ -203,7 +217,7 @@ namespace arstro
                 if (fh > 0.49 * sr) fh = 0.49 * sr;
                 const Sample thetaH = 2.0 * M_PI * fh / sr;
                 mCosTheta[h] = std::cos(thetaH);
-                mDrive[h] = std::sin(thetaH) * gn * kPolarizationSplit / (kModalMass * sr);
+                mDrive[h] = std::sin(thetaH) * gn * kPolarizationSplit / (modalMass * sr);
                 // Horizontal motion is perpendicular to the hammer's compression axis,
                 // so it does not change c = x_h - y_string (README ## 5b, ## 6).
                 mDispWeight[h] = 0.0;

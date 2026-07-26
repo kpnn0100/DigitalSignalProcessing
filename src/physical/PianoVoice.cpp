@@ -18,16 +18,18 @@ namespace arstro
         mDamperNoiseFilter.setCutoffFrequency(1500.0);
         recomputeNoiseCoeffs();
 
-        mHammer.setStiffness(mHammerBaseStiffness);
+        applyRegisterScaling(); // sets hammer mass/stiffness, beta, modal mass, U
         applyUnisonFrequencies();
-        updateVoicingGain();
     }
 
     void PianoVoice::setFrequency(Sample hz)
     {
         SignalGenerator::setFrequency(hz);
+        // README ## 11: the register scaling is a function of f0, so it is re-derived
+        // here — before applyUnisonFrequencies(), because ## 11.5 can change how many
+        // unison banks that call configures.
+        applyRegisterScaling();
         applyUnisonFrequencies();
-        updateVoicingGain();
     }
 
 
@@ -59,19 +61,98 @@ namespace arstro
         }
     }
 
-    void PianoVoice::updateVoicingGain()
+    // ───────────────── README ## 11: per-register scaling laws ─────────────────
+    // All five are pure functions of f0 with no state, so tests can assert the laws
+    // directly. Guard f0 once, here, rather than in each law.
+
+    Sample PianoVoice::defaultModalMass(Sample f0Hz)
     {
-        Sample ratio = frequency() / kVoicingRefHz;
-        if (ratio < 1e-6) ratio = 1e-6;
-        mVoicingGain = std::pow(ratio, kVoicingExponent);
-        if (mVoicingGain < 0.1) mVoicingGain = 0.1;
-        if (mVoicingGain > 10.0) mVoicingGain = 10.0;
+        // ## 11.1: m(f0) = (f_ref/f0)^1.62, normalised to m(C4) = 1. The clamps bound
+        // the drive gain 1/m for nonsense pitches; they sit far outside A0..C8
+        // (38.4 at A0, 0.0112 at C8), so no real note ever reaches them.
+        if (f0Hz < 1.0) f0Hz = 1.0;
+        Sample m = std::pow(kRegisterRefHz / f0Hz, kModalMassExponent);
+        if (m < kModalMassMin) m = kModalMassMin;
+        if (m > kModalMassMax) m = kModalMassMax;
+        return m;
+    }
+
+    Sample PianoVoice::defaultHammerMass(Sample f0Hz)
+    {
+        // ## 11.2: m_h barely halves across a compass over which m falls 3400x. The
+        // resulting ratio m_h/m spans 0.15 (A0) to 184 (C8) — two opposite contact
+        // regimes, which is exactly the point.
+        if (f0Hz < 1.0) f0Hz = 1.0;
+        return kHammerMassAtRef * std::pow(kRegisterRefHz / f0Hz, kHammerMassExponent);
+    }
+
+    Sample PianoVoice::defaultHammerStiffness(Sample f0Hz)
+    {
+        // ## 11.3: harder felt toward the treble...
+        if (f0Hz < 1.0) f0Hz = 1.0;
+        const Sample physical = kHammerRefStiffness * std::pow(f0Hz / kRegisterRefHz, kStiffnessExponent);
+
+        // ...capped by what the explicit contact integration can actually resolve.
+        // Contact time ~ (m_red/K)^(1/(p+1)), so bounding K/m_red bounds it from
+        // below. m_red is the hammer/string reduced mass — the inertia the felt
+        // spring actually works against.
+        const Sample m = defaultModalMass(f0Hz);
+        const Sample mh = defaultHammerMass(f0Hz);
+        const Sample mReduced = (mh * m) / (mh + m);
+        const Sample maxStable = kStiffnessStabilityRatio * mReduced;
+        return (physical < maxStable) ? physical : maxStable;
+    }
+
+    Sample PianoVoice::defaultStrikePosition(Sample f0Hz)
+    {
+        // ## 11.4: ~1/8 through bass and tenor (held there by the upper clamp),
+        // falling to 1/15 at the top of the compass.
+        if (f0Hz < 1.0) f0Hz = 1.0;
+        Sample beta = kStrikePosAtRef * std::pow(kRegisterRefHz / f0Hz, kStrikePosExponent);
+        if (beta < kStrikePosMin) beta = kStrikePosMin;
+        if (beta > kStrikePosMax) beta = kStrikePosMax;
+        return beta;
+    }
+
+    int PianoVoice::defaultUnisonCount(Sample f0Hz)
+    {
+        // ## 11.5: standard stringing-scale breaks. Single-strung bass is a feature —
+        // no unison beating there, its multi-stage decay comes from ## 5b instead.
+        if (f0Hz < kUnisonSingleMaxHz) return 1;
+        if (f0Hz < kUnisonDoubleMaxHz) return 2;
+        return 3;
+    }
+
+    void PianoVoice::applyRegisterScaling()
+    {
+        const Sample f0 = frequency();
+        if (!mUnisonOverridden)
+            mUnisonCount = defaultUnisonCount(f0);
+        if (!mHammerMassOverridden)
+            mHammer.setMass(defaultHammerMass(f0));
+        if (!mHammerStiffnessOverridden)
+            mHammerBaseStiffness = defaultHammerStiffness(f0);
+        // Stiffness reaches the hammer via noteOn() (which applies the una-corda
+        // factor), but a voice that is never struck should still report the right
+        // value, and unit tests read it back.
+        mHammer.setStiffness(mHammerBaseStiffness);
+        if (!mStrikePositionOverridden || !mModalMassOverridden)
+        {
+            const Sample beta = defaultStrikePosition(f0);
+            const Sample m = defaultModalMass(f0);
+            for (int k = 0; k < kMaxUnison; ++k)
+            {
+                if (!mStrikePositionOverridden) mStrings[k].setStrikePosition(beta);
+                if (!mModalMassOverridden) mStrings[k].setModalMass(m);
+            }
+        }
     }
 
     void PianoVoice::setUnisonCount(int count)
     {
         if (count < 1) count = 1;
         if (count > kMaxUnison) count = kMaxUnison;
+        mUnisonOverridden = true; // stop setFrequency() reapplying README ## 11.5
         mUnisonCount = count;
         applyUnisonFrequencies();
     }
@@ -113,8 +194,16 @@ namespace arstro
 
     void PianoVoice::setStrikePosition(Sample beta)
     {
+        mStrikePositionOverridden = true; // stop setFrequency() reapplying README ## 11.4
         for (int k = 0; k < kMaxUnison; ++k)
             mStrings[k].setStrikePosition(beta);
+    }
+
+    void PianoVoice::setModalMass(Sample m)
+    {
+        mModalMassOverridden = true; // stop setFrequency() reapplying README ## 11.1
+        for (int k = 0; k < kMaxUnison; ++k)
+            mStrings[k].setModalMass(m);
     }
 
     void PianoVoice::setDamperEngageMs(Sample ms)
@@ -123,10 +212,19 @@ namespace arstro
             mStrings[k].setDamperEngageMs(ms);
     }
 
-    void PianoVoice::setHammerMass(Sample m) { mHammer.setMass(m); }
+    void PianoVoice::setHammerMass(Sample m)
+    {
+        mHammerMassOverridden = true; // stop setFrequency() reapplying README ## 11.2
+        mHammer.setMass(m);
+    }
     void PianoVoice::setHammerNonlinearExponent(Sample p) { mHammer.setNonlinearExponent(p); }
     void PianoVoice::setHammerHysteresisLoss(Sample eps) { mHammer.setHysteresisLoss(eps); }
-    void PianoVoice::setHammerStiffness(Sample k) { mHammerBaseStiffness = k; }
+    void PianoVoice::setHammerStiffness(Sample k)
+    {
+        mHammerStiffnessOverridden = true; // stop setFrequency() reapplying README ## 11.3
+        mHammerBaseStiffness = k;
+        mHammer.setStiffness(k);
+    }
 
     void PianoVoice::noteOn(Sample velocity)
     {
@@ -196,7 +294,10 @@ namespace arstro
             stringDisp += mStrings[k].displacementAtStrike();
         stringDisp /= (Sample)mUnisonCount;
 
-        Sample force = mHammer.out(stringDisp, 0) * mVoicingGain / (Sample)mUnisonCount;
+        // No voicingGain here any more (M6): the bass/treble loudness spread it used
+        // to flatten is now produced — and self-corrected — by the register scaling
+        // of README ## 11. Force is shared among the U strings the hammer contacts.
+        Sample force = mHammer.out(stringDisp, 0) / (Sample)mUnisonCount;
         if (mUnaCorda)
             force *= kUnaCordaGain;
 

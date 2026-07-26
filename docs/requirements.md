@@ -58,6 +58,15 @@ sympathetic resonance, (5) dampers, (6) pedals, (7) secondary mechanical noises.
   requirement's *intent* (emergent, not hand-authored) is unchanged and still binding: the
   polarisation split adds a second physical degree of freedom with its own decay, not a
   hand-drawn envelope over the output. Unison detuning keeps its (real) role: beating.
+  **Amended again 2026-07-26 (M6).** "Each note has 2+ detuned unison strings" is now false for
+  the bottom octave *by design*: `README ## 11.5` grades the unison count the way a real
+  stringing scale does — 1 (single wound) for A0…A1, 2 for A#1…F2, 3 above. Requiring 2+ strings
+  on every note would require the model to be wrong about the bass, where real pianos are
+  single-strung. The requirement now reads: **notes are strung 1–3 per note following the
+  instrument's stringing scale, and where 2+ strings are present they are detuned so beating
+  emerges from superposition.** The single-strung bass is not left without multi-stage decay —
+  the two polarisations above supply it, which is exactly the division of mechanisms this
+  requirement's previous amendment established.
 - `REQ-piano-4` — **Strike position** (where the hammer hits the string) measurably shapes
   timbre: partials near multiples of `1/strikePositionFraction` are suppressed, matching the
   real comb-filter effect of off-center excitation.

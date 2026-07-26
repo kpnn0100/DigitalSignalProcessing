@@ -353,6 +353,23 @@ note-dependent (before, 12 partials meant β only nulled partial 8).
 3. Contact duration differs across registers beyond what M3 alone produces (mass/stiffness
    grading contributes).
 
+> **Scope added at implementation (2026-07-26): the string's modal mass is graded too.** The
+> table above lists four hammer/geometry properties and no string property, but README §6 records
+> that the contact is governed by the *ratio* `m_h/m`, and M3 left `m = 1` at every pitch.
+> Grading `m_h` alone inverts that ratio relative to a real instrument, so implementing only the
+> table would have made the model less correct than leaving it uniform. See the progress ledger's
+> decisions log.
+>
+> **Criterion 1 sharpened.** "Monotonic centroid" is necessary but far too weak — transposing one
+> note across the keyboard also produces a monotonically rising centroid, which is precisely the
+> defect M6 exists to remove. Asserted instead on `centroid/f0`, which a keyboard of pure
+> transpositions holds *constant* by construction: measured to collapse **76×** from A0 to C8.
+>
+> **A criterion was added, not adapted.** Grading the modal mass turned the coupled contact loop
+> numerically unstable in the top octave (201× energy gain at C8), so M6 also carries an
+> energy-conservation bound over all 88 keys × 4 velocities. It found the bug; it stays in the
+> suite as the contact loop's validity guard.
+
 ---
 
 ## M7 — Longitudinal modes & phantom partials

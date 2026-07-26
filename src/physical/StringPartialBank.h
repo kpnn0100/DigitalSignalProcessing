@@ -51,12 +51,14 @@ namespace arstro
         static constexpr Sample kPolarizationDetune = 3e-5;
         static constexpr Sample kPolarizationT60Cap = 60.0;    // s; bass must not ring for minutes
 
-        // README ## 6: modal mass (rho*L/2), normalised. Sets how far the string
-        // yields under the hammer, so it is calibrated jointly with the hammer's
-        // mass/stiffness — the RATIO m_h/m governs the contact, not either alone.
-        // Replaces the deleted kHammerToStringGain. Public so tests can reproduce
-        // the physical force->velocity scale exactly.
-        static constexpr Sample kModalMass = 1.0;
+        // README ## 6 / ## 11.1: modal mass (rho*L/2), normalised so that m == 1 at
+        // C4. Sets how far the string yields under the hammer, so it is calibrated
+        // jointly with the hammer's mass/stiffness — the RATIO m_h/m governs the
+        // contact, not either alone. Replaces the deleted kHammerToStringGain.
+        // NOT a constant any more (M6): real modal mass spans ~3400x across the
+        // keyboard, and holding it at 1.0 was what made every note a transposition
+        // of every other. PianoVoice drives it from f0; this is the C4 anchor.
+        static constexpr Sample kModalMassAtRef = 1.0;
 
         enum PropertyIndex
         {
@@ -65,6 +67,7 @@ namespace arstro
             baseDecayID,       // seconds, T60 of the fundamental
             brightnessDecayID, // seconds, T60 at kLossRefHz -> solves c3/c1 (README ## 3)
             strikePositionID,  // 0..0.5, beta
+            modalMassID,       // normalised modal mass m (README ## 11.1)
             propertyCount
         };
         StringPartialBank();
@@ -74,6 +77,7 @@ namespace arstro
         void setBaseDecaySeconds(Sample t60);
         void setBrightnessDecaySeconds(Sample t60AtRef);
         void setStrikePosition(Sample beta);
+        void setModalMass(Sample m); // README ## 11.1; clamped positive
 
         // 0 = damper lifted, 1 = fully engaged; ramps linearly over setDamperEngageMs().
         void setDamperEngagement(Sample target01);
