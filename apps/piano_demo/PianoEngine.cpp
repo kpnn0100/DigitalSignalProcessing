@@ -156,6 +156,14 @@ namespace arstro
         Sample sumL = 0.0, sumR = 0.0;
         for (auto &v : mVoices)
         {
+            // Skip voices that are fully damped AND inaudible (README ## 13). Every
+            // voice in the pool used to be rendered whether it sounded or not, so
+            // one note cost almost as much as eight — the single largest waste in
+            // the engine during normal playing, where most of the pool is idle.
+            // Safe because a damped string is already cut off from bridge feedback,
+            // so it cannot be re-excited (REQ-piano-6 is unaffected).
+            if (v.isSilent())
+                continue;
             sumL += v.out(0.0, 0); // channel 0 first: drives the physics + bridge push
             sumR += v.out(0.0, 1);
         }

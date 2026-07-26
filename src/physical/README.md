@@ -959,6 +959,36 @@ One bank per **voice**, not per string: the `U` unison strings are within a cent
 and the hammer already drives them from their *mean* displacement (§6), so a second per-string
 copy would cost 3× to model a difference smaller than the detuning it came from.
 
+### 13. Skipping silent voices (a performance gate, with a physics precondition)
+
+A voice pool renders every slot every sample whether it sounds or not, so one note
+costs almost as much as eight. That is pure waste during normal playing, where most of the
+pool is idle — but skipping a voice freezes its state, and freezing the wrong voice is a
+*physics* bug, not just a glitch.
+
+A voice may be frozen only when **both** hold:
+
+```
+damperValue >= 0.999          fully damped
+outputEnvelope < 1e-5         inaudible (~-100 dBFS)
+
+outputEnvelope[n] = max( |y[n]|,  outputEnvelope[n-1]·e^(-1/(0.05·f_s)) )
+```
+
+**The damper condition is the important one.** An *undamped* string is still coupled to the
+shared bridge and can be re-excited by other notes — that is §8's sympathetic resonance and
+`REQ-piano-6`. Freezing a quiet-but-undamped string would silently break it: the string would
+sit at −100 dB and never respond, where a real one would ring. A *damped* string is already
+gated off that path by the `(1 − damperValue)` factor in `PianoVoice::generate()`, so it cannot
+be re-excited, cannot become audible again, and is therefore safe to freeze until it is struck
+— at which point `noteOn()` calls `reset()` anyway.
+
+The threshold is ~−100 dBFS: below the 16-bit noise floor (−96 dB) and about five orders of
+magnitude under a struck note's peak. The 50 ms release stops a note that passes briefly through
+zero from tripping the gate mid-ring.
+
+Implemented in `PianoVoice::isSilent()`; applied by `PianoEngine::renderFrame()`.
+
 ---
 
 ## Parameters

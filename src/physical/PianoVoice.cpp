@@ -251,6 +251,7 @@ namespace arstro
         for (int k = 0; k < kMaxUnison; ++k)
             mStrings[k].reset();
         mLongitudinal.reset(); // same voice-steal reasoning (README ## 12)
+        mOutputEnvelope = 0.0; // a struck voice is not silent (README ## 13)
     }
 
     void PianoVoice::noteOff()
@@ -271,6 +272,15 @@ namespace arstro
         Sample sr = AudioConfig::instance().sampleRate();
         mThumpDecayCoeff = std::exp(-1.0 / (kThumpTauSeconds * sr));
         mDamperNoiseDecayCoeff = std::exp(-1.0 / (kDamperNoiseTauSeconds * sr));
+        mSilenceRelease = std::exp(-1.0 / (kSilenceReleaseMs * 0.001 * sr));
+    }
+
+    bool PianoVoice::isSilent() const
+    {
+        // Both conditions are required — see the header. Damped first: it is the
+        // cheap check and the one that makes freezing physically safe.
+        return mStrings[0].damperValue() >= kDamperClosedThreshold &&
+               mOutputEnvelope < kSilenceThreshold;
     }
 
     Sample PianoVoice::nextWhiteNoise()
@@ -343,6 +353,11 @@ namespace arstro
             mBridge->accumulate(stringSum);
 
         mLastSample = arstroFlush(stringSum * kVelocityToSignal + noise);
+
+        // Peak follower for isSilent() (README ## 13).
+        const Sample mag = std::fabs(mLastSample);
+        mOutputEnvelope = arstroFlush(mag > mOutputEnvelope ? mag
+                                                            : mOutputEnvelope * mSilenceRelease);
         return mLastSample;
     }
 }

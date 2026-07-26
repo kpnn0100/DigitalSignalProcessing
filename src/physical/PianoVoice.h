@@ -69,6 +69,19 @@ namespace arstro
         void setHammerNonlinearExponent(Sample p);
         void setHammerHysteresisLoss(Sample eps);
 
+        /** True when this voice is BOTH fully damped and inaudible, so freezing it
+         *  changes nothing. Engines may skip such a voice entirely
+         *  (PianoEngine does) — one note otherwise costs almost as much as eight,
+         *  because every voice in the pool is rendered whether it sounds or not.
+         *
+         *  The damper condition is not a nicety: an UNdamped string can still be
+         *  re-excited through the shared bridge (REQ-piano-6), so freezing it would
+         *  break sympathetic resonance. A fully damped string is already gated off
+         *  that path by the (1 - damperValue) factor in generate(), so it cannot be
+         *  re-excited and cannot become audible again until it is struck — and
+         *  noteOn() calls reset() before that. See src/physical/README.md ## 13. */
+        bool isSilent() const;
+
         void setUnaCorda(bool on) { mUnaCorda = on; }
         // Sustain/sostenuto gate: while true, noteOff() does not engage the damper.
         void setDamperHeld(bool held) { mDamperHeld = held; }
@@ -119,12 +132,16 @@ namespace arstro
 
         Sample mHammerBaseStiffness = 0.0; // set per-note by ## 11.3 from the ctor on
         Sample mLastSample = 0.0;
+        // Decaying peak follower over the voice's own output, for isSilent()
+        // (README ## 13). One max and one multiply per sample.
+        Sample mOutputEnvelope = 0.0;
 
         // Secondary mechanical noise (README ## 10): amplitude decays exponentially
         // each sample from a trigger event; coefficients derived from AudioConfig
         // sample rate in recomputeNoiseCoeffs().
         Sample mThumpAmp = 0.0;
         Sample mDamperNoiseAmp = 0.0;
+        Sample mSilenceRelease = 0.0;
         Sample mThumpDecayCoeff = 0.0;
         Sample mDamperNoiseDecayCoeff = 0.0;
         uint32_t mNoiseState = 0x9E3779B9u;
@@ -182,6 +199,13 @@ namespace arstro
         static constexpr Sample kUnaCordaStiffness = 0.85;
         static constexpr Sample kUnaCordaGain = 0.6;
         static constexpr Sample kVoiceLifetimeMs = 8000.0;
+        // README ## 13. Threshold is ~-100 dBFS: far below the 16-bit noise floor
+        // (-96 dB) and ~5 orders below a struck note's peak, so nothing audible is
+        // ever frozen. The follower's release is slow enough that a note passing
+        // briefly through zero cannot trip it.
+        static constexpr Sample kSilenceThreshold = 1.0e-5;
+        static constexpr Sample kSilenceReleaseMs = 50.0;
+        static constexpr Sample kDamperClosedThreshold = 0.999;
         static constexpr Sample kThumpAmpBase = 0.03;
         static constexpr Sample kThumpTauSeconds = 0.003;
         static constexpr Sample kDamperNoiseAmpFixed = 0.015;

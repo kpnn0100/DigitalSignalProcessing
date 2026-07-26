@@ -1608,6 +1608,65 @@ TEST(LongitudinalBank_does_not_destabilise_the_bridge_loop)
     CHECK(peak < 100.0); // measured 6.13 at 10x; 3.14 at the shipped value
 }
 
+// ───────────────── silent-voice skipping (README ## 13) ─────────────────
+
+// The performance gate that lets an engine freeze idle voices. Its two conditions
+// are not interchangeable, and the damper one is what keeps it physically safe.
+TEST(PianoVoice_isSilent_requires_both_damped_and_inaudible)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    auto run = [](PianoVoice &v, double seconds) {
+        const int n = (int)(seconds * 48000);
+        double peak = 0.0;
+        for (int i = 0; i < n; ++i) peak = std::max(peak, std::fabs(v.out(0)));
+        return peak;
+    };
+
+    // A struck voice is never silent.
+    PianoVoice v;
+    v.setFrequency(261.6);
+    v.noteOn(0.9);
+    CHECK(!v.isSilent());
+    run(v, 0.05);
+    CHECK(!v.isSilent());
+
+    // Released: the damper engages and the voice goes quiet, then reports silent.
+    v.noteOff();
+    run(v, 4.0);
+    CHECK(v.isSilent());
+    // ...and it really is inaudible by then — the gate must not fire early.
+    CHECK(run(v, 0.2) < 1e-4);
+
+    // Struck again, it must come back immediately (noteOn resets the follower).
+    v.noteOn(0.9);
+    CHECK(!v.isSilent());
+}
+
+// THE safety property. An UNdamped string stays coupled to the bridge and can be
+// re-excited by other notes (REQ-piano-6, README ## 8). If isSilent() ignored the
+// damper, a sustain-pedalled note that had decayed below the threshold would be
+// frozen and would never answer — silently breaking sympathetic resonance.
+TEST(PianoVoice_isSilent_never_fires_on_an_undamped_string)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(261.6);
+    v.setDamperHeld(true); // sustain pedal down
+    v.noteOn(0.9);
+    v.noteOff();           // key released, but the pedal holds the damper OFF
+
+    // Run well past the point where the note is inaudible.
+    double peak = 0.0;
+    for (int i = 0; i < 48000 * 12; ++i) peak = std::max(peak, std::fabs(v.out(0)));
+    (void)peak;
+    // Quiet, but NOT skippable: the damper is lifted, so the bridge can still
+    // drive it and it must keep running.
+    CHECK(!v.isSilent());
+}
+
 // ───────────────── compute: parallel executor ─────────────────
 // Design + measurements: docs/parallel-architecture.md. REQ-compute-1..6.
 
