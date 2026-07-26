@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-26 (M7 complete)
-- **Last commit:** M7 — longitudinal modes & phantom partials (the bass clang)
+- **Last updated:** 2026-07-26 (M7 complete; then a non-milestone perf/latency pass)
+- **Last commit:** perf — skip fully-damped, inaudible voices (README ## 13)
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -20,6 +20,12 @@ file first and updates it last, every session. Spec:
 | **M5** (128 soundboard modes) | **10.26× RT** | — | ~1408 | ✅ met (2.6× margin) |
 | **M6** (per-register scaling) | **8.81× RT** | 9.56× | ~1900 | ✅ met (2.2× margin) |
 | **M7** (longitudinal modes) | **7.92× RT** | — | ~1944 | ✅ met (2.0× margin) |
+| **post-M7** (voice skipping) | **8.36× RT** | — | ~1944 | ✅ met (2.1× margin) |
+
+`piano_bench` holds all 8 voices *sounding*, so the voice-skipping optimisation cannot help it —
+8.36× vs 7.92× is run-to-run noise, and that is the honest reading. Where skipping does help is
+ordinary playing, which the benchmark deliberately does not represent: median block cost during
+melodic playing (one note per 500 ms, keys released, no pedal) went **1.204 → 0.409 ms**, ~3×.
 
 Measured by `./build/piano_bench` (5 passes × 10 s, best-of). M2's resonator count is
 pitch-dependent (bass fills the 64 cap, treble uses ~5); ~1024 is the benchmark chord's worst
@@ -54,6 +60,36 @@ during the attack, which is not free. Cost it before implementing, as M7 was.
 One caution worth carrying in: M6 and M7 both changed the coefficient path's *inputs*; M8 changes
 how often it runs. `StringPartialBank::update()` is a 64-partial loop with `pow`/`sin`/`cos` in
 it — calling it per sample would be far more expensive than the physics is worth.
+
+---
+
+## Since M7 — work that is not a milestone
+
+Done between M7 and M8, on user reports rather than the plan. Recorded so a later session does
+not rediscover any of it. None of it changes the physics.
+
+- **A parallel-compute layer exists** (`src/compute/`, [`parallel-architecture.md`](parallel-architecture.md),
+  `REQ-compute-1..6`): `ParallelExecutor` + `SerialExecutor` + `ThreadPoolExecutor`, selected via
+  `ComputeConfig`, built on the pre-existing `platform::Thread` seam. **Off by default, and
+  measured NOT to pay yet** — `SynthEngine` blocks are too cheap (break-even at 512 frames,
+  0.68× at 64). `PianoEngine` is *not* wired to it: block-level voice parallelism needs the
+  bridge feedback delayed by one block, which is an approximation nobody has justified yet.
+  Amdahl ceiling for the piano graph is 4.14× at 8 workers (`s = 0.133`, the bridge).
+- **The app's "lag" was never DSP.** Measured 17–20 % of the real-time budget at every block
+  size while it still lagged: the ALSA buffer was 50 ms. Latency and throughput are different
+  axes (`REQ-compute-1`) — do not accept a parallelism argument for a latency complaint.
+- **The output limiter had become a gain stage.** M6/M7 changed per-voice levels and
+  `PianoEngine::kMasterGain` was never restaged: `tanh` was squashing peaks 58 % at three
+  voices and 91 % at eight, i.e. chords driven near square. Now 0.22, verified by how *often*
+  the limiter engages (1–3 voices: 0.000 % of samples). **Any milestone that changes per-voice
+  level must re-check this** — it is the second time a downstream constant silently rotted.
+- **Silent-voice skipping** (README `## 13`): a voice is frozen only when fully damped *and*
+  inaudible. The damper half is a safety property, not an optimisation detail — an undamped
+  string can still be re-excited through the bridge, so freezing one would break `REQ-piano-6`.
+- **Render never misses its deadline.** 30 s of realistic playing at 256 frames: median 1.20 ms,
+  p99.9 2.01 ms, max 3.27 ms, **zero** blocks over a 5.33 ms budget, flat over time. Remaining
+  audio glitches on the dev machine are *scheduling* (rtprio 0 + PulseAudio), not DSP — see the
+  skill's §"Setting up on a new machine".
 
 ---
 

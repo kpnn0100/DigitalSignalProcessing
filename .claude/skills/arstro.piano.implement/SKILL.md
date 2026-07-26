@@ -1,6 +1,6 @@
 ---
 name: arstro.piano.implement
-description: Use to advance (or resume, in any session) the multi-milestone physics upgrade that turns the Arstro piano model in src/physical/ from a struck-string sound into a real piano — coupled hammer-string interaction, frequency-dependent losses, pitch-scaled partial counts, two-polarisation double decay, soundboard, per-register voicing, longitudinal/phantom partials, tension modulation. Progress is tracked in a committed ledger so the work resumes exactly where it stopped. Invoke when the user says things like "continue the piano", "work on the piano physics", "make the piano sound more real", "what's next on the piano", or "/arstro.piano.implement". It reads the ledger, does the next milestone, verifies it numerically, updates the ledger, and commits.
+description: Use to advance (or resume, in any session or on a freshly cloned machine) the multi-milestone physics upgrade that turns the Arstro piano model in src/physical/ from a struck-string sound into a real piano — coupled hammer-string interaction, frequency-dependent losses, pitch-scaled partial counts, two-polarisation double decay, soundboard, per-register voicing, longitudinal/phantom partials, tension modulation. Progress is tracked in a committed ledger so the work resumes exactly where it stopped, and the skill carries the build/test/audio setup a new machine needs. Invoke when the user says things like "continue the piano", "work on the piano physics", "make the piano sound more real", "what's next on the piano", or "/arstro.piano.implement". It reads the ledger, does the next milestone, verifies it numerically, updates the ledger, and commits.
 ---
 
 # arstro.piano.implement
@@ -17,10 +17,92 @@ files, so any session can pick up exactly where the last one stopped.
 2. **The progress ledger** — `docs/piano-physics-progress.md`. What is done, what is next
    (**► NEXT**), per-milestone checklists, the perf log, a decisions log, and verification
    notes. **Read this first, update it last, every session.**
-3. **This skill** — the procedure below.
+3. **This skill** — the procedure below, plus §"Setting up on a new machine" and §"What
+   already exists outside the milestones", which are the two things a fresh clone needs and
+   cannot infer from the ledger.
 
 All three live in the `DigitalSignalProcessing` repo (a submodule of the `arstro` umbrella);
 the interactive UI this feeds lives at `examples/piano/` in the umbrella repo. See §Routing.
+
+## Setting up on a new machine
+
+The repo is self-contained; nothing below is needed to *implement* a milestone, only to build,
+test and **listen**. Milestone work is verified numerically and headless, so a machine with no
+audio device can still do every step of the loop except the final listening check.
+
+Only two submodules matter here: **`DigitalSignalProcessing`** (all the physics) and
+**`Artboard`** (only for the playable UI). `ImageProcessing/lib/LibRaw` is a large, unrelated
+submodule — skip it. Work happens on branch **`feature/1.0.0`** in the umbrella *and* in the
+submodules; a fresh clone can land on a detached HEAD, which will lose commits.
+
+```bash
+git clone <arstro remote> && cd arstro
+git submodule update --init DigitalSignalProcessing Artboard   # NOT --recursive
+git -C DigitalSignalProcessing checkout feature/1.0.0
+git -C Artboard checkout feature/1.0.0
+
+cd DigitalSignalProcessing
+bash unittest/buildSynthTests.sh          # unit  — must print "0 failed"
+python3 tests/run_integration.py          # integration — must print "0 failed"
+cmake -S . -B build && cmake --build build -j$(nproc) && (cd build && ctest)
+./build/piano_bench                       # perf gate; record in the ledger
+```
+
+Build needs only a C++17 compiler, CMake and Python 3 — **no NumPy, no libsndfile, no gtest**.
+The interactive keyboard additionally needs GTK3, Cairo, ALSA and libX11:
+
+```bash
+sudo apt install build-essential cmake libgtk-3-dev libasound2-dev libx11-dev
+cmake -S . -B build && cmake --build build --target arstro_piano_ui   # from the umbrella root
+```
+
+### Audio tuning — expect to redo this per machine
+
+Interactive glitching is almost always **scheduling, not DSP**, and the numbers to justify that
+are in the ledger's §"Since M7". Before optimising anything, check the two things that actually
+decide it:
+
+```bash
+ulimit -r                 # 0  => SCHED_FIFO will be refused; the app logs which it got
+pgrep -l pipewire pulseaudio jackd   # a sound server adds its own buffering and scheduling
+```
+
+Runtime knobs, all optional — the defaults are chosen to be safe on a stock desktop
+(rtprio 0 + PulseAudio), not to be low-latency:
+
+| variable | default | use |
+|---|---|---|
+| `ARSTRO_PIANO_LATENCY_US` | 30000 | raise if it glitches, lower once RT priority works |
+| `ARSTRO_PIANO_FRAMES` | 256 | period size |
+| `ARSTRO_PIANO_DEVICE` | `default` | `plughw:0` bypasses PulseAudio |
+| `ARSTRO_PIANO_UI_MS` | 33 | UI repaint interval (Cairo software raster competes for CPU) |
+
+To get genuinely low latency, grant real-time priority — this is the fix, the buffer size is
+only a workaround:
+
+```bash
+echo "@audio - rtprio 95" | sudo tee /etc/security/limits.d/audio.conf
+sudo usermod -aG audio $USER      # log out and back in
+```
+
+The app counts underruns and warns once a second, so a glitch is always visible rather than
+inferred. **A latency complaint is never evidence of a throughput problem** (`REQ-compute-1`).
+
+## What already exists outside the milestones
+
+Read the ledger's §"Since M7" for the current list. The standing points a milestone must not
+trip over:
+
+- **`src/compute/`** — a parallel executor with a platform-adapter seam
+  (`docs/parallel-architecture.md`, `REQ-compute-1..6`). **Off by default and measured not to
+  pay yet.** `PianoEngine` is deliberately *not* wired to it. Do not enable it to "fix" a
+  perf problem without measuring first; the Amdahl ceiling for this graph is 4.14× at 8 workers.
+- **`PianoEngine::kMasterGain`** — the output limiter is a safety catch, not a gain stage. Any
+  milestone that changes per-voice level **must re-measure how often `tanh` engages**; it has
+  silently rotted once already (91 % peak squash at eight voices).
+- **`PianoVoice::isSilent()`** (README `## 13`) — voices are frozen only when fully damped
+  *and* inaudible. The damper half is a safety property protecting `REQ-piano-6`, not a tuning
+  choice. Do not loosen it.
 
 ## The loop (every invocation)
 
@@ -62,14 +144,21 @@ the interactive UI this feeds lives at `examples/piano/` in the umbrella repo. S
 **Do not skip step 5.** A finished milestone whose ledger was not updated is the one failure
 mode that breaks resuming.
 
-## Requirement conflicts — three are known and pre-flagged
+## Requirement conflicts — one is still pending
 
-M5 (if the commuted/measured-IR route is chosen), M7, and M9.4 each contradict a written
-requirement (`REQ-piano-14`, `REQ-piano-15`, `REQ-piano-16` respectively — all three currently
-declare that work out of scope). Per `arstro.dsp.implement` rule 5: **amend
-`docs/requirements.md` first**, with the reason and the date, then implement against the
-amended text. Never implement against a requirement you know is stale, and never quietly
-leave the requirement contradicting the code.
+Per `arstro.dsp.implement` rule 5: **amend `docs/requirements.md` first**, with the reason and
+the date, then implement against the amended text. Never implement against a requirement you
+know is stale, and never quietly leave the requirement contradicting the code.
+
+| | requirement | status |
+|---|---|---|
+| M5 | `REQ-piano-14` (no measured IR) | **no conflict** — the modal-extension route was taken instead |
+| M7 | `REQ-piano-15` (longitudinal out of scope) | **amended** 2026-07-26; it now *requires* phantom partials |
+| M9.4 | `REQ-piano-16` (una corda approximated) | ⚠️ **still pending** — amend before implementing real una corda |
+
+Also amended along the way, and worth knowing before touching either area: `REQ-piano-3` twice
+(M4 — polarisations, not unison detuning, produce double decay; M6 — the bass is single-strung
+by design, so "2+ unison strings on every note" is false).
 
 ## Routing — which repo does a change belong in?
 
@@ -81,6 +170,27 @@ leave the requirement contradicting the code.
 
 If a milestone touches the DSP and the app, commit the DSP first, then the umbrella (app
 change + pointer bump), and say so in the report.
+
+## Measurement lessons that keep paying
+
+Earned in M1–M7, each one after it had already cost a milestone. Apply them before inventing a
+new way to be fooled:
+
+- **Put a magnitude floor beside every ratio.** A ratio between two silent signals is
+  arithmetic, not evidence. Two milestones shipped a vacuous pass this way (M1's NaN hidden by
+  WAV clamping, M3's "ratio 0.00 PASS").
+- **To test an added stage, difference two renders** — one with it, one with it disabled. The
+  remainder *is* that stage's output, exactly. M7's first implementation was completely silent
+  and still looked plausible in a single spectral bin, because the attack transient is broadband.
+- **When a coupled model looks wrong, measure a conserved quantity, not an output.** M6's real
+  bug was a 201× *energy gain* in the contact loop; peak, RMS, contact duration and spectrum all
+  looked merely odd, while `E_out/E_in` said "impossible" at once.
+- **A physics error only becomes visible once the surrounding physics gets more correct.** Three
+  normalisation bugs in M1–M2 were each invisible until a different parameter started varying.
+- **A milestone can silently regress an earlier one's criterion** — M4 and M6 both broke M1's
+  spectral evolution. Every past criterion stays in the suite for exactly this reason.
+- **Measure before optimising.** The interactive "lag" was a 50 ms buffer while the DSP used
+  under 20 % of the budget; the reported "glitch" was a saturating limiter, not starvation.
 
 ## Test levels
 
