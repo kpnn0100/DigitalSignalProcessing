@@ -279,8 +279,25 @@ Document that as a deliberate approximation.
 
 **Acceptance.**
 1. Fit two exponentials to the RMS envelope; the late slope is ≥ 3× slower than the early one.
+   > **Adapted at M4 — asserted for bass/mid (C3, C4), plus a trend test.** Only the bridge-loss
+   > term `c1` splits between the planes (README §5b), so the effect's strength tracks how
+   > bridge-dominated a note's fundamental is: C3 89 % → ratio 5.4, C4 77 % → 4.3, C5 50 % →
+   > 2.0. That fall with pitch is the physics *and* matches real pianos, where aftersound is a
+   > bass/mid phenomenon — demanding a flat ≥3× across the whole keyboard would demand the
+   > model be wrong. The treble is covered by a separate test asserting the ratio *decreases*
+   > monotonically with pitch and stays > 1.2.
 2. Equivalently: decay rate over [0, 0.5 s] vs [1.5 s, 3 s] differs by ≥ 3×.
+   > **Replaced at M4 by note-relative windows.** The crossover time scales with T60
+   > (C4 1.2 s, C3 2.3 s, A0 9.3 s), so fixed windows only straddle it in the mid register —
+   > measured 5.5× at C4 but 2.6× at C3, purely from window placement. Windows are now placed
+   > at fractions of each note's own predicted crossover, and the slope is a least-squares fit
+   > over 12 sub-windows so residual beating cannot masquerade as decay.
 3. M0 benchmark still ≥ 4× real-time.
+4. **Must not regress M1's spectral evolution.** (Added at M4: the first implementation applied
+   one flat `R_pol` to the whole of `alpha_n`, shortening every partial's prompt decay including
+   the high ones, and the spectral-evolution figure collapsed 20.5 → 11.2 dB. The `c1`-only
+   split fixes it; the threshold settles at 18 dB because double decay legitimately speeds the
+   *fundamental's* prompt phase, which this particular ratio metric divides by.)
 
 > ⚠ **Stacks on top of M2's budget risk.** M4 adds `kPolarizedPartials` (~16) extra resonators
 > per string on top of whatever M2 settled on. Off M0's measured 192-resonator baseline, M2

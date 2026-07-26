@@ -19,7 +19,7 @@ namespace arstro
 
     void StringPartialBank::ensureChannels()
     {
-        const size_t n = (size_t)AudioConfig::instance().channelCount() * (size_t)kMaxPartials;
+        const size_t n = (size_t)AudioConfig::instance().channelCount() * (size_t)kMaxEntries;
         if (mY1.size() != n)
         {
             mY1.assign(n, 0.0);
@@ -143,6 +143,11 @@ namespace arstro
         }
         mActiveCount = active;
 
+        // README ## 5b: the vertical/horizontal T60 split is geometric about T60_n.
+        const Sample splitRoot = std::sqrt(kPolarizationDecayRatio);
+        const int polarized = (mActiveCount < kPolarizedPartials) ? mActiveCount : kPolarizedPartials;
+        mTotalCount = mActiveCount + polarized;
+
         for (int i = 0; i < mActiveCount; ++i)
         {
             // Frequency guard mirrors StringResonator's: the first partial can be
@@ -153,13 +158,22 @@ namespace arstro
             mFreqN[i] = fn;
 
             const Sample wn = 2.0 * M_PI * fn;
-            Sample alphaN = c1 + c3 * wn * wn;
+            const Sample internal = c3 * wn * wn; // viscoelastic: SAME in both planes
+            Sample alphaN = c1 + internal;
             if (alphaN < kMinAlpha)
                 alphaN = kMinAlpha;
-            mBaseT60N[i] = kT60Constant / alphaN;
+            mBaseT60N[i] = kT60Constant / alphaN; // natural, pre-split (introspection)
 
-            const Sample theta = wn / sr;
-            mCosTheta[i] = std::cos(theta);
+            // README ## 5b: only the BRIDGE-loss term splits between the two planes.
+            // The vertical plane loses more to the bridge, the horizontal less; the
+            // internal c3*w^2 loss is a property of the wire and is identical in both.
+            // This is why double decay is a low-partial phenomenon *by physics* — high
+            // partials are internal-loss dominated, so their two planes barely differ.
+            Sample alphaVert = c1 * splitRoot + internal;
+            Sample alphaHoriz = c1 / splitRoot + internal;
+            if (alphaVert < kMinAlpha) alphaVert = kMinAlpha;
+            if (alphaHoriz < kMinAlpha) alphaHoriz = kMinAlpha;
+
             // Impulse normalisation (README ## 1): G = sin(theta), independent of
             // decay, folded together with the mode-shape gain so process() does one
             // multiply. Deliberately NOT scaled by 1/N_active — modal superposition
@@ -167,11 +181,36 @@ namespace arstro
             // would make a bass note's fundamental quieter purely because the note
             // carries more partials. See README ## 4.
             const Sample gn = std::fabs(std::sin((Sample)(i + 1) * M_PI * beta));
+            // Only partials that actually get a horizontal twin give away eps of their
+            // drive; the rest keep all of it (they have nowhere to give it to).
+            const bool hasTwin = (i < polarized);
+            const Sample vertShare = hasTwin ? (1.0 - kPolarizationSplit) : 1.0;
+
+            // --- vertical: the hammer's plane, strongly bridge-coupled, fast decay ---
+            const Sample theta = wn / sr;
+            mCosTheta[i] = std::cos(theta);
             // Velocity gain (README ## 6): sin(theta)*g_n/(m*fs). The 1/omega_n that
             // would appear for displacement cancels here — velocity is what radiates.
-            mDrive[i] = std::sin(theta) * gn / (kModalMass * sr);
-            // ...and displacement is recovered from the same output by weighting.
-            mDispWeight[i] = gn / wn;
+            mDrive[i] = std::sin(theta) * gn * vertShare / (kModalMass * sr);
+            mDispWeight[i] = gn / wn; // ...displacement recovered by weighting
+            mEntryT60[i] = kT60Constant / alphaVert;
+
+            // --- horizontal twin: weakly coupled, slow decay, does NOT push the felt ---
+            if (hasTwin)
+            {
+                const int h = mActiveCount + i;
+                Sample fh = fn * (1.0 + kPolarizationDetune);
+                if (fh > 0.49 * sr) fh = 0.49 * sr;
+                const Sample thetaH = 2.0 * M_PI * fh / sr;
+                mCosTheta[h] = std::cos(thetaH);
+                mDrive[h] = std::sin(thetaH) * gn * kPolarizationSplit / (kModalMass * sr);
+                // Horizontal motion is perpendicular to the hammer's compression axis,
+                // so it does not change c = x_h - y_string (README ## 5b, ## 6).
+                mDispWeight[h] = 0.0;
+                Sample t60h = kT60Constant / alphaHoriz;
+                if (t60h > kPolarizationT60Cap) t60h = kPolarizationT60Cap;
+                mEntryT60[h] = t60h;
+            }
         }
         recomputeEffectivePartials();
     }
@@ -180,9 +219,9 @@ namespace arstro
     {
         const Sample sr = AudioConfig::instance().sampleRate();
         const Sample damperScale = 1.0 + mDamperValue * kDamperLossGain;
-        for (int i = 0; i < mActiveCount; ++i)
+        for (int i = 0; i < mTotalCount; ++i)
         {
-            Sample t60eff = mBaseT60N[i] / damperScale;
+            Sample t60eff = mEntryT60[i] / damperScale;
             if (t60eff < 0.001) t60eff = 0.001;
             // r = 10^(-3/(T60*fs)) = exp(-ln(1000)/(T60*fs)); only r moves with the
             // damper, so theta's cos/sin stay cached from update().
@@ -209,11 +248,11 @@ namespace arstro
         }
 
         // README ## 1's recurrence, inlined over flat arrays — see the header note.
-        Sample *y1 = mY1.data() + (size_t)channel * kMaxPartials;
-        Sample *y2 = mY2.data() + (size_t)channel * kMaxPartials;
+        Sample *y1 = mY1.data() + (size_t)channel * kMaxEntries;
+        Sample *y2 = mY2.data() + (size_t)channel * kMaxEntries;
         Sample sum = 0.0;
         Sample disp = 0.0;
-        for (int i = 0; i < mActiveCount; ++i)
+        for (int i = 0; i < mTotalCount; ++i)
         {
             const Sample y = arstroFlush(mA1[i] * y1[i] - mA2[i] * y2[i] + mDrive[i] * forceIn);
             y2[i] = y1[i];

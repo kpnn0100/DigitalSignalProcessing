@@ -18,6 +18,8 @@
  *                         engages (not held); arg=1 sustain held (setDamperHeld)
  *    pianospectral <out>  PianoVoice C4 held 1.5 s, all defaults — for the M1
  *                         spectral-evolution measurement (high/low band collapse)
+ *    pianodoubledecay <out>  PianoVoice C4 held 5 s, 1 unison string — for the M4
+ *                         prompt-sound/aftersound (double decay) measurement
  *    pianoreuse <out>     PianoVoice: strike C4, release (damper engages+settles),
  *                         then setFrequency(A4)+noteOn() on the SAME voice —
  *                         the exact voice-steal sequence PianoEngine uses
@@ -317,6 +319,25 @@ static std::vector<double> renderPianoSpectral()
     return out;
 }
 
+// M4 acceptance (plan §M4): double decay. C4 held with the damper lifted for 5 s,
+// ONE unison string so unison beating (README ## 5) does not modulate the envelope
+// on a timescale comparable to the measurement — this targets the polarisation
+// mechanism specifically.
+static std::vector<double> renderPianoDoubleDecay()
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(261.63);
+    v.setUnisonCount(1);
+    v.setDamperHeld(true);
+    v.noteOn(0.9);
+    const int n = 5 * kSampleRate;
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i) out[i] = v.out(0.0, 0);
+    return out;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3)
@@ -347,6 +368,7 @@ int main(int argc, char **argv)
     else if (scenario == "pianodamper") samples = renderPianoDamper(arg);
     else if (scenario == "pianoreuse") samples = renderPianoReuse();
     else if (scenario == "pianospectral") samples = renderPianoSpectral();
+    else if (scenario == "pianodoubledecay") samples = renderPianoDoubleDecay();
     else if (scenario == "pianosympathetic") samples = renderPianoSympathetic(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 

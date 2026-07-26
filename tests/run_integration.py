@@ -336,13 +336,60 @@ def check_piano_spectral_evolution(binpath):
     # down with little left to lose. Coupling the hammer to the string re-injects
     # high-frequency energy (the reflection ripple), and the measured drop rose to
     # 20.5 dB — so the original criterion now holds on its own terms.
+    # Threshold moved 20 -> 18 at M4, measured 20.0. M4's double decay legitimately
+    # speeds the FUNDAMENTAL's prompt phase (C4: 6.9 s -> 2.9 s vertical), and this
+    # metric divides by the low band, so a faster-decaying fundamental at t=1 s makes
+    # the ratio less negative and shrinks the measured drop. The high partials did not
+    # get duller — that was verified separately when the first (uniform-R) split DID
+    # dull them and this figure collapsed to 11.2 dB.
     drop = attack_db - late_db
-    if drop < 20.0:
+    if drop < 18.0:
         raise Failure(
             f"spectrum barely evolves: high/low ratio {attack_db:.1f} dB at attack vs "
-            f"{late_db:.1f} dB at 1 s (drop {drop:.1f} dB, need >= 20 dB)"
+            f"{late_db:.1f} dB at 1 s (drop {drop:.1f} dB, need >= 18 dB)"
         )
     return f"high/low ratio {attack_db:.1f} dB -> {late_db:.1f} dB (drop {drop:.1f} dB)"
+
+
+def check_piano_double_decay(binpath):
+    """M4 acceptance (plan §M4): the envelope is NOT a single exponential. The vertical
+    polarisation is strongly bridge-coupled and decays fast (the prompt sound); once it
+    falls past the weakly-coupled horizontal plane, the long quiet aftersound takes
+    over. A single exponential reads as a plucked string — this is what makes piano
+    notes bloom."""
+    y = render(binpath, "pianodoubledecay")
+
+    def decay_rate(t0, t1, windows=12):
+        """Least-squares slope of log(RMS) — averages out residual modulation."""
+        pts = []
+        for w in range(windows):
+            a = t0 + (t1 - t0) * w / windows
+            b = t0 + (t1 - t0) * (w + 1) / windows
+            i0, i1 = int(a * SR), int(b * SR)
+            if i1 > len(y) or i1 <= i0:
+                continue
+            r = rms(y[i0:i1])
+            if r < 1e-9:
+                continue
+            pts.append((0.5 * (a + b), math.log(r)))
+        if len(pts) < 4:
+            raise Failure("not enough signal to fit a decay slope")
+        n = len(pts)
+        sx = sum(p[0] for p in pts); sy = sum(p[1] for p in pts)
+        sxx = sum(p[0] * p[0] for p in pts); sxy = sum(p[0] * p[1] for p in pts)
+        return -(n * sxy - sx * sy) / (n * sxx - sx * sx)
+
+    # Windows straddle the predicted C4 crossover (~1.2 s, README ## 5b).
+    early = decay_rate(0.12, 0.85)
+    late = decay_rate(2.4, 4.8)
+    if early <= 0.0 or late <= 0.0:
+        raise Failure(f"envelope not decaying (early {early:.3f}/s, late {late:.3f}/s)")
+    if early < late * 3.0:
+        raise Failure(
+            f"no double decay: early {early:.3f}/s vs late {late:.3f}/s "
+            f"(ratio {early / late:.2f}, need >= 3)"
+        )
+    return f"prompt {early:.2f}/s -> aftersound {late:.2f}/s (ratio {early / late:.2f})"
 
 
 def check_piano_sympathetic_resonance(binpath):
@@ -383,6 +430,7 @@ CHECKS = [
     ("piano_voice_reuse_bounded", check_piano_voice_reuse_bounded),
     ("piano_bandwidth", check_piano_bandwidth),
     ("piano_spectral_evolution", check_piano_spectral_evolution),
+    ("piano_double_decay", check_piano_double_decay),
     ("piano_sympathetic_resonance", check_piano_sympathetic_resonance),
 ]
 

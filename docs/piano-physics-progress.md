@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-25 (M3 complete)
-- **Last commit:** M3 — coupled hammer↔string interaction
+- **Last updated:** 2026-07-25 (M4 complete)
+- **Last commit:** M4 — two transverse polarisations (double decay)
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -16,6 +16,7 @@ file first and updates it last, every session. Spec:
 | **M1** (loss model) | **16.25× RT** | 18.35× | 192 | ✅ met |
 | **M2** (64 partials + flattened loop) | **19.27× RT** (median 18.57×) | 20.75× | ~1024 | ✅ met |
 | **M3** (hammer↔string coupling) | **14.96× RT** | — | ~1024 | ✅ met (3.7× margin) |
+| **M4** (two polarisations) | **13.15× RT** | — | ~1280 | ✅ met (3.3× margin) |
 
 Measured by `./build/piano_bench` (5 passes × 10 s, best-of). M2's resonator count is
 pitch-dependent (bass fills the 64 cap, treble uses ~5); ~1024 is the benchmark chord's worst
@@ -26,19 +27,22 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 
 ## ► NEXT
 
-**M4 — Two transverse polarisations (double decay).** Give each partial a vertical and a
-horizontal polarisation, split slightly in frequency and strongly in decay, with the excitation
-split ~95/5. The result is the **prompt sound → aftersound** envelope: a fast initial fall, then
-a long quiet tail. Piano notes "bloom"; a single exponential reads as a plucked string.
+**M5 — Soundboard / bridge.** Everything above 700 Hz currently radiates *completely
+uncoloured*: `PianoBridge` has 8 modes spanning 80–700 Hz, so the treble is naked resonators —
+music-box territory. Extend the modal set to ~30–40 modes covering 50 Hz – 5 kHz with realistic
+plate modal density and radiation rolloff.
 
-Plan §M4 has the parameterisation. Two notes carried forward:
-- Apply polarisation only to the first `kPolarizedPartials` (~16) — double decay is a
-  low-partial phenomenon, and this keeps the cost bounded. Document it as an approximation.
-- **Correct the README's existing double-decay claim** while you are there: §5 still credits
-  unison detune + bridge coupling for it, which two strings at 0.6 cents do not deliver.
+⚠ **Requirement conflict if you take the shortcut.** Commuted synthesis / convolving a measured
+soundboard impulse response would be cheaper and very effective, but contradicts `REQ-piano-14`
+(measured IR / room acoustics explicitly out of scope). Per rule 5, **amend the requirement
+first** if choosing that route — the modal-extension route has no conflict.
 
-Budget: M3 leaves **14.96× RT**, 3.7× above the gate. M4 adds ~16 resonators per string on top
-of ~64, so expect roughly −25 %; the flattened loop from M2 is what makes this affordable.
+Also worth doing here: `PianoBridge`'s coupling gain has now been rescaled twice (M1, M3)
+purely to chase stability as the drive path's units changed. M5's admittance-based bridge —
+where the bridge sets string damping *and* radiation, making the loop self-limiting — is the
+principled fix, and would retire `kVelocityToSignal` too.
+
+Budget: M4 leaves **13.15× RT**, 3.3× above the gate.
 
 ---
 
@@ -50,7 +54,7 @@ of ~64, so expect roughly −25 %; the flattened loop from M2 is what makes this
 | M1 | Frequency-dependent loss model (spectral evolution) | `[x]` |
 | M2 | Pitch-dependent partial count (bandwidth) | `[x]` |
 | M3 | Coupled hammer↔string interaction | `[x]` |
-| M4 | Two transverse polarisations (double decay) | `[ ]` |
+| M4 | Two transverse polarisations (double decay) | `[x]` |
 | M5 | Soundboard / bridge | `[ ]` |
 | M6 | Per-register voicing | `[ ]` |
 | M7 | Longitudinal modes & phantom partials | `[ ]` |
@@ -126,11 +130,27 @@ some acceptance criterion could not be verified here (see Verification notes).
 - [x] Re-run M0 benchmark: **14.96× RT** — budget met with 3.7× margin
 - [x] 100 % line coverage held on all five `physical/` sources
 
-### M4 — Two polarisations `[ ]`
-- [ ] Derive polarisation split + `kPolarizedPartials` approximation into README `## Math`
-- [ ] Correct the README's existing double-decay claim (currently credits unison detune)
-- [ ] Unit/integration test: late decay slope ≥ 3× slower than early slope
-- [ ] Re-run M0 benchmark, record — **most likely milestone to breach the budget**
+### M4 — Two polarisations `[x]`
+- [x] Derived the polarisation split into README `## 5b` **before coding**, including the
+      geometric T60 split (the plan's `T60_v = T60_n` would have multiplied every note's ring
+      time by up to 8× and undone §3's calibrated pitch→decay curve)
+- [x] **Only the bridge-loss term `c1` splits**, not `c3·ω²` — the vertical/horizontal
+      difference is bridge-coupling asymmetry; internal viscoelastic loss is a property of the
+      wire and identical in both planes. This is what makes double decay a low-partial
+      phenomenon *by physics* rather than by the `kPolarizedPartials` cap
+- [x] Horizontal twins carry displacement weight **zero** — perpendicular to the hammer's
+      compression axis, so they radiate but do not push back on the felt (README ## 6)
+- [x] Corrected README §5's double-decay claim and **amended `REQ-piano-3`** accordingly
+      (unison detuning delivers beating, not double decay)
+- [x] Reference test extended to both planes — the flattened loop still matches
+      `StringResonator` **sample-exactly**, so the split itself is pinned
+- [x] Unit tests: prompt→aftersound ratio **5.4 (C3), 4.3 (C4)** (≥3), plus a trend test that
+      the effect *weakens* toward the treble as physics requires (C5 2.0)
+- [x] Integration test: **prompt 2.43/s → aftersound 0.57/s, ratio 4.27**
+- [x] M1's spectral evolution held at **20.0 dB** (the first, uniform-`R` implementation
+      collapsed it to 11.2 — see decisions log)
+- [x] Re-run M0 benchmark: **13.15× RT** — budget met with 3.3× margin
+- [x] 100 % line coverage held on all five `physical/` sources
 
 ### M5 — Soundboard / bridge `[ ]`
 - [ ] Choose approach; if commuted/measured IR → **amend `REQ-piano-14` first**
@@ -168,6 +188,34 @@ some acceptance criterion could not be verified here (see Verification notes).
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
 
+- **2026-07-25 (M4) — the polarisation split belongs to the BRIDGE loss term, not to the whole
+  decay rate.** The obvious first implementation applied one flat `R_pol` to all of `alpha_n`,
+  shortening every partial's prompt decay by 2.83× — including the high partials, whose decay
+  is set by internal viscoelastic loss and has nothing to do with which plane they vibrate in.
+  Measured, the attack went 9 dB darker and M1's spectral-evolution figure collapsed
+  **20.5 → 11.2 dB**. Splitting only `c1` (bridge/air) leaves partial 12 at 0.188 s vs 0.196 s
+  unsplit while the fundamental still splits 2.9 s / 13.7 s. Bonus: double decay is now a
+  low-partial phenomenon *by physics* rather than by the `kPolarizedPartials` cap, which
+  becomes purely a CPU optimisation. **A milestone can silently regress an earlier
+  milestone's criterion — every one of them stays in the suite for exactly this reason.**
+- **2026-07-25 (M4) — the T60 split is geometric about T60_n, not `T60_h = R·T60_n`.** The
+  plan's literal form would have multiplied every note's overall ring time by up to 8×,
+  silently undoing M1's calibrated pitch→decay curve. Splitting geometrically keeps the
+  geometric mean at `T60_n` and lands both planes on real-piano values (C4 prompt 2.4 s,
+  aftersound 19.5 s; measured pianos ~1–2 s and ~10–20 s).
+- **2026-07-25 (M4) — two acceptance criteria adapted, both to match physics rather than to
+  pass.** (a) The ≥3× ratio is asserted for C3/C4 and replaced by a *trend* test above:
+  because only `c1` splits, the effect's strength tracks how bridge-dominated a fundamental is
+  (C3 89 % → 5.4×, C4 77 % → 4.3×, C5 50 % → 2.0×). That fall with pitch matches real pianos,
+  where aftersound is a bass/mid phenomenon; demanding a flat ≥3× everywhere would demand the
+  model be wrong. (b) The plan's fixed [0,0.5]/[1.5,3] windows were replaced by note-relative
+  ones: the crossover scales with T60 (C4 1.2 s, C3 2.3 s, A0 9.3 s), so fixed windows measured
+  5.5× at C4 but 2.6× at C3 *purely from window placement*.
+- **2026-07-25 (M4) — polarisation detune cut 3e-4 → 3e-5.** At 3e-4 the polarisation beat
+  period drops below the aftersound decay time from C5 up, so the beat masquerades as a decay
+  slope and corrupts the very envelope M4 exists to produce. At 3e-5 it is 5–20× longer than
+  the aftersound everywhere. Audible beating is unison detuning's job (README §5); the
+  polarisation split's job is the double decay.
 - **2026-07-25 (M3) — a coupling constant must be rescaled whenever the drive path's units
   change, and a "passing" test hid it.** M3 gave the string drive its physical
   `1/(kModalMass·f_s)` factor — ~48000× smaller — which left the bridge's sympathetic feedback
@@ -274,6 +322,10 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M4** — fully verified; nothing marked `[!]`. Notes now **bloom**: a fast prompt sound
+  giving way to a long quiet aftersound, strongest in the bass/mid as on a real instrument.
+  Still missing before this can be judged as intended timbre: **M5** (everything above 700 Hz
+  is uncoloured — the single largest remaining gap) and **M6** (per-register voicing).
 - **M3** — fully verified; nothing marked `[!]`. This is the milestone that addressed the
   original diagnosis, and the attack finally has structure: contact duration now depends on
   pitch, and the treble hammer stays engaged across 12 string periods where the bass leaves

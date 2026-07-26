@@ -313,29 +313,103 @@ injected energy from scaling with the arbitrary partial count `N`). This is the 
 comb-filter mechanism (`REQ-piano-4`): whenever `β ≈ k/n` for integer `k`, `g_n ≈ 0` and that
 partial is suppressed — e.g. striking at `1/8` suppresses partials 8, 16, 24…
 
-### 5. Unison strings — detuning, beating, and *emergent* two-stage decay
+### 5. Unison strings — detuning and beating
 
-Each note has `U` (`kUnisonStrings`, default 2, settable 1–3) full `StringPartialBank`
-instances, detuned a few tenths of a Hz apart:
+Each note has `U` (default 2, settable 1–3) full `StringPartialBank` instances, detuned a few
+tenths of a Hz apart:
 
 ```
 f0_k = f0 · 2^(detuneCents_k / 1200)        k = 0 .. U-1
 detuneCents_k spread symmetrically around 0, e.g. U=2 -> {-c/2, +c/2}, U=3 -> {-c, 0, +c}
 ```
-(`c` = `PianoVoice::setUnisonDetuneCents`, default ≈ 0.6 cents — a few tenths of a Hz at
-piano pitches, matching real piano unison tuning spread.)
 
-All `U` banks are struck by the *same* hammer force (§6) and summed. **Deliberately not
-implemented as a hand-authored envelope:** because the `U` strings are at nearly-identical
-frequencies, their damped sinusoids beat (`|f_k − f_j|` Hz) and, critically, their combined
-(coherent) motion couples into the shared `PianoBridge` (§8) much more strongly than a single
-string's residual, decorrelated ringing does — so the *coupled system itself* naturally
-produces a fast initial decay (energy dumping into the bridge while the strings are roughly
-in phase) followed by a slower tail (once phase has drifted and each string is left mostly
-driving itself) — the real piano's well-known two-stage decay. `REQ-piano-3` requires this be
-emergent, not a second decay-rate constant bolted on; it is not — §3's `T60_n` is the only
-per-partial decay parameter, the two-stage shape comes from unison superposition +
-bridge coupling.
+(`c` = `PianoVoice::setUnisonDetuneCents`, default ≈ 0.6 cents — a few tenths of a Hz at piano
+pitches, matching real unison tuning spread.) All `U` banks are struck by the same hammer
+(§6, which sees their mean displacement) and summed, so their near-identical partials **beat**
+at `|f_k − f_j|` Hz. That is what unison detuning delivers, and it is real.
+
+> **Corrected at M4.** This section previously also credited unison detuning + bridge coupling
+> for the piano's **double decay**. Measured, it does not produce it: both unison strings couple
+> to the bridge the same way, so they decay at essentially the same rate and their sum is still
+> one slope. The actual mechanism is the two transverse polarisations of §5b, and
+> `REQ-piano-3` has been amended to say so. The requirement's intent — that multi-stage decay
+> *emerge* from physics rather than from a scripted envelope — is unchanged and still met.
+
+### 5b. Two transverse polarisations — the double decay (M4)
+
+**Physics.** A real string vibrates in two independent transverse planes:
+
+- **Vertical** — the plane the hammer strikes in, and the plane in which the bridge is most
+  compliant, so it is **strongly coupled** to the soundboard. Energy leaves fast: short decay,
+  loud. This is the *prompt sound*.
+- **Horizontal** — parallel to the soundboard, **weakly coupled** to the bridge. Energy leaves
+  slowly: long decay, quiet. This is the *aftersound*.
+
+The hammer drives the vertical plane; a small fraction leaks into the horizontal one via string
+and bridge asymmetry. Bridge anisotropy also splits the two planes slightly in frequency.
+
+That split (`d_pol`) is deliberately **small**. Measured, `3e-4` puts the polarisation beat
+period *below* the aftersound decay time from C5 upward, so the beat masquerades as a decay
+slope and corrupts the very envelope this section exists to produce. At `3e-5` the beat period
+is 5–20× longer than the aftersound across the whole keyboard: the two planes stay slightly
+incoherent — their real role here — without beating. Audible beating is unison detuning's job
+(§5), not polarisation's.
+
+**Only the bridge-loss term splits.** §3's loss law is `alpha_n = c1 + c3·w_n^2`, where `c1`
+is the frequency-independent bridge/air loss and `c3·w_n^2` is the wire's internal viscoelastic
+loss. The vertical/horizontal difference is a *bridge-coupling* asymmetry, so it belongs to
+`c1` alone — the internal loss is a property of the wire and is identical in both planes:
+
+```
+vertical:    f_v = f_n              alpha_v = c1·sqrt(R_pol) + c3·w_n^2   drive x (1 - eps_pol)
+horizontal:  f_h = f_n·(1 + d_pol)  alpha_h = c1/sqrt(R_pol) + c3·w_n^2   drive x eps_pol
+             T60 = ln(1000)/alpha,  horizontal capped at T60_cap
+output = y_v + y_h          (the hammer feels ONLY y_v — see below)
+
+R_pol = 8      eps_pol = 0.05      d_pol = 3e-5      T60_cap = 60 s
+```
+
+This is what makes **double decay a low-partial phenomenon by physics rather than by fiat**:
+low partials are bridge-loss dominated, so their two planes differ strongly (C4's fundamental
+splits 2.9 s / 13.7 s); high partials are internal-loss dominated, so their planes barely
+differ (partial 12: 0.188 s vs 0.196 s unsplit) and their prompt decay is left alone.
+
+> Applying one flat `R_pol` to the *whole* of `alpha_n` instead — the obvious first
+> implementation — shortened every partial's prompt decay by 2.83×, including the high ones,
+> and measurably darkened the attack: spectral evolution fell from 20.5 dB to 11.2 dB. The
+> `c1`-only split is both more physical and free of that side effect.
+
+**Why the split is geometric around `T60_n`, not `T60_v = T60_n`.** The plan's first form gave
+the horizontal plane `R_pol × T60_n`, which multiplies every note's *overall* ring time by up to
+8× and would silently undo §3's calibrated pitch→decay curve. Splitting geometrically keeps the
+geometric mean at `T60_n`, so §3's curve keeps its meaning, and lands both planes on
+real-piano values — C4: prompt 2.4 s, aftersound 19.5 s (measured pianos: ~1–2 s and ~10–20 s).
+The horizontal decay is capped at 60 s so a bass note cannot ring for minutes.
+
+**Crossover.** With amplitudes `A_v` and `eps·A_v` decaying at `a_v` and `a_v/R`, the aftersound
+takes over at
+
+```
+t_cross = ln(1/eps_pol) / (a_v · (1 − 1/R_pol))
+```
+
+≈ 1.2 s at C4 — early enough that the two slopes are separately measurable, which is exactly
+what the acceptance test does.
+
+**The hammer feels only the vertical plane.** Horizontal motion is perpendicular to the
+hammer's compression axis, so it does not change `c = x_h − y_string` (§6) to first order. The
+horizontal entries therefore carry a displacement weight of **zero** — they radiate but do not
+push back on the felt.
+
+**Two documented simplifications.** (1) Weak bridge coupling is modelled through the *decay*
+(`R_pol`) alone; the horizontal plane is not additionally attenuated in radiation, so `eps_pol`
+alone sets how quiet the aftersound starts. (2) Polarisation is applied only to the first
+`kPolarizedPartials = 16` partials — double decay is perceptually a low-partial phenomenon, and
+this bounds the cost against `REQ-piano-17`. Both are approximations, not derivations.
+
+**Storage.** The horizontal twins are appended to the same flat arrays as extra entries
+(`[mActiveCount, mTotalCount)`), so §1's recurrence still runs as one loop with no branching —
+they are simply more resonators with their own coefficients.
 
 ### 6. Hammer–string contact — nonlinear, hysteretic, and COUPLED (`HammerExciter`)
 

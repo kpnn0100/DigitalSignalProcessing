@@ -46,8 +46,18 @@ sympathetic resonance, (5) dampers, (6) pedals, (7) secondary mechanical noises.
 - `REQ-piano-3` — **String vibration** is represented by a bank of inharmonic partials (stiff
   string: partial frequencies deviate from exact harmonics per an inharmonicity coefficient),
   each partial independently damped (frequency-dependent loss), and each note has 2+ detuned
-  unison strings so beating and multi-stage decay emerge from superposition, not from a
-  hand-authored decay envelope.
+  unison strings so beating emerges from superposition. **Multi-stage (double) decay must
+  likewise emerge from the superposition of physically distinct vibrational modes, never from
+  a scripted amplitude envelope.**
+  **Amended 2026-07-25 (M4).** The original text named *unison detuning* as the mechanism for
+  multi-stage decay. Measured, it is not: two strings 0.6 cents apart produce audible beating
+  but essentially a single decay slope, because both unison strings couple to the bridge the
+  same way. The real mechanism is the string's **two transverse polarisations** — vertical
+  (in the hammer's plane, strongly bridge-coupled, fast decay) and horizontal (weakly coupled,
+  slow decay) — whose superposition gives the prompt-sound → aftersound envelope. The
+  requirement's *intent* (emergent, not hand-authored) is unchanged and still binding: the
+  polarisation split adds a second physical degree of freedom with its own decay, not a
+  hand-drawn envelope over the output. Unison detuning keeps its (real) role: beating.
 - `REQ-piano-4` — **Strike position** (where the hammer hits the string) measurably shapes
   timbre: partials near multiples of `1/strikePositionFraction` are suppressed, matching the
   real comb-filter effect of off-center excitation.

@@ -29,6 +29,28 @@ namespace arstro
         // this is only the ceiling, chosen against the REQ-piano-17 budget.
         static constexpr int kMaxPartials = 64;
 
+        // README ## 5b: how many low partials get a second (horizontal) polarisation.
+        // Double decay is perceptually a low-partial phenomenon, so this is capped to
+        // bound the cost against REQ-piano-17. A documented approximation.
+        static constexpr int kPolarizedPartials = 16;
+
+        // README ## 5b — two transverse polarisations. The T60 split is GEOMETRIC about
+        // T60_n (vertical /sqrt(R), horizontal *sqrt(R)) so §3's calibrated pitch->decay
+        // curve keeps its meaning; giving the horizontal plane R*T60_n outright would
+        // multiply every note's overall ring time by up to 8x. Public so tests can
+        // reproduce the split (and its predicted crossover time) exactly.
+        static constexpr Sample kPolarizationDecayRatio = 8.0; // R_pol
+        static constexpr Sample kPolarizationSplit = 0.05;     // eps_pol -> horizontal
+        // d_pol (bridge anisotropy). Deliberately SMALL: measured, 3e-4 puts the
+        // polarisation beat period BELOW the aftersound decay time above C5, so the
+        // beat masquerades as a decay slope and corrupts the very double-decay
+        // envelope M4 exists to produce. At 3e-5 the beat is 5-20x longer than the
+        // aftersound everywhere, so the two planes stay slightly incoherent (their
+        // real role here) without beating. Audible beating is unison detuning's
+        // job (README ## 5), not polarisation's.
+        static constexpr Sample kPolarizationDetune = 3e-5;
+        static constexpr Sample kPolarizationT60Cap = 60.0;    // s; bass must not ring for minutes
+
         // README ## 6: modal mass (rho*L/2), normalised. Sets how far the string
         // yields under the hammer, so it is calibrated jointly with the hammer's
         // mass/stiffness — the RATIO m_h/m governs the contact, not either alone.
@@ -89,18 +111,26 @@ namespace arstro
         void recomputeEffectivePartials(); // damper changed -> only the pole radii move
         void ensureChannels();
 
-        // Per-partial, shared across channels. Only [0, mActiveCount) is live.
+        // The natural (single-polarisation) partial series — introspection only.
+        // Only [0, mActiveCount) is live.
         std::array<Sample, kMaxPartials> mFreqN{};    // f_n
-        std::array<Sample, kMaxPartials> mBaseT60N{}; // natural T60_n (pre-damper)
-        std::array<Sample, kMaxPartials> mCosTheta{};
-        std::array<Sample, kMaxPartials> mDrive{};      // sin(theta)*g_n/(m*fs) — velocity gain
-        std::array<Sample, kMaxPartials> mDispWeight{}; // g_n/omega_n: velocity -> displacement
-        std::array<Sample, kMaxPartials> mA1{};    // 2*r*cos(theta)
-        std::array<Sample, kMaxPartials> mA2{};    // r^2
-        int mActiveCount = 1;
+        std::array<Sample, kMaxPartials> mBaseT60N{}; // natural T60_n (pre-split, pre-damper)
+
+        // Per RESONATOR ENTRY. [0, mActiveCount) are the vertical partials;
+        // [mActiveCount, mTotalCount) are the horizontal twins of the first
+        // mPolarizedCount of them (README ## 5b). One flat loop covers both.
+        static constexpr int kMaxEntries = kMaxPartials + kPolarizedPartials;
+        std::array<Sample, kMaxEntries> mEntryT60{};    // pre-damper T60 for this entry
+        std::array<Sample, kMaxEntries> mCosTheta{};
+        std::array<Sample, kMaxEntries> mDrive{};       // sin(theta)*g_n*split/(m*fs)
+        std::array<Sample, kMaxEntries> mDispWeight{};  // g_n/omega_n; ZERO for horizontal
+        std::array<Sample, kMaxEntries> mA1{};          // 2*r*cos(theta)
+        std::array<Sample, kMaxEntries> mA2{};          // r^2
+        int mActiveCount = 1;    // vertical partials (== the physical partial count)
+        int mTotalCount = 1;     // vertical + horizontal entries actually run
         Sample mLastDisplacement = 0.0;
 
-        // Per-channel recurrence history, flat: [channel*kMaxPartials + partial].
+        // Per-channel recurrence history, flat: [channel*kMaxEntries + entry].
         // Sized in ensureChannels(); never resized from the audio thread.
         std::vector<Sample> mY1;
         std::vector<Sample> mY2;
@@ -125,6 +155,8 @@ namespace arstro
 
         // README ## 2: the highest partial kept, as a fraction of the sample rate.
         static constexpr Sample kNyquistFraction = 0.45;
+
+
 
     };
 }
