@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-27 (M9.2 done — duplex/aliquot shimmer; M9.1 done earlier)
-- **Last commit:** M9.2 — duplex / aliquot scale (treble shimmer), README ## 8.1
+- **Last updated:** 2026-07-27 (M9.4 done — una corda; M9.1/M9.2 done earlier. Only M9.3 left)
+- **Last commit:** M9.4 — una corda done properly (subset strike), README ## 9
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -44,36 +44,32 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 
 ## ► NEXT
 
-**M9.4 — Una corda done properly.** Two M9 items remain (either order); take una corda next as
-it clears the project's last still-pending requirement conflict. Real mechanism: the shift pedal
-moves the hammer to strike a **subset** of the unison strings (2 of 3, or 1 of 2); the un-struck
-string is then driven **only through the bridge** (sympathetically), adding a soft halo and a
-subtly different decay. Single-strung bass (§11.5) can't lose a string — there the una-corda
-change is just the softer (unworn-felt) contact.
+**M9.3 — Stulov felt hysteresis.** The **last** unchecked item in M9 (and the whole plan).
+Replaces README §6's load/unload stiffness asymmetry with a proper rate/history-dependent
+relaxation kernel — real hammer felt's force depends not just on current compression but on the
+*history* of compression (a fading-memory integral), which broadens the contact and shapes the
+attack differently at different dynamics.
 
-⚠️ **Amend `REQ-piano-16` FIRST** — it currently mandates the gain-reduction *approximation*
-(`kUnaCordaGain = 0.6` + softer `kUnaCordaStiffness`), which the real subset mechanism replaces
-(rule 5: amend before coding, with reason + date). Then `kUnaCordaGain` should be **deleted** —
-the level drop must *emerge* from driving fewer strings, the way `voicingGain`/`registerGain`
-were removed once their real physics arrived. Keep `kUnaCordaStiffness` (the shifted hammer really
-does present softer felt — that part is physical). Implementation lives in `PianoVoice::generate()`
-(drive only the struck subset with the hammer; let the un-struck string(s) receive only the §8
-bridge feedback). Acceptance: an una-corda note is measurably softer/mellower AND the un-struck
-string still shows sympathetic energy at the note's pitch (difference the struck-subset render vs
-a normal render). Watch the §5/§6 contact physics and the M6 energy guard.
+⚠️ **Highest regression risk in the project** — it rewrites the `HammerExciter` contact, the
+coupled loop at the heart of M3/M6. It **must** re-pass:
+- **M6's energy-conservation guard** — all 88 keys × 4 velocities, `E_string/E_hammer` bounded
+  (worst case was 0.93; the guard caught a 201× blow-up once). The relaxation kernel adds state to
+  the contact ODE, so re-verify it does not manufacture energy, especially in the stability-capped
+  treble (§11.3).
+- **M3's contact-duration criteria** (pitch-dependent contact time, velocity shortening, the
+  reflection ripple) and **M1's spectral evolution**.
+- Derive the kernel into README `## 6` **before** coding; it likely needs its own requirement
+  (a gap like M8/M9.2 — no `REQ` covers felt hysteresis yet), no conflict expected.
 
-**M9.3 — Stulov felt hysteresis** (the other remaining item; do after, or in a later session).
-Replaces README §6's load/unload stiffness asymmetry with a rate/history-dependent relaxation
-kernel. ⚠️ **Highest regression risk in M9** — it rewrites the hammer contact, so it must re-pass
-M6's energy-conservation guard (all 88 keys × 4 velocities, `E_string/E_hammer` bounded) and M3's
-contact-duration criteria.
+**M9.1 + M9.2 + M9.4 done** (no top-octave dampers; duplex shimmer; una corda subset-strike).
+After M9.3, M0–M9 are all complete → run the skill's §"When every milestone is done" whole-project
+review (re-read README `## Math` and `docs/requirements.md` end to end, full ctest + M0 bench,
+render a fresh demo). **The plan flagged this stretch as the point where listening beats measuring**
+(M6's verification note) — strongly worth a fresh `build/piano_demo.wav` for the user before/at the
+close-out; the model has had no ears on it.
 
-**M9.1 + M9.2 done** (no top-octave dampers; duplex shimmer — see checklist). M4–M9 are colours
-on a model already qualitatively a piano at M3; **the plan flagged this as the point where
-listening beats measuring** (M6's verification note) — worth offering the user a fresh render.
-
-Budget headroom on this machine: **11.56× RT**, 2.9× above the gate. Una corda is free (no new
-resonators — it redistributes the hammer drive); Stulov is a per-sample felt-state update.
+Budget headroom on this machine: **11.59× RT**, 2.9× above the gate. Stulov is a per-sample
+felt-state update (a small IIR memory), no new resonators.
 
 ---
 
@@ -359,7 +355,19 @@ some acceptance criterion could not be verified here (see Verification notes).
       per-voice level): engagement **0.148 %, identical duplex on/off**, peak +0.2 % — no regression.
       100 % coverage on all **seven** `physical/` sources; bench **11.56× RT** (median 11.44×)
 - [ ] Stulov felt hysteresis (replaces README §6's load/unload simplification)
-- [ ] Una corda proper — **amends `REQ-piano-16`**
+- [x] **M9.4 — Una corda done properly.** `REQ-piano-16` **amended** (was the gain approximation).
+      Real mechanism: `struckUnisonCount() = U−1` (≥1) under una corda — trichord 3→2, bichord 2→1,
+      single-strung unchanged; struck strings get `force+feedback`, the un-struck string gets
+      **bridge feedback only** (`PianoVoice::generate()`). Hammer energy normalised over nominal
+      `U` but delivered to the subset, so directly-driven energy is `S/U` of normal. **`kUnaCordaGain`
+      deleted** — the softening now *emerges* (like `voicingGain`/`registerGain` before it).
+      README `## 9`. Verified: RMS **0.67× = S/U** for a trichord (unit + integration, C4);
+      bichord halves with no bridge (proving the un-struck string gets no hammer drive); single-
+      strung unchanged. 100% coverage on all seven sources; bench **11.59× RT** (no cost — softer,
+      so it can only *reduce* the tanh limiter). **Documented limitation:** reproduces "softer" but
+      not the mellowing — dropping a unison string removes low-frequency chorusing, which slightly
+      outweighs the retained softer felt, so net timbre is marginally brighter (see verification
+      notes + decisions log). `REQ-piano-8`'s "softer/mellower" met by the softer half.
 - [ ] Re-run M0 benchmark, record
 
 ---
@@ -369,6 +377,21 @@ some acceptance criterion could not be verified here (see Verification notes).
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
 
+- **2026-07-27 (M9.4) — the honest una corda is SOFTER but not MELLOWER, and that is a real
+  finding, not a bug.** Replacing the `×0.6` gain fudge with the true subset-strike (strike `S`
+  of `U` strings, un-struck driven only through the bridge) makes the softening *emerge* — RMS
+  lands at exactly `S/U` (0.66× for a trichord), which is right. But it also revealed that this
+  model does **not** reproduce the real instrument's *mellowing*: measured across the keyboard,
+  dropping a unison string removes the low-frequency chorusing between the detuned unisons
+  (no-una-corda U=3→2→1 centroid 756→760→786 Hz), and that brightening slightly *outweighs* the
+  retained softer felt (which alone does lower the centroid — 756→706 as stiffness 1.0→0.5).
+  Softening the felt further (tested to 0.55) does not flip it. The instrument's mellowing comes
+  mainly from the un-struck string ringing *strongly* through tight inter-unison bridge/agraffe
+  coupling; the generic §8 sympathetic gain makes that halo negligible here (measured +0.0 %).
+  **Recorded, not faked** (skill: never tick on "sounds better"); `REQ-piano-8`'s "softer/mellower"
+  is met by the softer half, and modelling strong inter-unison coupling is left out of scope. The
+  old fudge *looked* more "mellow" only because a flat gain cut is quieter — the physics is now
+  more correct even though it exposes a limitation the fudge hid.
 - **2026-07-27 (M9.2) — the duplex is a feed-forward read-out, deliberately NOT in the bridge
   loop.** The obvious place to add the duplex output is into `stringSum` before
   `mBridge->accumulate()`, next to the longitudinal add — but that would put the aliquot
@@ -653,6 +676,15 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M9.4** — mechanism fully verified; one aspect is a **documented limitation, not `[!]`**. The
+  subset-strike is measured exactly (RMS 0.67× = S/U for a trichord; a bichord halves with no
+  bridge, proving the un-struck string gets no hammer drive; single-strung unchanged), and it
+  replaces the `kUnaCordaGain` fudge with emergent physics. The limitation: the model reproduces
+  **softer but not mellower** — losing a unison string's low-frequency chorusing slightly outweighs
+  the retained softer felt, so the net timbre is marginally *brighter* (decisions log has the
+  numbers). Not a criterion I can tick as "mellower"; `REQ-piano-8` is satisfied by "softer," and
+  faithful mellowing (strong inter-unison bridge coupling) is recorded as out of scope. No listener
+  was needed — softer is a level measurement.
 - **M9.2** — fully verified; nothing marked `[!]`. The treble now **shimmers**: a C6 carries a
   −33 dB aliquot halo at 4·f0 that outlasts the string's own partial there by 5×, and the bass has
   none. Two honest points. (1) **`κ_dup` is calibrated, not derived** (like §12.2's `κ`) — set

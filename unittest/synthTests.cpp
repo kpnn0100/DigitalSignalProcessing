@@ -1708,6 +1708,63 @@ TEST(PianoVoice_duplex_adds_treble_shimmer)
     CHECK(bassDiff < shimmerPeak * 0.01); // bass shimmer is orders of magnitude smaller (here: zero)
 }
 
+// ───────────────── una corda (README ## 9, M9.4) ─────────────────
+
+// REQ-piano-16 (amended, M9.4): the soft pedal strikes a SUBSET of the unison
+// strings, the un-struck one ringing only through the bridge. Verifies the
+// struck-count law and that the note is measurably softer by the S/U ratio (its
+// energy is delivered to fewer strings), the robust signature of the real mechanism.
+TEST(PianoVoice_una_corda_strikes_a_subset)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    // The struck-count law: trichord 3->2, bichord 2->1, single-strung 1->1; normal = U.
+    {
+        PianoVoice v;
+        v.setFrequency(261.63);
+        v.setUnisonCount(3);
+        CHECK(v.struckUnisonCount() == 3);   // normal
+        v.setUnaCorda(true);
+        CHECK(v.struckUnisonCount() == 2);   // trichord 3->2
+        v.setUnisonCount(2);
+        CHECK(v.struckUnisonCount() == 1);   // bichord 2->1
+        v.setUnisonCount(1);
+        CHECK(v.struckUnisonCount() == 1);   // single-strung: nothing to drop
+        v.setUnaCorda(false);
+        CHECK(v.struckUnisonCount() == 1);
+    }
+
+    auto voiceRms = [](int unison, bool una) {
+        PianoVoice v;
+        v.setFrequency(261.63);
+        v.setUnisonCount(unison);
+        v.setDamperHeld(true);
+        v.setUnaCorda(una);        // no bridge: the un-struck string gets no drive at all
+        v.noteOn(0.9);
+        std::vector<double> out(24000);
+        for (auto &s : out) s = v.out(0.0, 0);
+        return rms(out);
+    };
+
+    // Trichord (3->2 struck): softer by ~S/U = 2/3, with a magnitude floor.
+    double n3 = voiceRms(3, false), u3 = voiceRms(3, true);
+    CHECK(n3 > 1e-3);                 // the note actually sounds
+    CHECK(u3 < n3 * 0.85);            // measurably softer
+    CHECK(u3 > n3 * 0.45);            // ...by about 2/3, not silenced (measured ~0.66x)
+
+    // Bichord (2->1 struck), no bridge: exactly one of two strings is driven, so the
+    // un-struck string being silent halves the energy — proof the hammer left it alone.
+    double n2 = voiceRms(2, false), u2 = voiceRms(2, true);
+    CHECK(u2 < n2 * 0.75);            // ~half (the un-struck string contributes nothing here)
+
+    // Single-strung note: nothing to drop, so una corda changes only the felt, not the
+    // string count — it stays audible and close to normal (no S/U halving).
+    double n1 = voiceRms(1, false), u1 = voiceRms(1, true);
+    CHECK(u1 > 1e-3);
+    CHECK(u1 > n1 * 0.75);            // no string dropped: not the ~0.5-0.66 drop above
+}
+
 // ───────────────── tension modulation / pitch glide (README ## 12.5, M8) ─────────────────
 
 // Helper: the peak fractional pitch shift delta a struck voice reaches within its

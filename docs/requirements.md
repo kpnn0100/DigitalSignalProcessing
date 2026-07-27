@@ -160,9 +160,25 @@ silently reintroduced as bugs or silently promised as done)
   emerge from a nonlinear coupling between two physical mode families — never from added
   synthetic partials at hand-picked frequencies. Strong in the bass and negligible in the
   treble, as on a real instrument.
-- `REQ-piano-16` — Una corda's real mechanism (hammer shifts to strike fewer of the unison
+- `REQ-piano-16` — ~~Una corda's real mechanism (hammer shifts to strike fewer of the unison
   strings) is approximated as a reduced hammer excitation gain + reduced contact hardness,
-  not literal dynamic unison-count switching mid-performance.
+  not literal dynamic unison-count switching mid-performance.~~
+  **Amended 2026-07-27 (M9.4) — now the real mechanism, not the gain approximation.** The
+  gain-reduction stand-in (`kUnaCordaGain`) is replaced by modelling what the soft pedal
+  physically does: the hammer shifts laterally and strikes a **subset** of the note's unison
+  strings — a trichord's 3→2, a bichord's 2→1, a single-strung bass note unchanged. The
+  **un-struck string is then driven only through the shared bridge** (sympathetically,
+  `REQ-piano-6`), not by the hammer — silent entirely if there is no bridge. The audible "softer"
+  now emerges from coupling the hammer to fewer strings (its energy is shared over the nominal
+  unison count but delivered to a subset, so the directly-driven energy is `S/U` of normal —
+  measured 0.66× for a trichord); the softer-felt contact (`kUnaCordaStiffness`) is retained as a
+  real effect. `kUnaCordaGain` is **deleted**, as `voicingGain`/`registerGain` were once their
+  real physics arrived. Applied at note-on (which subset is struck is fixed for the note), not
+  switched mid-sustain. **Documented limitation:** the model reproduces "softer" but not the real
+  instrument's *mellowing* — dropping a unison string removes low-frequency chorusing, which
+  slightly outweighs the softer felt, so the net timbre is marginally brighter. Faithful mellowing
+  would need strong inter-unison bridge coupling (out of scope here). `REQ-piano-8`'s
+  "softer/mellower" is satisfied by the softer half. See README §9.
 - `REQ-piano-18` — **Tension modulation (attack pitch glide).** A struck string's transverse
   motion raises its average tension, and tension sets pitch, so a note must start slightly
   **sharp** and glide down to its nominal pitch as the vibration decays. **Source:**

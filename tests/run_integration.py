@@ -678,6 +678,23 @@ def check_duplex_shimmer(binpath):
             f"sustains {shimmer_sustain/max(1e-9,string_sustain):.0f}x longer than the partial")
 
 
+def check_una_corda_softer(binpath):
+    """M9.4 (README §9, REQ-piano-16 amended): the soft pedal strikes a subset of the
+    unison strings (C4 trichord 3->2), so the rendered note is measurably softer than a
+    normal strike — the S/U = 2/3 energy drop, produced by driving fewer strings rather
+    than the old flat gain cut. REQ-piano-8's 'measurable change in the rendered signal'."""
+    normal = render(binpath, "pianounacorda", 0)
+    una = render(binpath, "pianounacorda", 1)
+    n, u = rms(normal), rms(una)
+    if n < 1e-3:
+        raise Failure(f"normal C4 is silent (rms {n:.2e}) — cannot judge una corda")
+    ratio = u / n
+    if not (0.45 < ratio < 0.85):
+        raise Failure(f"una corda RMS is {ratio:.2f}x normal (want ~2/3 for a 3->2 trichord) — "
+                      "the subset-strike softening is off")
+    return f"una corda softer: {ratio:.2f}x normal RMS (trichord 3->2 struck, ~S/U)"
+
+
 def check_pitch_glide(binpath):
     """M8 acceptance (plan §M8): tension modulation / attack pitch glide. A hard bass
     blow starts sharp and glides down; a soft blow barely does. Measured through the
@@ -756,6 +773,7 @@ CHECKS = [
     ("piano_damper_decay", check_piano_damper),
     ("piano_top_octave_no_damper", check_piano_top_octave_no_damper),
     ("piano_duplex_shimmer", check_duplex_shimmer),
+    ("piano_una_corda_softer", check_una_corda_softer),
     ("piano_voice_reuse_bounded", check_piano_voice_reuse_bounded),
     ("piano_bandwidth", check_piano_bandwidth),
     ("piano_spectral_evolution", check_piano_spectral_evolution),

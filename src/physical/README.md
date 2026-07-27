@@ -710,16 +710,43 @@ duplex — the sustained shimmer — and it is present in the treble and absent 
   engine calls `setDamperHeld(true)` only on voices that are *currently sounding* (key still
   down or ringing); future notes struck while sostenuto is held are unaffected and damp
   normally on their own `noteOff()`.
-- **Una corda** (`PianoVoice::setUnaCorda(bool)`): approximates the real "hammer shifts to
-  strike fewer strings" mechanism (`REQ-piano-16`, explicitly *not* literal dynamic
-  unison-count switching) as a hammer-excitation scale:
+- **Una corda** (`PianoVoice::setUnaCorda(bool)`, M9.4): the real mechanism (`REQ-piano-16`,
+  amended). The soft pedal shifts the hammer sideways so it strikes a **subset** of the note's
+  unison strings; the un-struck string is left to ring **only through the bridge**:
 
 ```
-K_effective       = K · kUnaCordaStiffness          kUnaCordaStiffness default 0.85 (softer contact)
-F_hammer_effective = F_hammer · kUnaCordaGain         kUnaCordaGain default 0.6 (quieter + mellower,
-                                                       since a softer/shorter contact also shifts
-                                                       energy away from high partials — §6's ODE)
+S = struckUnisonCount = U − 1  (clamped ≥ 1)     una corda: trichord 3→2, bichord 2→1, mono 1→1
+                       = U                        normal
+
+force_per_string = HammerExciter.out(mean displacement of the STRUCK strings) / U
+drive_k          = force_per_string + feedback    for the S struck strings (k < S)
+                 = feedback                        for the U−S un-struck strings (only §8 bridge)
+K_effective      = K · kUnaCordaStiffness          kUnaCordaStiffness 0.85 — softer, less-compacted felt
 ```
+
+**Softer, and by the right amount.** The hammer's energy is normalised over the nominal `U` but
+delivered to only `S` strings, so the directly-driven energy is `S/U` of normal — a trichord's ⅔
+(≈ −3.5 dB), a bichord's ½ (≈ −6 dB). Measured RMS ratio is **0.66× for a trichord**, matching
+`S/U` exactly. The un-struck string then rings *only* through the bridge (`REQ-piano-6`): with no
+bridge it is silent, which is what makes the `S/U` drop measurable and proves the hammer never
+touched it. A single-strung bass note (§11.5) has no string to drop, so there una corda is only
+the softer-felt change.
+
+**`kUnaCordaGain` is gone.** It was a flat `×0.6` excitation cut standing in for "fewer strings";
+the level drop is now produced by actually driving fewer strings, the way `voicingGain` (M6) and
+`registerGain` (M1) were removed once their real physics arrived. The subset is fixed at note-on,
+not switched mid-sustain (`REQ-piano-16`).
+
+> **What this model does *not* reproduce: the mellowing.** A real una corda is softer *and*
+> mellower. The softer felt (`kUnaCordaStiffness`) is retained and does shift the contact spectrum
+> down (verified: lowering hammer stiffness lowers the centroid), but here that is *outweighed* by
+> a side effect of the honest subset-strike — dropping a unison string removes some of the
+> low-frequency chorusing between the detuned unisons, which nudges the spectral centroid slightly
+> *up*. Net, the model's una corda is clearly softer but marginally brighter, not mellower. The
+> real instrument's mellowing comes largely from the un-struck string ringing *strongly* through
+> tight bridge/agraffe coupling (a low, detuned halo), which the generic §8 sympathetic gain makes
+> negligible here. Modelling that strong inter-unison coupling is out of scope for this tier-3
+> item; recorded rather than faked. `REQ-piano-8`'s "softer/mellower" is met by the softer half.
 
 ### 10. Secondary mechanical noises
 

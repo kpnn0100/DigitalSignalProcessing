@@ -320,6 +320,24 @@ static std::vector<double> renderPianoDuplex(double onFlag)
     return out;
 }
 
+// M9.4 acceptance (README ## 9): una corda strikes a subset of the unison strings,
+// so the note is measurably softer than a normal strike. C4 trichord (3->2 struck);
+// onFlag > 0.5 engages the soft pedal. Held so the tails are comparable.
+static std::vector<double> renderPianoUnaCorda(double onFlag)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(261.63); // C4, trichord
+    v.setDamperHeld(true);
+    v.setUnaCorda(onFlag > 0.5);
+    v.noteOn(0.9);
+    const int n = (int)(0.5 * kSampleRate);
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i) out[i] = v.out(0.0, 0);
+    return out;
+}
+
 static std::vector<double> renderPianoSympathetic(double whichFlag)
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -527,6 +545,7 @@ int main(int argc, char **argv)
     else if (scenario == "pianodamper") samples = renderPianoDamper(arg);
     else if (scenario == "pianonodamper") samples = renderPianoNoDamper(arg);
     else if (scenario == "pianoduplex") samples = renderPianoDuplex(arg);
+    else if (scenario == "pianounacorda") samples = renderPianoUnaCorda(arg);
     else if (scenario == "pianoreuse") samples = renderPianoReuse();
     else if (scenario == "pianospectral") samples = renderPianoSpectral();
     else if (scenario == "pianodoubledecay") samples = renderPianoDoubleDecay();

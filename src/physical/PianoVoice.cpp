@@ -334,20 +334,21 @@ namespace arstro
             return mLastSample;
 
         // M3 coupling (README ## 6): the felt compresses against the string's actual
-        // displacement, not a rigid wall. The hammer contacts all U unison strings at
-        // once, so it feels their MEAN displacement and its reaction force is shared
-        // among them — a lumped approximation of U parallel contacts.
+        // displacement, not a rigid wall. M9.4 (README ## 9): under una corda the
+        // hammer strikes only a SUBSET of the unison strings, so it feels the mean
+        // displacement of the STRUCK ones and its reaction force is shared among them.
+        const int struck = struckUnisonCount(); // == mUnisonCount unless una corda
         Sample stringDisp = 0.0;
-        for (int k = 0; k < mUnisonCount; ++k)
+        for (int k = 0; k < struck; ++k)
             stringDisp += mStrings[k].displacementAtStrike();
-        stringDisp /= (Sample)mUnisonCount;
+        stringDisp /= (Sample)struck;
 
         // No voicingGain here any more (M6): the bass/treble loudness spread it used
         // to flatten is now produced — and self-corrected — by the register scaling
-        // of README ## 11. Force is shared among the U strings the hammer contacts.
+        // of README ## 11. The hammer's energy is normalised over the NOMINAL unison
+        // count but (## 9) delivered only to the struck strings, so una corda drives
+        // S/U of the normal energy — no kUnaCordaGain fudge any more.
         Sample force = mHammer.out(stringDisp, 0) / (Sample)mUnisonCount;
-        if (mUnaCorda)
-            force *= kUnaCordaGain;
 
         // Gate sympathetic feedback by how engaged the damper is (README ## 8):
         // a real damper mutes the string's response to ANY driving, not only its
@@ -356,11 +357,16 @@ namespace arstro
         // unphysical and a needless feedback path.
         Sample damping = mStrings[0].damperValue();
         Sample feedback = mBridge ? mBridge->feedback() * (1.0 - damping) : 0.0;
-        Sample totalDrive = force + feedback;
 
+        // README ## 9: struck strings get hammer force + bridge feedback; the
+        // un-struck string(s) under una corda get ONLY the bridge feedback, so they
+        // ring as a sympathetic halo rather than being driven by the hammer.
         Sample stringSum = 0.0;
         for (int k = 0; k < mUnisonCount; ++k)
-            stringSum += mStrings[k].out(totalDrive, 0);
+        {
+            const Sample drive = (k < struck) ? (force + feedback) : feedback;
+            stringSum += mStrings[k].out(drive, 0);
+        }
 
         // M7 (README ## 12): longitudinal modes. Driven by the SQUARE of the summed
         // modal velocity — which is the string's slope, since y_n = omega_n*q_n

@@ -95,6 +95,9 @@ namespace arstro
         bool isSilent() const;
 
         void setUnaCorda(bool on) { mUnaCorda = on; }
+        // README ## 9 (M9.4): how many of the U unison strings the hammer strikes —
+        // U normally, U−1 (≥1) under una corda. Public so tests assert the law.
+        int struckUnisonCount() const { return (mUnaCorda && mUnisonCount > 1) ? mUnisonCount - 1 : mUnisonCount; }
         // Sustain/sostenuto gate: while true, noteOff() does not engage the damper.
         void setDamperHeld(bool held) { mDamperHeld = held; }
         // Shared soundboard/bridge for sympathetic resonance (REQ-piano-6). Optional —
@@ -236,8 +239,7 @@ namespace arstro
         // geometric mean of MIDI 88 (1318.5 Hz) and 89 (1396.9 Hz) so the boundary
         // sits between notes, not on one — MIDI >= 89 (top 20 keys) rings undamped.
         static constexpr Sample kNoDamperAboveHz = 1357.11;
-        static constexpr Sample kUnaCordaStiffness = 0.85;
-        static constexpr Sample kUnaCordaGain = 0.6;
+        static constexpr Sample kUnaCordaStiffness = 0.85; // softer, less-compacted felt (## 9)
         static constexpr Sample kVoiceLifetimeMs = 8000.0;
         // README ## 13. Threshold is ~-100 dBFS: far below the 16-bit noise floor
         // (-96 dB) and ~5 orders below a struck note's peak, so nothing audible is
