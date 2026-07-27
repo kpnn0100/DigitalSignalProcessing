@@ -109,6 +109,17 @@ not rediscover any of it. None of it changes the physics.
   `ARSTRO_PIANO_LATENCY_US`). The real low-latency fix remains granting rtprio (`@audio - rtprio 95`).
   **Fourth time a "make the DSP faster" request has turned out to be latency/scheduling** — kept
   off the milestone track; the physics was untouched.
+- **2026-07-27 — a live VOICING panel was added to `examples/piano` for the close-out ear check.**
+  12 sliders (hammer hardness, felt curve/hysteresis/relaxation, decay, brightness, inharmonicity,
+  unison detune, bass growl, attack glide, treble shimmer, master gain), each a `PianoEngine::Tune`
+  param applied live to all voices — multipliers scale the per-note register default so the
+  keyboard's scaling survives, and neutral defaults reproduce the shipped model exactly. All
+  tuning lives in `apps/piano_demo/PianoEngine` (DSP repo, **app layer — `src/physical` and its
+  100 %-coverage suite untouched**); the GTK sliders are generated from `PianoEngine::tuneSpec()`
+  metadata so the control list can't drift from the engine. Verified every param audibly changes
+  the render and both extreme corners stay finite/bounded (≤ 1). This is the recommended way to do
+  the §"When every milestone is done" listening step — play it and sweep. No physics change; no
+  milestone.
 
 ---
 

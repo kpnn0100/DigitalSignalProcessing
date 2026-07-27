@@ -32,6 +32,36 @@ namespace arstro
         void setSostenutoPedal(bool on);
         void setUnaCorda(bool on);
 
+        // ─────────────────── live voicing/tuning controls ───────────────────
+        // A generic parameter bank so a host UI can build one control per entry
+        // from the metadata alone (name/range/default) without hard-coding the
+        // list. Multiplier params (Mul) scale the per-note register default so the
+        // keyboard's natural scaling is preserved; the rest are absolute. Neutral
+        // defaults reproduce the shipped model exactly. Applied on the audio thread
+        // (PianoEngine is single-threaded; the host queues changes — see PianoApp).
+        enum Tune
+        {
+            TuneHardness = 0,   // hammer felt stiffness ×  (voicing: soft ↔ bright)
+            TuneFeltCurve,      // hammer nonlinear exponent p (felt hardness curve)
+            TuneFeltHysteresis, // ε_branch load/unload asymmetry (README ## 6)
+            TuneFeltRelax,      // Stulov relaxation depth ×  (rate-dependent loss, ## 6)
+            TuneDecay,          // string T60 ×  (sustain length)
+            TuneBrightness,     // T60 at 5 kHz (how fast the highs die)
+            TuneInharmonicity,  // stiffness/inharmonicity ×  (metallic stretch)
+            TuneUnisonDetune,   // unison detune in cents (chorus/beating)
+            TuneBassGrowl,      // longitudinal tension coupling κ (phantom partials, ## 12)
+            TuneAttackGlide,    // tension-modulation κ_t ×  (attack pitch glide, ## 12.5)
+            TuneTrebleShimmer,  // duplex/aliquot drive (## 8.1)
+            TuneMasterGain,     // output level into the soft limiter
+            TuneCount
+        };
+        struct TuneSpec { const char *name; double min, max, def; const char *unit; };
+        static TuneSpec tuneSpec(int param);        // metadata for control `param` in [0,TuneCount)
+        void setTuning(int param, double value);    // set one param, applied live to all voices
+        double tuningValue(int param) const;         // current value (for control initialisation)
+
+        // Renders `frames` stereo samples as interleaved 16-bit PCM, appended to `out`.
+
         // Renders `frames` stereo samples as interleaved 16-bit PCM, appended to `out`.
         void renderBlockBytes(std::vector<uint8_t> &out, int frames);
 
@@ -59,5 +89,12 @@ namespace arstro
         bool mSustainPedal = false;
         bool mSostenutoPedal = false;
         bool mUnaCorda = false;
+
+        // Live voicing state (see Tune). Values mirror the shipped defaults so a
+        // fresh engine sounds identical until a control is moved.
+        std::array<double, TuneCount> mTune;
+        Sample mMasterGain = 0.22; // README (PianoEngine): the soft-limiter drive, now tunable
+        void applyTuningToVoice(int i); // (re)apply mTune to voice i at its current pitch
+        static Sample defaultInharmonicity(Sample f0Hz); // mirrors PianoVoice's pitch curve
     };
 }

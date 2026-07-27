@@ -52,6 +52,84 @@ namespace arstro
         mAge.fill(0);
         for (auto &v : mVoices)
             v.setBridge(&mBridge);
+        for (int p = 0; p < TuneCount; ++p)
+            mTune[p] = tuneSpec(p).def; // neutral: reproduces the shipped model
+        mMasterGain = mTune[TuneMasterGain];
+    }
+
+    // ─────────────────── live voicing/tuning controls ───────────────────
+
+    PianoEngine::TuneSpec PianoEngine::tuneSpec(int param)
+    {
+        // One row per Tune enumerator, in the same order. Ranges are chosen to be
+        // audible but to stay clear of contact-loop instability (README ## 6/## 11.3).
+        static const TuneSpec kSpecs[TuneCount] = {
+            {"Hammer hardness", 0.5, 1.6, 1.0, "x"},     // TuneHardness
+            {"Felt curve (p)", 1.5, 3.5, 2.5, ""},        // TuneFeltCurve
+            {"Felt hysteresis", 0.0, 0.6, 0.2, ""},        // TuneFeltHysteresis
+            {"Felt relaxation", 0.0, 2.0, 1.0, "x"},      // TuneFeltRelax
+            {"Decay / sustain", 0.3, 2.5, 1.0, "x"},      // TuneDecay
+            {"Brightness T60", 0.02, 0.30, 0.08, "s"},     // TuneBrightness
+            {"Inharmonicity", 0.0, 3.0, 1.0, "x"},        // TuneInharmonicity
+            {"Unison detune", 0.0, 3.0, 0.6, "cents"},     // TuneUnisonDetune
+            {"Bass growl", 0.0, 0.03, 0.008, "K"},         // TuneBassGrowl
+            {"Attack glide", 0.0, 4.0, 1.0, "x"},         // TuneAttackGlide
+            {"Treble shimmer", 0.0, 300.0, 90.0, ""},      // TuneTrebleShimmer
+            {"Master gain", 0.05, 0.5, 0.22, ""},          // TuneMasterGain
+        };
+        if (param < 0 || param >= TuneCount) param = 0;
+        return kSpecs[param];
+    }
+
+    double PianoEngine::tuningValue(int param) const
+    {
+        if (param < 0 || param >= TuneCount) return 0.0;
+        return mTune[param];
+    }
+
+    Sample PianoEngine::defaultInharmonicity(Sample f0Hz)
+    {
+        // Mirrors PianoVoice::computeDefaultInharmonicity so the multiplier can scale
+        // the pitch curve rather than flatten it to one B across the keyboard.
+        if (f0Hz < 1.0) f0Hz = 1.0;
+        Sample b = 0.00056 * std::pow(100.0 / f0Hz, 1.25);
+        if (b < 0.00005) b = 0.00005;
+        if (b > 0.02) b = 0.02;
+        return b;
+    }
+
+    void PianoEngine::applyTuningToVoice(int i)
+    {
+        if (mNote[i] < 0) return; // never struck -> nothing to voice yet
+        const Sample hz = midiToHz(mNote[i]);
+        PianoVoice &v = mVoices[i];
+        // Multiplier params scale the per-note register default so the keyboard's
+        // natural scaling survives; the rest are absolute.
+        v.setHammerStiffness(PianoVoice::defaultHammerStiffness(hz) * mTune[TuneHardness]);
+        v.setHammerNonlinearExponent(mTune[TuneFeltCurve]);
+        v.setHammerHysteresisLoss(mTune[TuneFeltHysteresis]);
+        v.setHammerRelaxationDepth(PianoVoice::defaultFeltHysteresis(hz) * mTune[TuneFeltRelax]);
+        v.setBaseDecaySeconds(PianoVoice::defaultBaseDecaySeconds(hz) * mTune[TuneDecay]);
+        v.setBrightnessDecaySeconds(mTune[TuneBrightness]);
+        v.setInharmonicity(defaultInharmonicity(hz) * mTune[TuneInharmonicity]);
+        v.setUnisonDetuneCents(mTune[TuneUnisonDetune]);
+        v.setTensionCoupling(mTune[TuneBassGrowl]);
+        v.setTensionModulation(PianoVoice::defaultTensionModulation(hz) * mTune[TuneAttackGlide]);
+        v.setDuplexDriveGain(mTune[TuneTrebleShimmer]);
+    }
+
+    void PianoEngine::setTuning(int param, double value)
+    {
+        if (param < 0 || param >= TuneCount) return;
+        const TuneSpec s = tuneSpec(param);
+        if (value < s.min) value = s.min;
+        if (value > s.max) value = s.max;
+        mTune[param] = value;
+        if (param == TuneMasterGain)
+            mMasterGain = value; // engine-level: takes effect on the next sample
+        else
+            for (int i = 0; i < kVoiceCount; ++i)
+                applyTuningToVoice(i); // re-voice all sounding notes live
     }
 
     int PianoEngine::allocateVoice()
@@ -89,7 +167,8 @@ namespace arstro
         mAge[i] = 0;
         mVoices[i].setUnaCorda(mUnaCorda);
         mVoices[i].setDamperHeld(mSustainPedal); // sustain already down when struck
-        mVoices[i].setFrequency(midiToHz(midiNote));
+        mVoices[i].setFrequency(midiToHz(midiNote)); // register defaults first...
+        applyTuningToVoice(i);                       // ...then the live voicing on top
         mVoices[i].noteOn(velocity);
     }
 
@@ -175,8 +254,8 @@ namespace arstro
         // Demo-level mixing headroom + soft limiter (not physical-modeling
         // constants — see src/physical/README.md ## Units for PianoVoice's own
         // per-note calibration, which already stays near +-1 on its own).
-        outL = softLimit(sumL * kMasterGain);
-        outR = softLimit(sumR * kMasterGain);
+        outL = softLimit(sumL * mMasterGain);
+        outR = softLimit(sumR * mMasterGain);
     }
 
     void PianoEngine::renderBlockBytes(std::vector<uint8_t> &out, int frames)
