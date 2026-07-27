@@ -171,16 +171,19 @@ namespace arstro
         // full in the bass/mid. The base load/unload asymmetry (setHysteresisLoss) is
         // left at the hammer default, unchanged from the M0 model.
         mHammer.setRelaxationDepth(defaultFeltHysteresis(f0));
-        if (!mStrikePositionOverridden || !mModalMassOverridden || !mTensionModOverridden)
+        if (!mStrikePositionOverridden || !mModalMassOverridden || !mTensionModOverridden ||
+            !mAftersoundOverridden)
         {
             const Sample beta = defaultStrikePosition(f0);
             const Sample m = defaultModalMass(f0);
             const Sample kappaT = defaultTensionModulation(f0); // README ## 12.5
+            const Sample eps = defaultAftersound(f0);           // README ## 5b (M11)
             for (int k = 0; k < kMaxUnison; ++k)
             {
                 if (!mStrikePositionOverridden) mStrings[k].setStrikePosition(beta);
                 if (!mModalMassOverridden) mStrings[k].setModalMass(m);
                 if (!mTensionModOverridden) mStrings[k].setTensionModulation(kappaT);
+                if (!mAftersoundOverridden) mStrings[k].setPolarizationSplit(eps);
             }
         }
     }
@@ -239,6 +242,28 @@ namespace arstro
     void PianoVoice::setTensionCoupling(Sample kappa) { mLongitudinal.setTensionCoupling(kappa); }
 
     void PianoVoice::setDuplexDriveGain(Sample kappa) { mDuplex.setDriveGain(kappa); }
+
+    Sample PianoVoice::defaultAftersound(Sample f0Hz)
+    {
+        // ## 5b (M11): the aftersound share is full (0.20 — the note sings) through the
+        // bass/mid where double decay is bridge-loss-dominated and prominent, tapering to
+        // the original 0.05 by C6, where the string is internal-loss-dominated and the two
+        // polarisations barely differ (M4) — so a strong treble aftersound is neither
+        // physical nor wanted, and leaving it low keeps the §11 brightness rise clean.
+        const Sample full = 0.20, treble = 0.05;
+        const Sample lo = 261.6 /*C4*/, hi = 1046.5 /*C6*/;
+        if (f0Hz <= lo) return full;
+        if (f0Hz >= hi) return treble;
+        const Sample t = std::log2(f0Hz / lo) / std::log2(hi / lo); // 0 at C4, 1 at C6
+        return full + t * (treble - full);
+    }
+
+    void PianoVoice::setAftersound(Sample eps)
+    {
+        mAftersoundOverridden = true; // stop setFrequency() reapplying the ## 5b taper
+        for (int k = 0; k < kMaxUnison; ++k)
+            mStrings[k].setPolarizationSplit(eps);
+    }
 
     void PianoVoice::setBodyMix(Sample mix)
     {

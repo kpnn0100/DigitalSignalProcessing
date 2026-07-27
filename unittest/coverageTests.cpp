@@ -692,7 +692,13 @@ TEST(PianoVoice_base_decay_default_and_override)
     // silently reapply the pitch default over the caller's explicit value.
     PianoVoice v;
     v.setBaseDecaySeconds(1.25);
-    v.setFrequency(880.0);
+    // Latch the other register-law overrides too, so setFrequency()'s combined guard
+    // evaluates through to the !mAftersoundOverridden term (short-circuit coverage).
+    v.setStrikePosition(0.1);
+    v.setModalMass(1.0);
+    v.setTensionModulation(0.0);
+    v.setAftersound(0.3);   // README ## 5b (M11): latches, so setFrequency() won't reapply the taper
+    v.setFrequency(880.0);  // exercises the !mAftersoundOverridden == false branch
     v.setBrightnessDecaySeconds(0.05);
     v.noteOn(0.5);
     for (int i = 0; i < 64; ++i) { Sample s = v.out(0.0, 0); CHECK(std::isfinite(s)); }
@@ -968,6 +974,17 @@ TEST(StringPartialBank_tension_modulation_and_clamps)
         bank.reset();
         CHECK(bank.pitchModulation() == 0.0);
         CHECK(bank.tensionEnergy() == 0.0);
+    }
+
+    // README ## 5b (M11): setPolarizationSplit clamps to [0, 0.5] (a bank stays finite
+    // at the extremes, and never puts more energy in the aftersound than the prompt).
+    {
+        StringPartialBank bank;
+        bank.setFundamentalHz(110.0);
+        bank.setPolarizationSplit(0.9);   // clamps to 0.5
+        for (int i = 0; i < 100; ++i) { Sample s = bank.out((i == 0) ? 1.0 : 0.0, 0); CHECK(std::isfinite(s)); }
+        bank.setPolarizationSplit(-1.0);  // clamps to 0.0
+        for (int i = 0; i < 100; ++i) { Sample s = bank.out((i == 0) ? 1.0 : 0.0, 0); CHECK(std::isfinite(s)); }
     }
 }
 

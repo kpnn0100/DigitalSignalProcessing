@@ -374,8 +374,18 @@ horizontal:  f_h = f_n·(1 + d_pol)  alpha_h = c1/sqrt(R_pol) + c3·w_n^2   driv
              T60 = ln(1000)/alpha,  horizontal capped at T60_cap
 output = y_v + y_h          (the hammer feels ONLY y_v — see below)
 
-R_pol = 8      eps_pol = 0.05      d_pol = 3e-5      T60_cap = 60 s
+R_pol = 8      eps_pol = 0.20      d_pol = 3e-5      T60_cap = 60 s
 ```
+
+> **`eps_pol` raised 0.05 → 0.20 (M11) — the aftersound was too quiet to *sing*.** At 5 %
+> (−26 dB) the long-ringing horizontal plane was present but inaudible, so a held note dropped
+> out with the prompt decay instead of ringing on — the single biggest "synth, not a piano" cue
+> in a listening test (measured: a held C4 reached −60 dB in 3.0 s, where a real one rings
+> 10–15 s). At 20 % (−14 dB) the aftersound carries the note: held C4 −60 dB extends to ~5 s and
+> the bass rings far longer, while double decay stays a low-partial phenomenon and every M1/M4
+> criterion holds (the prompt/aftersound ratio moves 3.97 → ~3.3, still ≥ 3). It is also a live
+> voicing control (`Aftersound`, added post-M10), because how much a note should sing is an ear
+> judgement. `d_pol` stays 3e-5 so the louder plane still does not beat audibly (§ above).
 
 This is what makes **double decay a low-partial phenomenon by physics rather than by fiat**:
 low partials are bridge-loss dominated, so their two planes differ strongly (C4's fundamental

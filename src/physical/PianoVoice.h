@@ -59,9 +59,13 @@ namespace arstro
         static Sample defaultTensionModulation(Sample f0Hz);// ## 12.5
         static bool   defaultHasDamper(Sample f0Hz);        // ## 7.1 (M9.1)
         static Sample defaultFeltHysteresis(Sample f0Hz);   // ## 6 (M9.3): eps tapers to ~0 in the treble
+        static Sample defaultAftersound(Sample f0Hz);        // ## 5b (M11): eps_pol, full bass/mid → 0.05 treble
 
         void setStrikePosition(Sample beta);
         void setModalMass(Sample m);
+        // README ## 5b (M11): the aftersound share (horizontal-polarisation energy) on
+        // every unison bank — how much the note sings after the prompt decay.
+        void setAftersound(Sample eps);
         // README ## 12.2: displacement^2 -> tension modulation. 0 disables the
         // longitudinal stage entirely (useful for isolating it in tests).
         void setTensionCoupling(Sample kappa);
@@ -157,6 +161,7 @@ namespace arstro
         bool mHammerMassOverridden = false;
         bool mHammerStiffnessOverridden = false;
         bool mTensionModOverridden = false;
+        bool mAftersoundOverridden = false;
         bool mUnaCorda = false;
         bool mDamperHeld = false;
         Sample mBodyMix = 0.0; // README ## 8.2 (M10): 0 = raw string, 1 = fully through the board

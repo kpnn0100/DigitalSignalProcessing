@@ -52,6 +52,7 @@ namespace arstro
             TuneBassGrowl,      // longitudinal tension coupling κ (phantom partials, ## 12)
             TuneAttackGlide,    // tension-modulation κ_t ×  (attack pitch glide, ## 12.5)
             TuneTrebleShimmer,  // duplex/aliquot drive (## 8.1)
+            TuneAftersound,     // horizontal-polarisation share (README ## 5b, M11): note sings
             TuneBody,           // soundboard series mix (README ## 8.2, M10): 0 raw ↔ 1 through-board
             TuneBodyResonance,  // soundboard modal-resonance level (bridge radiationGain)
             TuneMasterGain,     // output level into the soft limiter

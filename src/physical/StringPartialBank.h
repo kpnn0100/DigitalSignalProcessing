@@ -40,7 +40,9 @@ namespace arstro
         // multiply every note's overall ring time by up to 8x. Public so tests can
         // reproduce the split (and its predicted crossover time) exactly.
         static constexpr Sample kPolarizationDecayRatio = 8.0; // R_pol
-        static constexpr Sample kPolarizationSplit = 0.05;     // eps_pol -> horizontal
+        // eps_pol -> horizontal (the aftersound). Raised 0.05->0.20 at M11 so the note
+        // SINGS (see README ## 5b); tunable per bank via setPolarizationSplit().
+        static constexpr Sample kPolarizationSplit = 0.20;
         // d_pol (bridge anisotropy). Deliberately SMALL: measured, 3e-4 puts the
         // polarisation beat period BELOW the aftersound decay time above C5, so the
         // beat masquerades as a decay slope and corrupts the very double-decay
@@ -78,6 +80,9 @@ namespace arstro
         void setBrightnessDecaySeconds(Sample t60AtRef);
         void setStrikePosition(Sample beta);
         void setModalMass(Sample m); // README ## 11.1; clamped positive
+        // README ## 5b (M11): eps_pol, the horizontal-plane (aftersound) energy share,
+        // 0..~0.5. Higher = the note sings longer after the prompt. Clamped.
+        void setPolarizationSplit(Sample eps);
 
         // README ## 12.5: tension modulation (attack pitch glide). kappaT scales the
         // low-passed slope-energy envelope into a fractional pitch shift applied
@@ -161,6 +166,9 @@ namespace arstro
         Sample mDamperTarget = 0.0;
         Sample mDamperStep = 0.0;
         Sample mDamperEngageMs = 20.0;
+
+        // README ## 5b (M11): eps_pol, tunable per bank (the aftersound share).
+        Sample mPolarizationSplit = kPolarizationSplit;
 
         static constexpr Sample kDamperLossGain = 40.0;
 

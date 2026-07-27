@@ -83,6 +83,7 @@ namespace arstro
             {"Bass growl", 0.0, 0.03, 0.008, "K"},         // TuneBassGrowl
             {"Attack glide", 0.0, 4.0, 1.0, "x"},         // TuneAttackGlide
             {"Treble shimmer", 0.0, 300.0, 90.0, ""},      // TuneTrebleShimmer
+            {"Aftersound / sing", 0.0, 2.5, 1.0, "x"},     // TuneAftersound (× the register taper)
             {"Body (soundboard)", 0.0, 1.0, 0.5, ""},      // TuneBody
             {"Body resonance", 0.0, 2.0, 0.5, ""},         // TuneBodyResonance
             {"Master gain", 0.05, 0.5, 0.22, ""},          // TuneMasterGain
@@ -126,6 +127,7 @@ namespace arstro
         v.setTensionCoupling(mTune[TuneBassGrowl]);
         v.setTensionModulation(PianoVoice::defaultTensionModulation(hz) * mTune[TuneAttackGlide]);
         v.setDuplexDriveGain(mTune[TuneTrebleShimmer]);
+        v.setAftersound(PianoVoice::defaultAftersound(hz) * mTune[TuneAftersound]); // README ## 5b (M11)
         v.setBodyMix(mTune[TuneBody]); // README ## 8.2 (M10)
     }
 

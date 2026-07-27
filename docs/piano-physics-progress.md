@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-27 (M10 — soundboard in series, after the user judged M0–M9 not piano-like)
-- **Last commit:** M10 — body radiation: soundboard as a series stage, README ## 8.2
+- **Last updated:** 2026-07-27 (M11 — stronger aftersound so notes SING, from a WAV analysis)
+- **Last commit:** M11 — make notes sing (aftersound eps_pol 0.05→0.20), README ## 5b
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -23,6 +23,7 @@ file first and updates it last, every session. Spec:
 | **post-M7** (voice skipping) | **8.36× RT** | — | ~1944 | ✅ met (2.1× margin) |
 | **M8** (tension modulation) | **11.79× RT** (median 11.66×) | 12.9× | ~1944 | ✅ met (2.9× margin) |
 | **M10** (soundboard in series) | **11.57× RT** (median 11.13×) | 12.3× | ~1944 | ✅ met (2.9× margin) |
+| **M11** (stronger aftersound) | **11.47× RT** (median 11.33×) | 12.3× | ~1944 | ✅ met (2.9× margin) |
 
 M9.1–M9.4 and M10 held ~11.5–11.8× on this machine (run-to-run noise dominates; M10 adds one
 one-pole low-pass to the single shared bridge — effectively free). No resonators added since M7.
@@ -48,24 +49,29 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 
 ## ► NEXT
 
-**The ball is in the user's ears.** M0–M10 are all implemented and verified numerically. After
-playing the finished M0–M9 model the user judged it "still not a piano" and pointed at OpenPiano
-(FDTD); M10 responded to the strongest code-grounded cause — the soundboard was only *parallel*,
-so mostly-raw modal strings were heard. It is now a tunable **series** stage (`Body` +
-`Body resonance` in the voicing panel, default `body = 0.5`).
+**Still an ears loop, now with two concrete leftovers.** The user recorded a low-C→high-C sweep
+(`Virtual-Piano-2_28_07 PM.wav`), and a spectrogram + per-note analysis found three defects. M11
+fixed #1 (the biggest): **notes didn't sing** — the aftersound was too quiet (5 %), so a held C4
+died at −60 dB in 3 s. Raising it (`eps_pol → 0.20`, tapered to the treble) makes the bass/mid ring
+(held C3 now rings the full 10 s+; C4 3.0→3.5 s), and it is a live control (**Aftersound / sing**).
+Two defects remain, both **model changes the panel can't fully reach** — good next milestones:
 
-**Next step is a listening loop, not a code task:** rebuild `arstro_piano_ui`, play it, and sweep
-**Body** (0→1) and **Body resonance** (0→2) — plus hammer hardness, brightness, decay — to find a
-voicing that reads as a piano. Report back which direction it needs. Two deeper routes are already
-scoped in the plan (M11), to pursue only if body radiation + voicing is not enough:
+- **M12 — enrich the treble (defect #2).** Above ~C5 the note is nearly a sine: C6 had only ~2
+  audible partials, −28 dB/oct rolloff → thin/synthetic. The treble under-excites its high partials
+  (the felt is stability-capped, §11.3, so the attack is too soft — the M2 verification note called
+  this out). Fix: excite more high partials in the mid/treble (a brighter/harder treble hammer, or
+  oversampling the contact loop §11.3 to lift the K cap), so the treble has its metallic ping.
+- **M13 — clean the bass (defect #3).** C2/C3 read as rough/buzzy (dense beating partials + the M7
+  longitudinal/phantom "growl" too strong) rather than warm. Rebalance the bass growl / phantom
+  level; check the unison + polarisation beating isn't excessive.
 
-- **Attack realism** — a richer hammer/action launch transient + a real tuning/stretch curve.
-- **Wave-based string (digital waveguide)** — the paradigm shift the user's OpenPiano reference
-  points at, done the real-time-efficient way (traveling waves + dispersion allpass + loss filter
-  + nonlinear hammer), avoiding FDTD's treble/CPU limits. This is the big one — a new string model
-  the rest of the anatomy (bridge, longitudinal, duplex, hammer coupling) would re-attach to. Add
-  an A-B toggle vs the modal string so the user can compare. **Do NOT start it without the user's
-  go-ahead** — it is a multi-session subsystem and the modal model must stay as the fallback.
+Immediate, no-code: in the panel, **Aftersound ~1.5–2**, **Decay ~1.5–2**, **Brightness ~0.2**,
+**Hammer hardness ~1.4** get much closer to a real piano now — ask the user to sweep and report.
+
+Deeper route if voicing still isn't enough: the **wave-based string (digital waveguide)** the
+user's OpenPiano reference points at — traveling-wave attack + dispersion, real-time-efficient
+(avoids FDTD's treble/CPU limits), with an A-B toggle vs the modal string. A multi-session
+subsystem — **do NOT start without the user's go-ahead**; the modal model stays the fallback.
 
 **Whole-project close-out** (the skill's §"When every milestone is done") is still worth doing once
 the voicing is settled: re-read `README ## Math` + `requirements.md` end to end for drift (esp. §6
@@ -148,6 +154,7 @@ not rediscover any of it. None of it changes the physics.
 | M8 | Tension modulation (attack pitch glide) | `[x]` |
 | M9 | Tier-3 detail | `[x]` |
 | M10 | Body radiation — soundboard in series (post-play realism) | `[x]` |
+| M11 | Make notes sing — stronger aftersound (from a recording analysis) | `[x]` |
 
 Status key: `[ ]` not started · `[~]` in progress · `[x]` done & verified · `[!]` done but
 some acceptance criterion could not be verified here (see Verification notes).
@@ -407,6 +414,22 @@ some acceptance criterion could not be verified here (see Verification notes).
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
 
+- **2026-07-27 (M11) — a user recording was analysed spectrally; the #1 defect was that notes
+  don't SING, fixed by a single parameter.** The user supplied a low-C→high-C WAV; a spectrogram
+  + per-note decay/spectral analysis (held notes re-rendered through the engine to separate model
+  from articulation) found: (1) held decay ~3–4× too short and the M4 aftersound (5 % / −26 dB) too
+  quiet to carry the note — held C4 hit −60 dB in 3 s vs a real piano's 10–15 s; (2) the treble too
+  thin (C6 ~2 partials); (3) the bass rough/buzzy. #1 was the dominant "synth not piano" cue, and
+  it was one number: `kPolarizationSplit` 0.05 → 0.20. **Verified the lever was clean before
+  committing** — held C3 now rings the full window, C4 3.0→3.5 s, and every criterion held except
+  two it *intentionally* moved. **The treble centroid flip (M6) was fixed the principled way**, not
+  by loosening the test: `eps_pol` is register-*tapered* back to 0.05 by C6 (physical — the treble
+  is internal-loss dominated, planes barely differ, M4), so the §11 brightness rise stays strict.
+  Only M4's own double-decay unit threshold was adapted (3.0→2.0, documented) — the louder
+  aftersound moves the crossover earlier so the tc-scaled windows read a lower slope ratio; the
+  integration test's fixed windows still read 3.4. **Analysing the actual audio, not guessing, is
+  what turned "sounds wrong" into a one-line fix** — the lesson the whole numeric-first project was
+  built on, finally applied to the timbre itself.
 - **2026-07-27 (M10) — the user judged the finished model "not a piano," and the strongest
   code-grounded cause was a documented gap, not a missing mechanism.** After M0–M9 the user played
   it and pointed at OpenPiano (an FDTD wave string). Rather than jump to a rewrite, I fetched
@@ -748,6 +771,14 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M11** — fully verified; nothing marked `[!]`. Notes now **sing**: held C3 rings the full
+  10 s+ window (was 6.1 s to −60 dB), C4 3.0→3.5 s, from raising the aftersound share to 0.20
+  (tapered to 0.05 by the treble to keep §11's brightness rise clean). Every prior criterion holds
+  (M4's double-decay unit threshold adapted 3.0→2.0 with a documented reason — the louder aftersound
+  moves the crossover; the fixed-window integration test still reads 3.4). It is a live control
+  (`Aftersound / sing`). What it does **not** fix — measured and scoped as M12/M13 — is the thin
+  treble (C6 ~2 partials) and the rough bass; those are the two remaining defects the recording
+  analysis found. Whether the singing bass/mid now reads as a piano is, as ever, the user's ear.
 - **M10** — mechanism fully verified; **the timbre verdict is explicitly the user's, not `[!]`**.
   Numerically confirmed: the board's radiativity rolls off HF (a Nyquist bus comes out < 0.35× a
   DC bus), `body` routes the string off the direct path (a `body = 1` voice with no bridge drops

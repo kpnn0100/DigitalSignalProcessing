@@ -1005,7 +1005,13 @@ TEST(PianoVoice_double_decay_prompt_then_aftersound)
 
         CHECK(early > 0.0); // it really is decaying early on
         CHECK(late > 0.0);  // ...and still decaying late, just far more slowly
-        CHECK(early >= late * 3.0);
+        // Threshold lowered 3.0 -> 2.0 at M11: raising eps_pol 0.05 -> 0.20 (so the note
+        // SINGS, README ## 5b) makes the aftersound louder and moves the crossover earlier,
+        // so predictedCrossover()'s tc-scaled windows now measure a prompt/aftersound slope
+        // ratio of ~2.5-3 rather than >=3. Double decay is still clearly present (early
+        // decays >=2x faster than late), and the integration test's FIXED windows still
+        // read a 3.4 ratio; only the intended louder aftersound moved this number.
+        CHECK(early >= late * 2.0);
     }
 }
 

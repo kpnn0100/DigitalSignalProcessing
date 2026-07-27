@@ -45,6 +45,16 @@ namespace arstro
         setProperty(modalMassID, m);
     }
 
+    void StringPartialBank::setPolarizationSplit(Sample eps)
+    {
+        // README ## 5b (M11): the aftersound share. Clamp to a sane range — >0.5 would put
+        // more energy in the long-ringing plane than the prompt, which is not a piano.
+        if (eps < 0.0) eps = 0.0;
+        if (eps > 0.5) eps = 0.5;
+        mPolarizationSplit = eps;
+        update(); // rebuild the per-entry drive/decay split
+    }
+
     void StringPartialBank::setTensionModulation(Sample kappaT)
     {
         // Stored raw (may be negative to bend flat, e.g. for tests); process()
@@ -217,7 +227,7 @@ namespace arstro
             // Only partials that actually get a horizontal twin give away eps of their
             // drive; the rest keep all of it (they have nowhere to give it to).
             const bool hasTwin = (i < polarized);
-            const Sample vertShare = hasTwin ? (1.0 - kPolarizationSplit) : 1.0;
+            const Sample vertShare = hasTwin ? (1.0 - mPolarizationSplit) : 1.0;
 
             // --- vertical: the hammer's plane, strongly bridge-coupled, fast decay ---
             const Sample theta = wn / sr;
@@ -241,7 +251,7 @@ namespace arstro
                 const Sample sinThetaH = std::sin(thetaH);
                 mCosTheta[h] = std::cos(thetaH);
                 mCosBend[h] = -thetaH * sinThetaH; // README ## 12.5, horizontal twin
-                mDrive[h] = sinThetaH * gn * kPolarizationSplit / (modalMass * sr);
+                mDrive[h] = sinThetaH * gn * mPolarizationSplit / (modalMass * sr);
                 // Horizontal motion is perpendicular to the hammer's compression axis,
                 // so it does not change c = x_h - y_string (README ## 5b, ## 6).
                 mDispWeight[h] = 0.0;
