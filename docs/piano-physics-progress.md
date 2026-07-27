@@ -104,6 +104,18 @@ not rediscover any of it. None of it changes the physics.
   p99.9 2.01 ms, max 3.27 ms, **zero** blocks over a 5.33 ms budget, flat over time. Remaining
   audio glitches on the dev machine are *scheduling* (rtprio 0 + PulseAudio), not DSP — see the
   skill's §"Setting up on a new machine".
+- **2026-07-27 — an underrun report was re-diagnosed (again) as scheduling, and hardened in the
+  app, NOT the DSP.** User hit 35 underruns in `arstro_piano_ui` and asked for multithreading.
+  Re-measured on the Ryzen 9 9900X after M9.2: worst-case 256-frame block (8 voices sounding +
+  re-struck, 20 s) is **1.78 ms of the 5.33 ms budget, median 0.89 ms, zero blocks over budget** —
+  3× headroom at the single worst block. So it is `ulimit -r`=0 preemption, not throughput; the
+  compute layer is still measured net-negative at 256 frames and cannot fix a thread that is not
+  being *scheduled*. Fixed in `examples/piano/linux_main.cpp` (umbrella) instead: `mlockall()` to
+  stop page-fault stalls, and an **adaptive buffer** — the audio thread now picks a 60 ms buffer
+  when `SCHED_FIFO` is refused and 30 ms when it is granted (both still overridable by
+  `ARSTRO_PIANO_LATENCY_US`). The real low-latency fix remains granting rtprio (`@audio - rtprio 95`).
+  **Fourth time a "make the DSP faster" request has turned out to be latency/scheduling** — kept
+  off the milestone track; the physics was untouched.
 
 ---
 
