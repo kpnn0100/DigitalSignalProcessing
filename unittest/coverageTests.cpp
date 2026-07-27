@@ -804,3 +804,96 @@ TEST(PianoVoice_sustain_pedal_defers_damper)
     v.noteOff(); // pedal released with key already up -> damper engages now
     for (int i = 0; i < 2000; ++i) { Sample s = v.out(0.0, 0); CHECK(!std::isnan(s)); }
 }
+
+// README ## 12.5 tension modulation at the bank level: the enabled path, the
+// decimated re-tune, and both stability clamps. Driving a bank hard builds a real
+// slope-energy envelope, so pitchModulation() moves; an absurd kappa_t drives delta
+// past the +-kMaxPitchDelta guard, which must hold it there rather than let a pole
+// coefficient run out of range.
+TEST(StringPartialBank_tension_modulation_and_clamps)
+{
+    resetConfig(1);
+
+    // kappa_t = 0 (the default): the stage is skipped entirely, no glide ever.
+    {
+        StringPartialBank bank;
+        bank.setFundamentalHz(110.0);
+        for (int i = 0; i < 200; ++i) bank.out((i == 0) ? 5.0 : 0.0, 0);
+        CHECK(bank.pitchModulation() == 0.0);
+    }
+
+    // A moderate kappa_t: delta lands strictly inside the clamp (neither branch), and
+    // the tension energy is positive once the string is ringing. >64 samples so the
+    // decimated re-tune fires (covering both counter branches).
+    {
+        StringPartialBank bank;
+        bank.setFundamentalHz(110.0);
+        bank.setBaseDecaySeconds(3.0);
+        bank.setTensionModulation(1.0e-3);
+        for (int i = 0; i < 300; ++i) bank.out((i == 0) ? 5.0 : 0.0, 0);
+        CHECK(bank.tensionEnergy() > 0.0);
+        CHECK(bank.pitchModulation() > 0.0);
+        CHECK(bank.pitchModulation() < 0.05); // below the guard
+    }
+
+    // Absurd positive kappa_t -> upper clamp at +kMaxPitchDelta.
+    {
+        StringPartialBank bank;
+        bank.setFundamentalHz(110.0);
+        bank.setTensionModulation(1.0e12);
+        for (int i = 0; i < 200; ++i) bank.out((i == 0) ? 5.0 : 0.0, 0);
+        CHECK_NEAR(bank.pitchModulation(), 0.05, 1e-9);
+    }
+
+    // Absurd negative kappa_t -> lower clamp at -kMaxPitchDelta (bends flat; only the
+    // guard is under test, not a physical case).
+    {
+        StringPartialBank bank;
+        bank.setFundamentalHz(110.0);
+        bank.setTensionModulation(-1.0e12);
+        for (int i = 0; i < 200; ++i) bank.out((i == 0) ? 5.0 : 0.0, 0);
+        CHECK_NEAR(bank.pitchModulation(), -0.05, 1e-9);
+    }
+
+    // reset() must clear the glide state so a reused (voice-stolen) bank starts at
+    // nominal pitch.
+    {
+        StringPartialBank bank;
+        bank.setFundamentalHz(110.0);
+        bank.setTensionModulation(1.0e12);
+        for (int i = 0; i < 200; ++i) bank.out((i == 0) ? 5.0 : 0.0, 0);
+        CHECK(bank.pitchModulation() != 0.0);
+        bank.reset();
+        CHECK(bank.pitchModulation() == 0.0);
+        CHECK(bank.tensionEnergy() == 0.0);
+    }
+}
+
+// README ## 12.5 register law + override latch. defaultTensionModulation() is flat
+// below C2 (the deep-bass cap branch) and falls steeply above it; setTensionModulation()
+// latches an override that a later setFrequency() must not overwrite.
+TEST(PianoVoice_tension_modulation_register_default_and_override)
+{
+    resetConfig(1);
+
+    // Flat below the C2 cap: A0 and C2 share the same kappa_t (the f0<cap branch),
+    // and it falls hard toward the treble (the f0>=cap branch).
+    double a0 = PianoVoice::defaultTensionModulation(27.5);
+    double c2 = PianoVoice::defaultTensionModulation(65.41);
+    double c4 = PianoVoice::defaultTensionModulation(261.6);
+    double c7 = PianoVoice::defaultTensionModulation(2093.0);
+    CHECK_NEAR(a0, c2, 1e-12);       // capped flat through the bottom octaves
+    CHECK(c4 < c2 * 0.1);            // steep falloff above the cap
+    CHECK(c7 < c4 * 0.01);           // treble ~0
+
+    // Override latch: forcing kappa_t = 0 on a bass note must survive setFrequency()
+    // (which re-runs applyRegisterScaling), leaving a note that would otherwise glide
+    // with no glide at all.
+    PianoVoice v;
+    v.setTensionModulation(0.0);     // latches the override
+    v.setFrequency(65.41);           // C2 — the default law would glide here
+    v.setDamperHeld(true);
+    v.noteOn(1.0);
+    for (int i = 0; i < 4800; ++i) v.out(0.0, 0);
+    CHECK(v.pitchModulation() == 0.0); // override held: no glide despite the bass pitch
+}

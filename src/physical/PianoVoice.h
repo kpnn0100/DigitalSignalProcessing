@@ -55,13 +55,19 @@ namespace arstro
         static Sample defaultHammerStiffness(Sample f0Hz);  // ## 11.3
         static Sample defaultStrikePosition(Sample f0Hz);   // ## 11.4
         static int    defaultUnisonCount(Sample f0Hz);      // ## 11.5
+        static Sample defaultTensionModulation(Sample f0Hz);// ## 12.5
 
         void setStrikePosition(Sample beta);
         void setModalMass(Sample m);
         // README ## 12.2: displacement^2 -> tension modulation. 0 disables the
         // longitudinal stage entirely (useful for isolating it in tests).
         void setTensionCoupling(Sample kappa);
+        // README ## 12.5: the attack pitch glide (κ_t → every unison bank). Latches
+        // an override of the §12.5 register default, like the other §11/§12 laws.
+        void setTensionModulation(Sample kappaT);
         const LongitudinalBank &longitudinal() const { return mLongitudinal; }
+        // Introspection for tests: the first unison bank's current glide state.
+        Sample pitchModulation() const { return mStrings[0].pitchModulation(); }
         void setDamperEngageMs(Sample ms);
 
         void setHammerMass(Sample m);
@@ -127,6 +133,7 @@ namespace arstro
         bool mModalMassOverridden = false;
         bool mHammerMassOverridden = false;
         bool mHammerStiffnessOverridden = false;
+        bool mTensionModOverridden = false;
         bool mUnaCorda = false;
         bool mDamperHeld = false;
 
@@ -196,6 +203,26 @@ namespace arstro
         static constexpr Sample kDecaySlope = 0.906;  // least-squares exponent
         static constexpr Sample kDecayMinSeconds = 0.25;
         static constexpr Sample kDecayMaxSeconds = 60.0;
+        // README ## 12.5 — tension-modulation (pitch-glide) register law. The raw
+        // slope-energy E(t) the glide is driven by actually GROWS toward the treble
+        // (a top-octave note's modal-velocity sum is larger in the normalised unit
+        // system), so κ_t must fall steeply with pitch to make the glide the bass
+        // phenomenon it is on a real instrument. κ_t(f0) = κ_ref·(f_ref/f0)^3, but
+        // with f0 FLOORED at C2: a bare (f_ref/f0)^3 would give A0 a 861× multiplier
+        // and glide it ~20 cents, so κ_t is held flat through the bottom octaves and
+        // only falls above the floor. Calibrated (like §12.2's κ) against the level a
+        // hard blow shows — κ_ref sets a C2 fortissimo to ~2.5 cents sharp in the
+        // first 50 ms (≥2 required) and a pianissimo to ~0.1 cents (<0.5 required),
+        // the ~23× (≈v²) hard/soft split doing the separating (plan §M8).
+        static constexpr Sample kTensionModRefHz = 261.6;      // C4, the f_ref anchor
+        static constexpr Sample kTensionModCapHz = 65.41;      // C2 — κ_t flat below here
+        static constexpr Sample kTensionModRefValue = 1.1e-5;  // κ_ref, calibrated
+        static constexpr Sample kTensionModExponent = 3.0;
+        // Above C5 the glide is < 0.05 cents — inaudible — so κ_t is set to exactly 0
+        // there, not merely small. That both makes "negligible in the treble" an exact
+        // property and takes those voices off the per-sample tension path entirely
+        // (the same off-above-a-crossover economy §12.4's longitudinal bank uses).
+        static constexpr Sample kTensionModMaxHz = 523.25;     // C5
         static constexpr Sample kUnaCordaStiffness = 0.85;
         static constexpr Sample kUnaCordaGain = 0.6;
         static constexpr Sample kVoiceLifetimeMs = 8000.0;

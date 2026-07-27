@@ -8,6 +8,7 @@ correctly — numerically, not just "non-silent".
 
 Stdlib only (no NumPy / libsndfile). Run:  python3 tests/run_integration.py
 """
+import cmath
 import glob
 import math
 import os
@@ -564,6 +565,93 @@ def check_piano_phantom_partials(binpath):
     )
 
 
+def _demod_baseband(xs, fref, box_len):
+    """Complex-demodulate xs at fref and box-average (a moving average whose first
+    null sits at SR/box_len). With box_len = SR/f0 the null lands on the neighbouring
+    partials at f0 spacing, so the chosen partial is isolated. Pure stdlib."""
+    w0 = 2.0 * math.pi * fref / SR
+    out = [0j] * len(xs)
+    acc = 0j
+    from collections import deque
+    dq = deque()
+    for i, x in enumerate(xs):
+        v = x * cmath.exp(-1j * w0 * i)
+        acc += v
+        dq.append(v)
+        if len(dq) > box_len:
+            acc -= dq.popleft()
+        out[i] = acc / len(dq)
+    return out
+
+
+def _glide_cents(on, off, f0, partial, t0, t1):
+    """Mean fractional pitch glide of `on` relative to `off` over [t0, t1] seconds,
+    in cents. Measured as the accumulated (unwrapped) phase of the on/off ratio at a
+    chosen partial: because the two renders are identical apart from the glide (same
+    deterministic hammer + noise seed), their broadband onset transient cancels in the
+    ratio — README ## 12.2's "difference two renders" lesson, in the phase domain. The
+    accumulated phase over a fixed window integrates out quantisation noise, so this
+    tracks the ground-truth delta the model applies to ~10%."""
+    fref = partial * f0
+    box = int(round(SR / f0))
+    zon = _demod_baseband(on, fref, box)
+    zoff = _demod_baseband(off, fref, box)
+    a, b = int(t0 * SR), int(t1 * SR)
+    psi = 0.0
+    prev = cmath.phase(zon[a] / zoff[a])
+    for i in range(a + 1, b + 1):
+        cur = cmath.phase(zon[i] / zoff[i])
+        d = cur - prev
+        while d > math.pi:
+            d -= 2.0 * math.pi
+        while d < -math.pi:
+            d += 2.0 * math.pi
+        psi += d
+        prev = cur
+    frac = psi / (2.0 * math.pi * fref * ((b - a) / SR))
+    return 1200.0 * math.log2(1.0 + frac)
+
+
+def check_pitch_glide(binpath):
+    """M8 acceptance (plan §M8): tension modulation / attack pitch glide. A hard bass
+    blow starts sharp and glides down; a soft blow barely does. Measured through the
+    rendered 16-bit audio by differencing a glide-on and glide-off render of the same
+    C2 note (identical but for the partial tuning) — see _glide_cents.
+
+    The plan's literal peak criterion (>= 2 cents in the first 50 ms, < 0.5 soft) is
+    asserted exactly by the unit test via pitchModulation(): f0(t) = f0*(1+delta), so
+    delta IS the f0 shift, and a 2-cent shift on a bass onset cannot be resolved to
+    that precision by any single-window Goertzel/zero-crossing. This audio test proves
+    the glide survives into the WAV and scales with velocity, measured over a settled
+    [30, 130] ms window where the estimator matches ground truth."""
+    f0 = 65.41  # C2
+    hard_on = render(binpath, "pianoglide", 90)
+    hard_off = render(binpath, "pianoglide", -90)
+    soft_on = render(binpath, "pianoglide", 20)
+    soft_off = render(binpath, "pianoglide", -20)
+
+    hard4 = _glide_cents(hard_on, hard_off, f0, 4, 0.030, 0.130)
+    hard2 = _glide_cents(hard_on, hard_off, f0, 2, 0.030, 0.130)
+    soft4 = _glide_cents(soft_on, soft_off, f0, 4, 0.030, 0.130)
+
+    if hard4 < 1.3:
+        raise Failure(f"hard bass blow glides only {hard4:.3f} cents (need >= 1.3) — "
+                      "the attack pitch glide is not reaching the audio")
+    if soft4 >= 0.4:
+        raise Failure(f"soft blow glides {soft4:.3f} cents (need < 0.4) — the glide is "
+                      "not velocity-dependent as amplitude^2 requires")
+    if hard4 < soft4 * 5.0:
+        raise Failure(f"hard/soft glide ratio only {hard4 / max(1e-9, soft4):.1f}x "
+                      "(need >= 5) — glide barely grows with velocity")
+    # Uniform re-tune (## 12.5): every partial shifts by the SAME fraction, so the
+    # glide measured at partial 2 and partial 4 must agree in cents.
+    if abs(hard2 - hard4) > 0.4 * max(hard2, hard4):
+        raise Failure(f"partial-2 glide {hard2:.3f}c and partial-4 glide {hard4:.3f}c "
+                      "disagree — the shift is not a uniform re-tune of the series")
+    return (f"C2 glide: hard {hard4:.2f}c vs soft {soft4:.2f}c "
+            f"({hard4 / max(1e-9, soft4):.0f}x), uniform across partials (p2 {hard2:.2f}c)")
+
+
 def check_parallel_render_is_identical(binpath):
     """REQ-compute-3: rendering through a worker pool must be BIT-IDENTICAL to
     rendering serially — not merely similar. Anything less would make the audio a
@@ -608,6 +696,7 @@ CHECKS = [
     ("piano_sympathetic_resonance", check_piano_sympathetic_resonance),
     ("piano_register_voicing", check_piano_register_voicing),
     ("piano_phantom_partials", check_piano_phantom_partials),
+    ("piano_pitch_glide", check_pitch_glide),
     ("parallel_render_is_identical", check_parallel_render_is_identical),
 ]
 

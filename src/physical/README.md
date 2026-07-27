@@ -959,6 +959,71 @@ One bank per **voice**, not per string: the `U` unison strings are within a cent
 and the hammer already drives them from their *mean* displacement (§6), so a second per-string
 copy would cost 3× to model a difference smaller than the detuning it came from.
 
+#### 12.5 Tension modulation — the attack pitch glide (M8)
+
+Transverse motion does not only pump the longitudinal modes (§12.2); it raises the string's
+**average tension**, and tension is what sets pitch. A struck string is therefore momentarily
+under higher tension than at rest, so the note starts slightly **sharp** and glides down to its
+nominal pitch as the vibration — and with it the tension rise — decays. It is largest at the
+attack and in the bass, where the amplitude-to-tension leverage is greatest, and it is one of
+the small cues that separates a real piano from a static additive tone.
+
+**M8 and M7 are two halves of one quantity.** §12.2's driving term is the slope-square integral
+`⟨(∂y/∂x)²⟩ = ⟨slope²⟩`, and §12.2 keeps only its *AC* part (the longitudinal drive), removing
+the *DC* part with `HP(x)=x−LPF(x)`. That removed DC part **is** the static tension rise:
+
+```
+ΔT(t) ∝ ⟨slope²⟩ ,     slope = Σ_n y_n   (the bank's velocity sum, §12.2)
+E(t)   = LPF( slope² )                    the tension-rise envelope — §12.2's discarded DC half
+```
+
+**Pitch law.** Pitch goes as `√T`, so for a small rise `ΔT/T ≪ 1`:
+
+```
+f0(t) = f0·√(1 + ΔT/T) ≈ f0·(1 + κ_t·E(t))
+```
+
+`κ_t` folds the `½·(1/T)` sensitivity and the `EA/2L` tension leverage into one calibrated
+constant — the same normalised-unit reasoning as §12.2's `κ`, and calibrated the same way
+(measured against the level a real note shows, not derived, because every SI term is in §6/§11.1's
+normalised system). Because tension is a property of the **whole wire**, every partial shifts by
+the *same fraction* `δ(t)=κ_t·E(t)`: the series stretches uniformly — this is a re-tuning, not a
+detuning of the fundamental alone.
+
+**Applying the shift without per-partial trig.** Partial `n`'s pole angle is `θ_n = 2π f_n/f_s`;
+shifting `f_n → f_n(1+δ)` changes only the recurrence's `cos` coefficient (`a1_n = 2 r_n·cos θ_n`;
+the radius `r_n` is set by `T60` and does not move). `δ` is tiny — the acceptance target is
+`≤ 2 cents ≈ 1.2×10⁻³` — so a first-order expansion is exact to `~(θ_nδ)²/2 ≲ 10⁻⁵` and needs no
+`cos`:
+
+```
+cos(θ_n(1+δ)) ≈ cos θ_n − (θ_n·sin θ_n)·δ
+a1_n(δ)        = 2 r_n·[ cos θ_n − (θ_n·sin θ_n)·δ ]
+```
+
+`θ_n`, `sin θ_n` and `cos θ_n` are all already computed in `update()`, so a re-tune costs one
+multiply–add per partial and no trig. The stored per-entry sensitivity is `b_n ≡ −θ_n·sin θ_n`
+(so `cos_bent = cos θ_n + b_n·δ`), which composes cleanly with the damper's radius recompute in
+`recomputeEffectivePartials()`. The re-tune is **decimated** to once per `kBendRetuneInterval`
+samples: `E(t)` evolves over tens of ms, so a ~1 ms grid is inaudible, and this keeps the
+coefficient pass — the one thing that must *not* run every sample — off the hot path. `δ` is
+clamped to `±kMaxPitchDelta` as a stability guard so a pathological input energy cannot push a
+pole coefficient out of range.
+
+**Envelope corner — the one place M8 does not literally reuse §12.2's filter.** `E(t)` is the
+low-passed square of the slope. `slope²` of a note at `f0` carries the DC energy we want *plus*
+ripple at `2·f0` and above; §12.2's DC-blocker corner is 60 Hz, which barely attenuates a
+bottom-octave note's `2·f0 ≈ 55 Hz` ripple and would wobble the pitch audibly. M8 therefore uses
+a dedicated slower one-pole at `f_E ≈ 12 Hz` (`τ_E ≈ 13 ms`, which also matches the physical
+settling of the rise). Same quantity as §12.2, deliberately slower corner.
+
+**Per string, not per voice** — the opposite choice from §12.4's longitudinal bank. The tension
+rise is a property of *that individual string's* motion, each `StringPartialBank` already computes
+its own `slope`, and the re-tune must land on that string's own partials, so each bank owns its
+tension state and self-modulates. There is no shared-bank saving to be had as there was for the
+longitudinal modes. Disabled (`κ_t = 0`) the whole path is skipped, so a voice that opts out pays
+nothing.
+
 ### 13. Skipping silent voices (a performance gate, with a physics precondition)
 
 A voice pool renders every slot every sample whether it sounds or not, so one note
@@ -1003,6 +1068,8 @@ Implemented in `PianoVoice::isSilent()`; applied by `PianoEngine::renderFrame()`
 | | `setBrightnessDecaySeconds` | s (T60 @ 5 kHz) | `T60_ref` → solves `c₃`/`c₁` (§3) |
 | | `setStrikePosition` | 0..0.5 | `β` |
 | | `setModalMass` | normalised (C4 = 1) | `m` (§11.1) |
+| | `setTensionModulation` | normalised | `κ_t` — slope² envelope → uniform pitch glide; 0 disables the stage (§12.5) |
+| | `pitchModulation()` / `tensionEnergy()` | — | current `δ` / `E(t)`, exposed for tests (§12.5) |
 | | `setDamperEngagement` | 0..1 target | `d` (ramped) |
 | | `setDamperEngageMs` | ms | ramp time |
 | `HammerExciter` | `setMass` | normalized | `m_h` |
@@ -1022,6 +1089,7 @@ Implemented in `PianoVoice::isSilent()`; applied by `PianoEngine::renderFrame()`
 | | `setBaseDecaySeconds` | s (T60) | `T60_fundamental` (latches an override, §3) |
 | | `setBrightnessDecaySeconds` | s (T60 @ 5 kHz) | `T60_ref` (§3) |
 | | `setTensionCoupling` | normalised | `κ` → the owned `LongitudinalBank` (§12.2) |
+| | `setTensionModulation` | normalised | `κ_t` → all unison banks; the §12.5 pitch glide (latches an override) |
 | | `setUnaCorda` | bool | soft-pedal gate |
 | | `setDamperHeld` | bool | sustain/sostenuto gate |
 | | `setStrikePosition` / `setModalMass` / `setHammerMass` / `setHammerStiffness` | — | each **latches an override** of the matching §11 law |

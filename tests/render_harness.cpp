@@ -389,6 +389,29 @@ static std::vector<double> renderPianoPhantom(double arg)
     return out;
 }
 
+// M8 acceptance (plan §M8): tension modulation / attack pitch glide. A hard blow
+// on a bass note (C2) must start sharp and settle down; a soft blow must not. Held
+// with the damper lifted so the tail is undisturbed by damping. Everything here is
+// deterministic (fixed noise seed), so a glide-off reference differs from glide-on
+// ONLY in partial tuning — the checker differences the two to cancel the broadband
+// onset transient exactly (README ## 12.2's "difference two renders" lesson) and
+// isolate the glide. Encoding: arg = |velocity*100|, negated ⇒ glide off (κ_t = 0).
+static std::vector<double> renderPianoGlide(double arg)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(65.41); // C2 — a solid bass note where the glide lives (README ## 12.5)
+    if (arg < 0.0)
+        v.setTensionModulation(0.0); // the reference render
+    v.setDamperHeld(true);
+    v.noteOn(std::fabs(arg) / 100.0);
+    const int n = (int)(1.3 * kSampleRate);
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i) out[i] = v.out(0.0, 0);
+    return out;
+}
+
 // M4 acceptance (plan §M4): double decay. C4 held with the damper lifted for 5 s,
 // ONE unison string so unison beating (README ## 5) does not modulate the envelope
 // on a timescale comparable to the measurement — this targets the polarisation
@@ -465,6 +488,7 @@ int main(int argc, char **argv)
     else if (scenario == "pianoreuse") samples = renderPianoReuse();
     else if (scenario == "pianospectral") samples = renderPianoSpectral();
     else if (scenario == "pianodoubledecay") samples = renderPianoDoubleDecay();
+    else if (scenario == "pianoglide") samples = renderPianoGlide(arg);
     else if (scenario == "bridgeimpulse") samples = renderBridgeImpulse();
     else if (scenario == "pianosympathetic") samples = renderPianoSympathetic(arg);
     else if (scenario == "pianoregister") samples = renderPianoRegister(arg);

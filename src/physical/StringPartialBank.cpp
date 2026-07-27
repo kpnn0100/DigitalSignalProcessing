@@ -45,6 +45,13 @@ namespace arstro
         setProperty(modalMassID, m);
     }
 
+    void StringPartialBank::setTensionModulation(Sample kappaT)
+    {
+        // Stored raw (may be negative to bend flat, e.g. for tests); process()
+        // clamps the resulting delta symmetrically. 0 skips the whole stage.
+        mTensionCoupling = kappaT;
+    }
+
     Sample StringPartialBank::partialFrequencyHz(int index) const
     {
         return (index >= 0 && index < mActiveCount) ? mFreqN[index] : (Sample)0;
@@ -79,6 +86,13 @@ namespace arstro
         mDamperValue = 0.0;
         mDamperTarget = 0.0;
         mDamperStep = 0.0;
+        // README ## 12.5: a fresh strike starts at nominal pitch. Zero the glide
+        // state BEFORE recomputeEffectivePartials() below so it rebuilds a1 at
+        // delta = 0; otherwise a voice-stolen bank would carry the previous note's
+        // bend into the new one's coefficients.
+        mEnergyLP = 0.0;
+        mPitchDelta = 0.0;
+        mBendCounter = 0;
         // Re-derive the pole radii from the now-lifted damper. A reused
         // (voice-stolen) bank can still carry heavily-damped coefficients computed
         // for the PREVIOUS note's fully-engaged damper — PianoEngine calls
@@ -103,6 +117,11 @@ namespace arstro
 
         const Sample sr = AudioConfig::instance().sampleRate();
         const Sample nyquistLimit = kNyquistFraction * sr;
+
+        // README ## 12.5: one-pole coefficient for the tension-rise envelope
+        // E += mEnergyCoeff*(slope^2 - E). Derived from tau here so a sample-rate
+        // change (which re-runs update() via the property path) tracks it.
+        mEnergyCoeff = 1.0 - std::exp(-1.0 / (kEnergyTauSeconds * sr));
 
         // Solve the loss law alpha(f) = c1 + c3*(2*pi*f)^2 from the two decay-time
         // anchors (README ## 3). Positive-time guards first so the reciprocals below
@@ -202,10 +221,13 @@ namespace arstro
 
             // --- vertical: the hammer's plane, strongly bridge-coupled, fast decay ---
             const Sample theta = wn / sr;
+            const Sample sinTheta = std::sin(theta);
             mCosTheta[i] = std::cos(theta);
+            // README ## 12.5: first-order pitch-bend sensitivity b_n = -theta*sin(theta).
+            mCosBend[i] = -theta * sinTheta;
             // Velocity gain (README ## 6): sin(theta)*g_n/(m*fs). The 1/omega_n that
             // would appear for displacement cancels here — velocity is what radiates.
-            mDrive[i] = std::sin(theta) * gn * vertShare / (modalMass * sr);
+            mDrive[i] = sinTheta * gn * vertShare / (modalMass * sr);
             mDispWeight[i] = gn / wn; // ...displacement recovered by weighting
             mEntryT60[i] = kT60Constant / alphaVert;
 
@@ -216,8 +238,10 @@ namespace arstro
                 Sample fh = fn * (1.0 + kPolarizationDetune);
                 if (fh > 0.49 * sr) fh = 0.49 * sr;
                 const Sample thetaH = 2.0 * M_PI * fh / sr;
+                const Sample sinThetaH = std::sin(thetaH);
                 mCosTheta[h] = std::cos(thetaH);
-                mDrive[h] = std::sin(thetaH) * gn * kPolarizationSplit / (modalMass * sr);
+                mCosBend[h] = -thetaH * sinThetaH; // README ## 12.5, horizontal twin
+                mDrive[h] = sinThetaH * gn * kPolarizationSplit / (modalMass * sr);
                 // Horizontal motion is perpendicular to the hammer's compression axis,
                 // so it does not change c = x_h - y_string (README ## 5b, ## 6).
                 mDispWeight[h] = 0.0;
@@ -240,7 +264,11 @@ namespace arstro
             // r = 10^(-3/(T60*fs)) = exp(-ln(1000)/(T60*fs)); only r moves with the
             // damper, so theta's cos/sin stay cached from update().
             const Sample r = std::exp(-kT60Constant / (t60eff * sr));
-            mA1[i] = 2.0 * r * mCosTheta[i];
+            // README ## 12.5: cos(theta*(1+delta)) ~ cos(theta) + b_n*delta, so the
+            // tension glide re-tunes every partial with no per-partial trig. delta is
+            // 0 unless the tension stage is active, leaving the pre-M8 path unchanged.
+            const Sample bentCos = mCosTheta[i] + mCosBend[i] * mPitchDelta;
+            mA1[i] = 2.0 * r * bentCos;
             mA2[i] = r * r;
         }
     }
@@ -275,6 +303,25 @@ namespace arstro
             disp += mDispWeight[i] * y; // README ## 6: q_n = y_n/omega_n, projected by g_n
         }
         mLastDisplacement = disp;
+
+        // README ## 12.5: tension modulation. `sum` is the string's slope (§12.2), so
+        // its low-passed square is the tension-rise envelope E(t). Advance it only on
+        // the mono core (channel 0, like the damper ramp) and only when the stage is
+        // enabled, so the default path costs nothing. The coefficient re-tune is
+        // decimated — E(t) is slow, and this pass must stay off the per-sample budget.
+        if (channel == 0 && mTensionCoupling != 0.0)
+        {
+            mEnergyLP += mEnergyCoeff * (sum * sum - mEnergyLP);
+            if (++mBendCounter >= kBendRetuneInterval)
+            {
+                mBendCounter = 0;
+                Sample delta = mTensionCoupling * mEnergyLP;
+                if (delta > kMaxPitchDelta) delta = kMaxPitchDelta;
+                else if (delta < -kMaxPitchDelta) delta = -kMaxPitchDelta;
+                mPitchDelta = delta;
+                recomputeEffectivePartials(); // rebuild a1 at the new bend
+            }
+        }
         return sum;
     }
 }

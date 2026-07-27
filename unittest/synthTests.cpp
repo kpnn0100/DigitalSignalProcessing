@@ -1608,6 +1608,87 @@ TEST(LongitudinalBank_does_not_destabilise_the_bridge_loop)
     CHECK(peak < 100.0); // measured 6.13 at 10x; 3.14 at the shipped value
 }
 
+// ───────────────── tension modulation / pitch glide (README ## 12.5, M8) ─────────────────
+
+// Helper: the peak fractional pitch shift delta a struck voice reaches within its
+// first `ms` milliseconds, and the settled shift at ~1 s. Uses the exact
+// pitchModulation() introspection — f0(t) = f0*(1+delta), so delta IS the fractional
+// f0 shift, measured exactly rather than estimated from a noisy bass onset. The
+// integration suite measures the same glide through the rendered 16-bit audio path.
+namespace {
+void glideDeltas(double f0, double vel, double &peak50ms, double &settled1s)
+{
+    PianoVoice v;
+    v.setFrequency(f0);
+    v.setDamperHeld(true); // no damper so the tail is clean
+    v.noteOn(vel);
+    peak50ms = 0.0; settled1s = 0.0;
+    for (int i = 0; i < 48000; ++i)
+    {
+        v.out(0.0, 0);
+        double d = (double)v.pitchModulation();
+        if (i < 2400 && d > peak50ms) peak50ms = d; // first 50 ms
+        if (i >= 47900) settled1s = d;
+    }
+}
+double toCents(double frac) { return 1200.0 * std::log2(1.0 + frac); }
+}
+
+// Plan §M8 acceptance, measured exactly: a hard bass blow starts >= 2 cents sharp in
+// the first 50 ms relative to its settled pitch; a soft blow < 0.5 cents. The wide
+// hard/soft gap comes for free from the amplitude^2 tension law (a struck string's
+// tension rises as the square of its motion, ## 12.5), the same v^2 signature §12.2
+// gives the phantom partials.
+TEST(PianoVoice_tension_modulation_attack_pitch_glide)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    double hardPeak, hardSettled, softPeak, softSettled;
+    glideDeltas(65.41, 1.0, hardPeak, hardSettled); // C2 fortissimo
+    glideDeltas(65.41, 0.2, softPeak, softSettled); // C2 pianissimo
+
+    double hardGlide = toCents(hardPeak) - toCents(hardSettled);
+    double softGlide = toCents(softPeak) - toCents(softSettled);
+
+    CHECK(hardGlide >= 2.0);                 // plan §M8: hard blow >= 2 cents sharp (measured ~2.5)
+    CHECK(toCents(softPeak) < 0.5);          // plan §M8: soft blow < 0.5 cents (measured ~0.12)
+    CHECK(hardPeak > 0.0);                   // it really starts sharp, not flat
+    CHECK(hardSettled < hardPeak * 0.5);     // and it glides DOWN toward nominal as it decays
+}
+
+// The glide is driven by the SQUARE of the transverse amplitude (## 12.5), so it must
+// grow far faster with strike velocity than a linear partial — the same test §12.2's
+// phantom partials pass, applied to the tension-rise (DC) half of the same quantity.
+TEST(PianoVoice_pitch_glide_grows_with_velocity_squared)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    double loudP, loudS, softP, softS;
+    glideDeltas(65.41, 0.9, loudP, loudS);
+    glideDeltas(65.41, 0.3, softP, softS); // 3x lower velocity
+
+    // delta ~ amplitude^2, and amplitude ~ velocity, so a 3x velocity gap should give
+    // roughly a 9x delta gap — certainly far more than the 3x a linear effect would.
+    CHECK(loudP > softP * 5.0);
+}
+
+// The glide is a bass phenomenon by construction (## 12.5): kappa_t falls as the cube
+// of pitch, so a treble note barely glides at all even struck at full force.
+TEST(PianoVoice_pitch_glide_is_negligible_in_the_treble)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    double bassP, bassS, trebP, trebS;
+    glideDeltas(65.41, 1.0, bassP, bassS);   // C2
+    glideDeltas(2093.0, 1.0, trebP, trebS);  // C7, same fortissimo
+
+    CHECK(toCents(trebP) < 0.1);             // treble glide is inaudible (measured ~0.001)
+    CHECK(bassP > trebP * 50.0);             // the bass glides orders of magnitude more
+}
+
 // ───────────────── silent-voice skipping (README ## 13) ─────────────────
 
 // The performance gate that lets an engine freeze idle voices. Its two conditions

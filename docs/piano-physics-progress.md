@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-26 (M7 complete; then a non-milestone perf/latency pass)
-- **Last commit:** perf — skip fully-damped, inaudible voices (README ## 13)
+- **Last updated:** 2026-07-27 (M8 complete — tension modulation / attack pitch glide)
+- **Last commit:** M8 — tension modulation (attack pitch glide), README ## 12.5
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -21,6 +21,14 @@ file first and updates it last, every session. Spec:
 | **M6** (per-register scaling) | **8.81× RT** | 9.56× | ~1900 | ✅ met (2.2× margin) |
 | **M7** (longitudinal modes) | **7.92× RT** | — | ~1944 | ✅ met (2.0× margin) |
 | **post-M7** (voice skipping) | **8.36× RT** | — | ~1944 | ✅ met (2.1× margin) |
+| **M8** (tension modulation) | **11.79× RT** (median 11.66×) | 12.9× | ~1944 | ✅ met (2.9× margin) |
+
+**M8's absolute figures are on a FASTER machine than M0–M7** (M0 re-measured here at 12.68×,
+not the 15.42× of the original machine — bench numbers are relative, per the M0 note). The
+honest reading is the *relative* cost: M8 dropped this machine's 8-voice figure 12.68× → 11.79×,
+**~7%**, all of it the per-sample tension-envelope tracking + decimated re-tune on the bass/mid
+voices whose `κ_t > 0` (the treble is gated off entirely, §12.5). No resonators added — M8
+re-tunes existing ones. Budget met with 2.9× margin.
 
 `piano_bench` holds all 8 voices *sounding*, so the voice-skipping optimisation cannot help it —
 8.36× vs 7.92× is run-to-run noise, and that is the honest reading. Where skipping does help is
@@ -36,30 +44,27 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 
 ## ► NEXT
 
-**M8 — Tension modulation (attack pitch glide).** The small one, and it shares its physics with
-M7: a hard blow raises the string's average tension, so the note starts **sharp** and glides down
-as it decays.
+**M9 — Tier-3 detail.** Four small, independent features (plan §M9), shippable in any order:
+no dampers above ~MIDI 88; duplex/aliquot scale (treble shimmer); Stulov felt hysteresis
+(replaces README §6's load/unload simplification); una corda done properly. Start the first
+unchecked one.
 
-```
-f0(t) = f0·(1 + κ_t·E_transverse(t))
-```
+⚠️ **Before implementing item 4 (una corda), amend `REQ-piano-16` first** — it currently
+specifies the gain-reduction *approximation*, and real una corda (strike a subset of the unison
+strings, the un-struck string driven only through the bridge) contradicts it. This is the one
+**still-pending** requirement conflict; per `arstro.dsp.implement` rule 5, amend the requirement
+with the reason and date *before* the code, not after.
 
-M7 has already built most of what this needs and then deliberately **thrown it away**: §12.2's
-DC blocker removes exactly the static tension rise that M8 is about (`HP(x) = x − LPF(x)` — the
-low-passed copy *is* the M8 signal). So M8 should tap `LongitudinalBank`'s existing DC tracker
-rather than compute a second envelope, and the two milestones will finally use both halves of one
-quantity. Check that framing first; it may make M8 nearly free.
+M8 is complete and verified numerically. **This is the point the plan flagged (see M6's
+verification note) where listening is worth more than another measurement** — M4–M8 have added
+specific colours (bloom, soundboard, per-register voicing, bass growl, attack glide) on top of a
+model that was already qualitatively a piano at M3. M9's items are refinements, not missing
+mechanisms. Consider the §"When every milestone is done" whole-project review + a fresh render
+for the user to hear, either after M9 or if the user wants to judge the timbre now.
 
-**Acceptance** (plan §M8): hard bass blow measures ≥ 2 cents sharp in the first 50 ms versus
-t = 1 s; soft blow < 0.5 cents. Measure via Goertzel or zero-crossing on windowed segments.
-
-Budget: M7 leaves **7.92× RT**, 2.0× above the gate — the tightest yet. M8 adds no resonators
-(it re-tunes existing ones), but re-tuning `f0` per block means recomputing partial coefficients
-during the attack, which is not free. Cost it before implementing, as M7 was.
-
-One caution worth carrying in: M6 and M7 both changed the coefficient path's *inputs*; M8 changes
-how often it runs. `StringPartialBank::update()` is a 64-partial loop with `pow`/`sin`/`cos` in
-it — calling it per sample would be far more expensive than the physics is worth.
+Budget headroom on this machine: **11.79× RT**, 2.9× above the gate. M9's items are cheap
+(damper gating and una-corda are free; duplex adds a few resonators per treble note; Stulov
+hysteresis is a per-sample felt-state update, not a partial-loop change).
 
 ---
 
@@ -105,7 +110,7 @@ not rediscover any of it. None of it changes the physics.
 | M5 | Soundboard / bridge | `[x]` |
 | M6 | Per-register voicing | `[x]` |
 | M7 | Longitudinal modes & phantom partials | `[x]` |
-| M8 | Tension modulation (attack pitch glide) | `[ ]` |
+| M8 | Tension modulation (attack pitch glide) | `[x]` |
 | M9 | Tier-3 detail | `[ ]` |
 
 Status key: `[ ]` not started · `[~]` in progress · `[x]` done & verified · `[!]` done but
@@ -288,10 +293,31 @@ some acceptance criterion could not be verified here (see Verification notes).
 - [x] Re-run M0 benchmark: **7.92× RT** — budget met with 2.0× margin
 - [x] 100 % line coverage held on all **six** `physical/` sources
 
-### M8 — Tension modulation `[ ]`
-- [ ] f0(t) = f0(1 + κ·E_transverse(t))
-- [ ] Test: hard bass blow ≥ 2 cents sharp at 50 ms vs t = 1 s; soft blow < 0.5 cents
-- [ ] Re-run M0 benchmark, record
+### M8 — Tension modulation `[x]`
+- [x] Derived README `## 12.5` **before coding**: `f0(t)=f0·(1+κ_t·E(t))`, `E=LPF(slope²)` —
+      the **DC half of §12.2's slope-square quantity**, the exact static tension rise M7's DC
+      blocker discards. First-order `cos(θ(1+δ)) ≈ cosθ − θ·sinθ·δ` re-tunes every partial with
+      **no per-partial trig**, decimated to once per 64 samples off the hot path
+- [x] `REQ-piano-18` **added** — no requirement covered tension modulation (a gap, not a
+      conflict; rule 5 needs a written requirement before the work)
+- [x] Lives **inside `StringPartialBank`** (self-modulating, per string): `setTensionModulation`,
+      a one-pole `E(t)` envelope (τ≈13 ms), the decimated bend, `±kMaxPitchDelta` stability clamp
+- [x] `PianoVoice::defaultTensionModulation(f0)` register law `κ_ref·(f_ref/f0)^3`, floored at
+      C2 (deep-bass cap) and **switched off above C5** (glide < 0.05 c — inaudible — so the
+      treble pays nothing per sample); override-latched like the §11/§12 laws
+- [x] **Acceptance (plan §M8), measured exactly via `pitchModulation()` introspection**
+      (`f0(t)=f0(1+δ)`, so δ *is* the f0 shift): C2 fortissimo **peak δ = 2.77 c** in the first
+      50 ms, glide-vs-1 s **2.48 c** (≥ 2 ✓); C2 pianissimo **0.12 c** (< 0.5 ✓)
+- [x] Velocity² law asserted (glide grows ~v², the same signature as §12.2's phantom) and
+      treble-negligible (C7 glide ~0.001 c, now exactly 0 above C5)
+- [x] Integration test `piano_pitch_glide`: differences a glide-on/off render (common-mode onset
+      transient cancels — §12.2's lesson, in the phase domain) → accumulated-phase estimator over
+      [30,130] ms **matches ground truth to ~10%**: hard **1.54 c** vs soft **0.06 c** (26×),
+      **uniform across partials** (p2 1.67 c ≈ p4 1.54 c — proves a re-tune, not a fundamental detune)
+- [x] All prior criteria re-checked: M1 spectral 19.8 dB, M4 double decay 3.89, M5 colour 10.0 dB,
+      M6 centroid 78×, **M7 phantom still dominates** (see decisions log — the glide *did* nudge it)
+- [x] Re-run M0 benchmark: **11.79× RT** (median 11.66×) — budget met with 2.9× margin
+- [x] 100 % line coverage held on all **six** `physical/` sources
 
 ### M9 — Tier-3 detail `[ ]`
 - [ ] No dampers above ~MIDI 88
@@ -306,6 +332,49 @@ some acceptance criterion could not be verified here (see Verification notes).
 
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
+
+- **2026-07-27 (M8) — the ledger's "tap M7's DC tracker, it may be nearly free" framing is
+  right about the QUANTITY and wrong about the FILTER.** M8's driving signal genuinely is the DC
+  half of §12.2's `slope²` — the same quantity, both halves used, exactly as the ► NEXT note
+  predicted. But M7's DC blocker runs at a **60 Hz** corner, and a bottom-octave note's `slope²`
+  ripples at `2·f0 ≈ 55 Hz`; feeding that straight to pitch would wobble the note audibly. So M8
+  computes its own envelope from the same `slope²` with a **slower ~12 Hz corner** (τ≈13 ms). It
+  is not a second *quantity*, just a second (correct) *corner* — the reuse the ledger wanted, one
+  filter constant short of literal. Also: the glide is **per-string** (each `StringPartialBank`
+  self-modulates from its own slope), the opposite of §12.4's one-bank-per-voice longitudinal
+  choice, because the re-tune has to land on *that* string's own partials.
+- **2026-07-27 (M8) — re-tuning 64 partials never calls a single `cos`.** `update()` is a
+  `pow`/`sin`/`cos` loop the ledger warned must not run per sample. The pitch shift is ≤ 2 cents
+  (`δ ≲ 1.2e-3`), so `cos(θ(1+δ)) ≈ cosθ − (θ·sinθ)·δ` is exact to `~(θδ)²/2 ≲ 1e-5`: store
+  `b_n = −θ·sinθ` in `update()` (where `θ`, `sinθ`, `cosθ` already exist) and the bent coefficient
+  is one multiply-add per partial, folded into the damper's existing `recomputeEffectivePartials`
+  pass and **decimated to every 64 samples**. The physics was a better derivation, not a bigger
+  budget — the same lesson M7 learned about its drive signal.
+- **2026-07-27 (M8) — the exact criterion is asserted by introspection; the audio test proves
+  it survives the WAV.** A 2-cent shift on a *bass onset* cannot be resolved to that precision by
+  any single-window Goertzel/zero-crossing — the pitch changes within the window and the
+  broadband attack swamps the bin (the same reason M7 had to difference two renders). So the unit
+  test asserts the plan's literal ≥ 2 c / < 0.5 c on `pitchModulation()` — which *is* the f0 shift
+  exactly — and the integration test differences a glide-on/off pair (common-mode transient
+  cancels) and reads the **accumulated phase** of the ratio, which matches ground truth to ~10%.
+  Two measurements of one thing, each honest about what it can see. **Same adaptation pattern as
+  M1/M4**: assert what is measurable, document why.
+- **2026-07-27 (M8) — the glide nudged M7's phantom test, and that is physically correct.** With
+  the glide on by default, A0's transverse partials shift up to ~1.7 c during the attack, so the
+  phantom test's nearest-transverse-partial gap moved 17 → 15 Hz and its longitudinal/transverse
+  ratio 62× → 36×. It still passes with wide margin (36× dominance, still growing as v^2.37), and
+  the movement is real — the glide genuinely moves those partials. Left as-is rather than
+  disabling the glide in that scenario, which would hide a true interaction. **Third time a
+  milestone has touched an earlier one's criterion** (M4, M6 before it); this time it bent it, did
+  not break it, and the suite noticed either way.
+- **2026-07-27 (M8) — `κ_t` grows toward the bass, because the raw energy does the opposite.**
+  Intuition says a "bass effect" needs a bass-weighted gain, but the *measured* slope-energy `E`
+  is actually ~10× larger at C5 than at A0 (a top-octave note's modal-velocity sum is larger in
+  the normalised system). So `κ_t` must fall as `(f_ref/f0)^3` just to make the glide a bass
+  phenomenon, and even then a bare cube gives A0 an 861× multiplier and ~20 c of glide — hence the
+  **C2 floor** (κ_t flat through the bottom octaves) and the **C5 cutoff** (κ_t = 0 above, glide
+  < 0.05 c). Measured profile: A0 1.8 c, C2 2.5 c, A2 0.65 c, C4 0.17 c, C5 0.045 c, C7 0. **The
+  register weighting had to be measured, not reasoned — the same trap M6's modal-mass grading was.**
 
 - **2026-07-26 (M7) — WHICH transverse signal you square is the entire milestone, and the
   obvious choice produces nothing.** The strike-point displacement was already computed for M3's
@@ -524,6 +593,23 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M8** — fully verified; nothing marked `[!]`. The note now **starts sharp**: a C2 fortissimo
+  reaches 2.77 cents sharp within the first 50 ms and glides down to nominal, a pianissimo barely
+  0.12 c, and the treble does not glide at all — all confirmed both by exact `pitchModulation()`
+  introspection and, independently, through the rendered 16-bit audio. Three honest points to
+  carry forward. (1) **`κ_t` is calibrated, not derived** — its SI value is `½·(1/T)·(EA/2L)` but
+  every term is in §6/§11.1's normalised system, so like §12.2's `κ` it was set against the level
+  a hard bass blow shows (~2.5 c at C2). (2) **The register weighting is empirical** — `(f_ref/f0)³`
+  with a C2 floor and a C5 cutoff, fitted so the glide is bass-only against a slope-energy that
+  actually rises toward the treble; it is not a first-principles tension model. (3) **A 2-cent
+  bass-onset pitch shift is below what a single windowed Goertzel/zero-crossing can resolve**, so
+  the *audio* test measures the glide over a settled [30,130] ms window via a differenced
+  phase estimator (validated against ground truth to ~10%), while the plan's literal peak
+  criterion is carried by the introspection unit test. Perf margin is now the widest since M5 on
+  this machine (2.9×), but M8's cost is *relative* ~7% and lives on every bass/mid voice's
+  per-sample path — the number to watch if M9's duplex scale adds treble resonators.
+  **From here the model should be judged by ear** (see M6's note): M4–M8 are colours on a model
+  already qualitatively a piano at M3, and M9 is refinement, not missing mechanism.
 - **M7** — fully verified; nothing marked `[!]`. The bass now has a genuinely nonlinear
   component: 1280 Hz energy on an A0 whose partial series has nothing within 17 Hz, 62× the
   transverse content there, growing as v^2.35 and effectively absent when the key is whispered.

@@ -79,6 +79,13 @@ namespace arstro
         void setStrikePosition(Sample beta);
         void setModalMass(Sample m); // README ## 11.1; clamped positive
 
+        // README ## 12.5: tension modulation (attack pitch glide). kappaT scales the
+        // low-passed slope-energy envelope into a fractional pitch shift applied
+        // uniformly to every partial. 0 (the default) disables the stage entirely,
+        // so a bank that opts out pays nothing. Not a smoothed property — like the
+        // damper, it drives its own state.
+        void setTensionModulation(Sample kappaT);
+
         // 0 = damper lifted, 1 = fully engaged; ramps linearly over setDamperEngageMs().
         void setDamperEngagement(Sample target01);
         void setDamperEngageMs(Sample ms);
@@ -105,6 +112,12 @@ namespace arstro
          *  hammer compresses against; without it the felt meets a rigid wall. */
         Sample displacementAtStrike() const { return mLastDisplacement; }
 
+        // README ## 12.5 introspection, so tests assert the glide directly rather
+        // than inferring it from rendered audio: the current fractional pitch shift
+        // delta, and the tension-rise envelope E(t) = LPF(slope^2) that drives it.
+        Sample pitchModulation() const { return mPitchDelta; }
+        Sample tensionEnergy() const { return mEnergyLP; }
+
         void update() override;
         void onChannelCountChanged() override;
 
@@ -128,8 +141,11 @@ namespace arstro
         std::array<Sample, kMaxEntries> mCosTheta{};
         std::array<Sample, kMaxEntries> mDrive{};       // sin(theta)*g_n*split/(m*fs)
         std::array<Sample, kMaxEntries> mDispWeight{};  // g_n/omega_n; ZERO for horizontal
-        std::array<Sample, kMaxEntries> mA1{};          // 2*r*cos(theta)
+        std::array<Sample, kMaxEntries> mA1{};          // 2*r*cos(theta*(1+delta))
         std::array<Sample, kMaxEntries> mA2{};          // r^2
+        // README ## 12.5: first-order pitch-bend sensitivity b_n = -theta_n*sin(theta_n),
+        // so the bent cosine is cos(theta_n) + b_n*delta with no per-partial trig.
+        std::array<Sample, kMaxEntries> mCosBend{};
         int mActiveCount = 1;    // vertical partials (== the physical partial count)
         int mTotalCount = 1;     // vertical + horizontal entries actually run
         Sample mLastDisplacement = 0.0;
@@ -147,6 +163,23 @@ namespace arstro
         Sample mDamperEngageMs = 20.0;
 
         static constexpr Sample kDamperLossGain = 40.0;
+
+        // ───────── README ## 12.5: tension modulation (attack pitch glide) ─────────
+        Sample mTensionCoupling = 0.0; // kappa_t; 0 disables the whole stage
+        Sample mEnergyLP = 0.0;        // E(t) = LPF(slope^2), the tension-rise envelope
+        Sample mEnergyCoeff = 0.0;     // one-pole coefficient, derived from tau in update()
+        Sample mPitchDelta = 0.0;      // current fractional pitch shift delta = kappa_t*E
+        int mBendCounter = 0;          // decimation counter for the coefficient re-tune
+        // The envelope corner (## 12.5): deliberately BELOW ## 12.2's 60 Hz DC-blocker
+        // so a bottom-octave note's 2*f0 ~ 55 Hz ripple cannot wobble the pitch.
+        static constexpr Sample kEnergyTauSeconds = 0.013; // ~12 Hz corner
+        // The re-tune runs once per this many samples, not per sample: E(t) evolves
+        // over tens of ms, so a ~1 ms grid is inaudible, and the coefficient pass
+        // must stay off the hot path (the ledger's standing caution).
+        static constexpr int kBendRetuneInterval = 64;
+        // Stability guard: |delta| capped so a pathological input energy cannot push
+        // a pole coefficient out of range. Far above any real glide (2 cents ~ 1.2e-3).
+        static constexpr Sample kMaxPitchDelta = 0.05;
 
         // README ## 3: T60 = ln(1000)/alpha, and the high-frequency anchor the
         // brightnessDecay parameter is defined at.

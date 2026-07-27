@@ -114,6 +114,18 @@ namespace arstro
         return beta;
     }
 
+    Sample PianoVoice::defaultTensionModulation(Sample f0Hz)
+    {
+        // ## 12.5: κ_t = κ_ref·(f_ref/f0)^3, with f0 floored at C2 so it holds flat
+        // through the bottom octaves rather than exploding (a bare cube would give A0
+        // an 861× multiplier). Steep enough that the mid falls to a fraction of a cent;
+        // above C5 it is switched off entirely (glide < 0.05 cents, inaudible), which
+        // also keeps the treble off the per-sample tension path.
+        if (f0Hz > kTensionModMaxHz) return 0.0;
+        if (f0Hz < kTensionModCapHz) f0Hz = kTensionModCapHz;
+        return kTensionModRefValue * std::pow(kTensionModRefHz / f0Hz, kTensionModExponent);
+    }
+
     int PianoVoice::defaultUnisonCount(Sample f0Hz)
     {
         // ## 11.5: standard stringing-scale breaks. Single-strung bass is a feature —
@@ -137,14 +149,16 @@ namespace arstro
         // factor), but a voice that is never struck should still report the right
         // value, and unit tests read it back.
         mHammer.setStiffness(mHammerBaseStiffness);
-        if (!mStrikePositionOverridden || !mModalMassOverridden)
+        if (!mStrikePositionOverridden || !mModalMassOverridden || !mTensionModOverridden)
         {
             const Sample beta = defaultStrikePosition(f0);
             const Sample m = defaultModalMass(f0);
+            const Sample kappaT = defaultTensionModulation(f0); // README ## 12.5
             for (int k = 0; k < kMaxUnison; ++k)
             {
                 if (!mStrikePositionOverridden) mStrings[k].setStrikePosition(beta);
                 if (!mModalMassOverridden) mStrings[k].setModalMass(m);
+                if (!mTensionModOverridden) mStrings[k].setTensionModulation(kappaT);
             }
         }
     }
@@ -201,6 +215,13 @@ namespace arstro
     }
 
     void PianoVoice::setTensionCoupling(Sample kappa) { mLongitudinal.setTensionCoupling(kappa); }
+
+    void PianoVoice::setTensionModulation(Sample kappaT)
+    {
+        mTensionModOverridden = true; // stop setFrequency() reapplying README ## 12.5
+        for (int k = 0; k < kMaxUnison; ++k)
+            mStrings[k].setTensionModulation(kappaT);
+    }
 
     void PianoVoice::setModalMass(Sample m)
     {

@@ -157,6 +157,19 @@ silently reintroduced as bugs or silently promised as done)
 - `REQ-piano-16` — Una corda's real mechanism (hammer shifts to strike fewer of the unison
   strings) is approximated as a reduced hammer excitation gain + reduced contact hardness,
   not literal dynamic unison-count switching mid-performance.
+- `REQ-piano-18` — **Tension modulation (attack pitch glide).** A struck string's transverse
+  motion raises its average tension, and tension sets pitch, so a note must start slightly
+  **sharp** and glide down to its nominal pitch as the vibration decays. **Source:**
+  `docs/piano-physics-plan.md` §M8. The rise must (a) be driven by the *square* of the
+  transverse amplitude — the same slope-square quantity `REQ-piano-15` couples to the
+  longitudinal modes, whose static (DC) part is exactly this tension rise — so the glide grows
+  with strike velocity and vanishes at near-zero velocity; (b) shift every partial by the same
+  fraction (a uniform re-tune of the series, not a detune of the fundamental alone); and (c) be
+  strong in the bass and negligible in the treble, as on a real instrument. Like
+  `REQ-piano-3`'s multi-stage decay and `REQ-piano-15`'s phantom partials, the intent is that
+  the glide *emerge* from the tension–amplitude physics, never from a scripted pitch envelope.
+  Added 2026-07-27 (M8) — no requirement previously covered it (rule 5 requires a written
+  requirement before the work; there is no conflict, only a gap).
 
 ### Performance
 
