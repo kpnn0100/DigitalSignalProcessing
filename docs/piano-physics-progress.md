@@ -57,13 +57,16 @@ died at −60 dB in 3 s. Raising it (`eps_pol → 0.20`, tapered to the treble) 
 (held C3 now rings the full 10 s+; C4 3.0→3.5 s), and it is a live control (**Aftersound / sing**).
 Defect #1 (sing) fixed at M11, defect #2 (thin treble) at M12. **One defect remains:**
 
-- **M13 — clean the bass (defect #3).** C2/C3 read as rough/buzzy, not warm: measured, the bass
-  has irregular strong UPPER partials (e.g. C2 partial 14 ≈ 910 Hz at −6 dB rel fundamental) —
-  likely the M7 longitudinal/phantom "growl" too strong and/or dense unison+polarisation beating.
-  Fix: rebalance the bass growl (`TuneBassGrowl` / `LongitudinalBank` default) down, and check the
-  beating isn't excessive. **This one genuinely needs the user's ears** to confirm the bass reads
-  as buzzy and which lever cleans it without losing warmth — I can't hear it, and reducing the
-  growl too far removes the M7 phantom character that was itself a requested feature (`REQ-piano-15`).
+- **M13 — clean the bass (defect #3) — NO clear code fix found; needs the user's ears.**
+  C2/C3 look rough/buzzy on the spectrogram; measured, the bass has a strong isolated upper
+  partial (C2 partial 14 ≈ 916 Hz at −6 dB rel fundamental). **Ruled out** the obvious causes:
+  with `TuneBassGrowl = 0` it stays at −7 dB (not the M7 growl), and with unison detune = 0 it
+  stays at −6 dB (not beating). It is the **strike-position comb** — at C2's `β ≈ 0.17`,
+  `g_14 = |sin(14π·0.17)| ≈ 0.93`, a genuine mode-shape peak, i.e. *physical*, not a bug. So there
+  is no safe parameter to "fix" it; moving the strike position shifts the comb but changes every
+  note's timbre. **Do not touch this without the user confirming, by ear, that the bass is actually
+  buzzy (vs just rich) and what bothers them** — a real bass note IS a dense comb-filtered partial
+  stack. Likely a voicing preference (strike position / a gentle high-partial roll), not a defect.
 
 The M12 treble enrichment (C6: 4 → ~7 audible partials, partial 2 −21 → −14 dB) needed **two
 documented criterion adaptations** — see the decisions log — because brightening the treble is
