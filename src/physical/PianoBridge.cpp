@@ -1,4 +1,5 @@
 #include "PianoBridge.h"
+#include "../base/AudioConfig.h"
 #include <cmath>
 
 namespace arstro
@@ -81,6 +82,10 @@ namespace arstro
     {
         mCouplingGain = getProperty(couplingGainID);
         mRadiationGain = getProperty(radiationGainID);
+        // README ## 8.2 (M10): one-pole coefficient for the broadband radiativity, at the
+        // same HF corner as the per-mode radiation rolloff (kRadiationCornerHz).
+        const Sample sr = AudioConfig::instance().sampleRate();
+        mBodyCoeff = 1.0 - std::exp(-2.0 * M_PI * kRadiationCornerHz / sr);
     }
 
     void PianoBridge::accumulate(Sample contribution) { mBus += contribution; }
@@ -91,6 +96,11 @@ namespace arstro
         for (int i = 0; i < kBodyModeCount; ++i)
             resp += mModeWeight[i] * mModes[i].out(mBus, 0);
         mLastResponse = arstroFlush(resp);
+        // README ## 8.2 (M10): broadband radiativity — low-pass the same string bus at the
+        // board's HF radiation corner. This is the board's direct-transmission path, used
+        // by radiatedOutput() when a series body mix is set (mBodyDirectGain > 0).
+        mBodyLp += mBodyCoeff * (mBus - mBodyLp);
+        mBodyDirect = arstroFlush(mBodyLp);
         mBus = 0.0;
     }
 

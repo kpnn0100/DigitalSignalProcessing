@@ -85,6 +85,12 @@ sympathetic resonance, (5) dampers, (6) pedals, (7) secondary mechanical noises.
   bridge/soundboard stage (not radiated directly); this stage is the last stage before the
   voice's audible output and is itself a small modal resonator bank, not a hand-tuned
   filter with no physical basis.
+  **Note 2026-07-27 (M10).** Through M9 the "not radiated directly / last stage" clause was
+  only *partly* met — the raw string was output directly and the board added in parallel. M10
+  adds a broadband **radiativity** path to the board and a `body` mix routing the string through
+  it in series, so the board can be (at `body = 1`) the actual last stage. `body` is a live
+  control; its default is the largest value keeping the M1–M9 acceptance criteria intact, with
+  the rest left to the ear (README §8.2).
 - `REQ-piano-6` — **Sympathetic resonance**: energy present at the shared bridge/soundboard
   measurably re-excites *other* strings whose partials are near that frequency, without a
   hand-authored per-note-pair coupling table (coupling emerges from shared-bus feedback into

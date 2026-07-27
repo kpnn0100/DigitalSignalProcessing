@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-27 (M9.3 done — Stulov felt hysteresis. **M0–M9 ALL COMPLETE**)
-- **Last commit:** M9.3 — Stulov felt hysteresis (rate-dependent), README ## 6
+- **Last updated:** 2026-07-27 (M10 — soundboard in series, after the user judged M0–M9 not piano-like)
+- **Last commit:** M10 — body radiation: soundboard as a series stage, README ## 8.2
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -22,6 +22,10 @@ file first and updates it last, every session. Spec:
 | **M7** (longitudinal modes) | **7.92× RT** | — | ~1944 | ✅ met (2.0× margin) |
 | **post-M7** (voice skipping) | **8.36× RT** | — | ~1944 | ✅ met (2.1× margin) |
 | **M8** (tension modulation) | **11.79× RT** (median 11.66×) | 12.9× | ~1944 | ✅ met (2.9× margin) |
+| **M10** (soundboard in series) | **11.57× RT** (median 11.13×) | 12.3× | ~1944 | ✅ met (2.9× margin) |
+
+M9.1–M9.4 and M10 held ~11.5–11.8× on this machine (run-to-run noise dominates; M10 adds one
+one-pole low-pass to the single shared bridge — effectively free). No resonators added since M7.
 
 **M8's absolute figures are on a FASTER machine than M0–M7** (M0 re-measured here at 12.68×,
 not the 15.42× of the original machine — bench numbers are relative, per the M0 note). The
@@ -44,29 +48,35 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 
 ## ► NEXT
 
-**M0–M9 are ALL COMPLETE.** Every milestone in `piano-physics-plan.md` is done and verified
-numerically. What remains is the skill's §"When every milestone is done" **whole-project
-close-out**, ideally as its own session:
+**The ball is in the user's ears.** M0–M10 are all implemented and verified numerically. After
+playing the finished M0–M9 model the user judged it "still not a piano" and pointed at OpenPiano
+(FDTD); M10 responded to the strongest code-grounded cause — the soundboard was only *parallel*,
+so mostly-raw modal strings were heard. It is now a tunable **series** stage (`Body` +
+`Body resonance` in the voicing panel, default `body = 0.5`).
 
-1. **Re-read `src/physical/README.md` end to end** — does `## Math` still describe the code after
-   nine milestones? Watch the areas that changed most: §6 (now the M9.3 hybrid felt), §11.3 (the
-   stability cap that M9.3 leans on), the Parameters table (new `relaxationDepthID`, `relaxationTimeID`,
-   duplex, tension-mod entries).
-2. **Re-read `docs/requirements.md`** — confirm every `REQ-piano-*` matches what was built,
-   especially the amended ones: `REQ-piano-2` (M9.3 relaxation), `-3` (×2), `-15` (M7 phantom),
-   `-16` (M9.4 subset), and the added `-17/-18/-19`.
-3. **Full `ctest` + M0 bench**, record final numbers (currently 11.6× RT, budget met 2.9×).
-4. **Render a fresh `build/piano_demo.wav` and the `examples/piano` app and HAND IT TO THE USER
-   TO LISTEN.** This is the one thing the whole project has never done — every criterion was
-   numeric by design, and the final timbre judgement was always the user's, never this skill's.
-   The plan flagged M4–M9 as "colours" on a model already qualitatively a piano at M3; whether
-   they add up to a convincing instrument is an ears question, not a measurement.
+**Next step is a listening loop, not a code task:** rebuild `arstro_piano_ui`, play it, and sweep
+**Body** (0→1) and **Body resonance** (0→2) — plus hammer hardness, brightness, decay — to find a
+voicing that reads as a piano. Report back which direction it needs. Two deeper routes are already
+scoped in the plan (M11), to pursue only if body radiation + voicing is not enough:
 
-Known limitations to carry into that review (all in the verification notes / decisions log, none
-blocking): the treble felt is stability-capped (§11.3, needs contact-loop oversampling); una corda
-is softer but not mellower (M9.4 — needs strong inter-unison bridge coupling); the duplex halo and
-M8 glide are calibrated, not derived. None regress an acceptance criterion; all are documented
-routes for a future pass.
+- **Attack realism** — a richer hammer/action launch transient + a real tuning/stretch curve.
+- **Wave-based string (digital waveguide)** — the paradigm shift the user's OpenPiano reference
+  points at, done the real-time-efficient way (traveling waves + dispersion allpass + loss filter
+  + nonlinear hammer), avoiding FDTD's treble/CPU limits. This is the big one — a new string model
+  the rest of the anatomy (bridge, longitudinal, duplex, hammer coupling) would re-attach to. Add
+  an A-B toggle vs the modal string so the user can compare. **Do NOT start it without the user's
+  go-ahead** — it is a multi-session subsystem and the modal model must stay as the fallback.
+
+**Whole-project close-out** (the skill's §"When every milestone is done") is still worth doing once
+the voicing is settled: re-read `README ## Math` + `requirements.md` end to end for drift (esp. §6
+hybrid felt, §8.2 body, §11.3 cap, the Parameters table), full `ctest` + M0 bench, and a fresh
+render handed over. **The final timbre judgement was always the user's — the whole project was
+built numeric precisely so it could be.**
+
+Known limitations (verification notes / decisions log, none regress a criterion): treble felt
+stability-capped (§11.3); una corda softer-not-mellower (M9.4); duplex/M8/M10-`κ` constants
+calibrated, not derived; and the modal string itself has no traveling-wave attack (the waveguide
+route above).
 
 ---
 
@@ -137,6 +147,7 @@ not rediscover any of it. None of it changes the physics.
 | M7 | Longitudinal modes & phantom partials | `[x]` |
 | M8 | Tension modulation (attack pitch glide) | `[x]` |
 | M9 | Tier-3 detail | `[x]` |
+| M10 | Body radiation — soundboard in series (post-play realism) | `[x]` |
 
 Status key: `[ ]` not started · `[~]` in progress · `[x]` done & verified · `[!]` done but
 some acceptance criterion could not be verified here (see Verification notes).
@@ -396,6 +407,26 @@ some acceptance criterion could not be verified here (see Verification notes).
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
 
+- **2026-07-27 (M10) — the user judged the finished model "not a piano," and the strongest
+  code-grounded cause was a documented gap, not a missing mechanism.** After M0–M9 the user played
+  it and pointed at OpenPiano (an FDTD wave string). Rather than jump to a rewrite, I fetched
+  OpenPiano (confirmed: finite-difference stiff-string PDE, hammer at a grid point — and its author
+  notes it can't cover the treble at reasonable rates and has *no* soundboard yet, so it is not
+  strictly "more complete" than ours). The clearest fixable cause in *our* code was the M6
+  verification note / `REQ-piano-5`: the string radiated *raw*, the soundboard only a small
+  *parallel* addition — so the ear hears mostly bare modal strings. M10 makes the board a **series**
+  stage (broadband radiativity + modes; `body` mix), which is the documented-gap fix and cheap.
+  **The honest constraint recorded here: this environment cannot judge "feels like a piano" —**
+  so M10 ships the mechanism as *tunable* (default `body = 0.5`) and hands the verdict to the user
+  via the panel, rather than me guessing a fixed voicing I cannot hear. If it is not enough, the
+  wave-based string (plan §M11) is the paradigm shift the reference actually points at.
+- **2026-07-27 (M10) — the body stage is engine-level, so the M1–M9 acceptance suite is
+  untouched by design.** The integration/unit criteria render a *standalone* `PianoVoice` (its
+  `mBodyMix` defaults to 0) and a bare `PianoBridge` (`bodyDirectGain` defaults to 0), so every
+  string-physics criterion still validates the raw string exactly. Only the *played* instrument
+  (`PianoEngine`, the app + `piano_bench`) gets `body > 0`. This deliberately keeps the physics
+  tests as the ground truth while the output routing becomes a voicing choice — no re-tuning
+  cascade, and the criteria can't silently drift because the body knob moved.
 - **2026-07-27 (M9.3) — a faithful Stulov relaxation dulls the (stability-capped) treble, so
   the model is a HYBRID, not a pure replacement.** Stulov's felt is a single history-dependent
   law `F = K(uᵖ − ε·h)`, and it is physically righter than the M0 load/unload branch. But `h` is
@@ -717,6 +748,16 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M10** — mechanism fully verified; **the timbre verdict is explicitly the user's, not `[!]`**.
+  Numerically confirmed: the board's radiativity rolls off HF (a Nyquist bus comes out < 0.35× a
+  DC bus), `body` routes the string off the direct path (a `body = 1` voice with no bridge drops
+  to < 0.3× its raw level), the played engine stays finite/bounded (≤ 1) at every body/resonance
+  setting, and the M1–M9 suite is untouched (engine-level stage; standalone `PianoVoice`/`PianoBridge`
+  default to `body = 0`). What is **not** verifiable here is whether it now "feels like a piano" —
+  that needs ears, which this environment does not have. So M10 is shipped as a live control and
+  handed to the user (README §8.2, voicing panel). If body radiation + voicing is not enough, the
+  wave-based string (plan §M11) is the next, larger step. This is the point the whole project was
+  built to reach: the numbers are green; the judgement is the user's.
 - **M9.3** — fully verified; nothing marked `[!]`. The felt is now genuinely rate-dependent
   (restitution 0.74 fast → 0.70 slow against a rigid wall; audible & rate-dependent through the
   WAV at 28.6 % spread), and every prior criterion held (M6 energy guard + centroid monotonic, M3

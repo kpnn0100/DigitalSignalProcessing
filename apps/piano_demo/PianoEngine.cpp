@@ -55,6 +55,14 @@ namespace arstro
         for (int p = 0; p < TuneCount; ++p)
             mTune[p] = tuneSpec(p).def; // neutral: reproduces the shipped model
         mMasterGain = mTune[TuneMasterGain];
+        // README ## 8.2 (M10): the soundboard defaults to a series body mix (0.5), so the
+        // played instrument radiates through the board rather than as raw strings. The
+        // per-voice PianoVoice default (mBodyMix = 0) is untouched, so every standalone
+        // PianoVoice test / render harness still measures the raw string physics.
+        mBridge.setRadiationGain(mTune[TuneBodyResonance]);
+        mBridge.setBodyDirectGain(mTune[TuneBody] * PianoVoice::velocityToSignal());
+        for (auto &v : mVoices)
+            v.setBodyMix(mTune[TuneBody]);
     }
 
     // ─────────────────── live voicing/tuning controls ───────────────────
@@ -75,6 +83,8 @@ namespace arstro
             {"Bass growl", 0.0, 0.03, 0.008, "K"},         // TuneBassGrowl
             {"Attack glide", 0.0, 4.0, 1.0, "x"},         // TuneAttackGlide
             {"Treble shimmer", 0.0, 300.0, 90.0, ""},      // TuneTrebleShimmer
+            {"Body (soundboard)", 0.0, 1.0, 0.5, ""},      // TuneBody
+            {"Body resonance", 0.0, 2.0, 0.5, ""},         // TuneBodyResonance
             {"Master gain", 0.05, 0.5, 0.22, ""},          // TuneMasterGain
         };
         if (param < 0 || param >= TuneCount) param = 0;
@@ -116,6 +126,7 @@ namespace arstro
         v.setTensionCoupling(mTune[TuneBassGrowl]);
         v.setTensionModulation(PianoVoice::defaultTensionModulation(hz) * mTune[TuneAttackGlide]);
         v.setDuplexDriveGain(mTune[TuneTrebleShimmer]);
+        v.setBodyMix(mTune[TuneBody]); // README ## 8.2 (M10)
     }
 
     void PianoEngine::setTuning(int param, double value)
@@ -125,11 +136,26 @@ namespace arstro
         if (value < s.min) value = s.min;
         if (value > s.max) value = s.max;
         mTune[param] = value;
-        if (param == TuneMasterGain)
+        switch (param)
+        {
+        case TuneMasterGain:
             mMasterGain = value; // engine-level: takes effect on the next sample
-        else
+            break;
+        case TuneBodyResonance:
+            mBridge.setRadiationGain(value); // soundboard modal-resonance level (README ## 8.2)
+            break;
+        case TuneBody:
+            // Series routing: the bridge's radiativity gain matches the string level it
+            // replaces, and every voice's direct string is scaled by (1 − body).
+            mBridge.setBodyDirectGain(value * PianoVoice::velocityToSignal());
+            for (auto &v : mVoices)
+                v.setBodyMix(value);
+            break;
+        default:
             for (int i = 0; i < kVoiceCount; ++i)
                 applyTuningToVoice(i); // re-voice all sounding notes live
+            break;
+        }
     }
 
     int PianoEngine::allocateVoice()

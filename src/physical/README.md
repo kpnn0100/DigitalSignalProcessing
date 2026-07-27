@@ -719,6 +719,48 @@ The effect is provable by differencing a duplex-on and duplex-off render (§12.2
 remainder carries energy at `n·f0` that **decays more slowly** than the same bin without the
 duplex — the sustained shimmer — and it is present in the treble and absent in the bass.
 
+#### 8.2 Body radiation — the soundboard as a *series* stage (M10)
+
+`REQ-piano-5` calls the soundboard "the last stage before the voice's audible output" — but
+through M9 it was only a *parallel* addition: `PianoVoice::generate()` sent the raw string sum to
+the output, and the board's response was added alongside at a small `radiationGain`. A real
+instrument is **series**: essentially all the sound leaves through the board, which stamps the
+body's frequency envelope on everything. Heard mostly-raw, the strings read as additive tone
+rather than an instrument. M10 closes that gap.
+
+The board is given a **broadband radiativity** — a direct transmission path with the board's own
+frequency envelope — *alongside* its resonant modes (§8), the same "direct + resonant" split the
+longitudinal bank uses (§12.3). A real soundboard radiates less efficiently toward high frequency,
+so the radiativity is a gentle one-pole low-pass at the same corner as the per-mode radiation
+rolloff (`f_rad ≈ 2.5 kHz`):
+
+```
+radiativity(bus)[n] = LPF_{f_rad}( Σ_voices Σ_n y_n )        the board's broadband transmission
+```
+
+The string is then routed through it by a **body mix** `b ∈ [0,1]`:
+
+```
+out = (1−b)·kVel·(raw string) + b·kVel·radiativity(bus) + radiationGain·(modal resonance) + kVel·duplex + noise
+```
+
+- `b = 0` reproduces the M0–M9 output exactly (raw string heard directly; board parallel).
+- `b = 1` is fully **series**: the string is heard *only* through the board's radiativity, so its
+  high end is rolled off the way a real board rolls it off — the "wooden body" warmth.
+- The low end is level-conserving (`LPF ≈ 1` at low `f`, so `(1−b)+b ≈ 1`); the colour change is a
+  progressive HF roll toward the treble plus the board's modal peaks. The **modal resonance** term
+  (`radiationGain`) is unchanged — `b` governs the *direct* routing only, and the two are separately
+  tunable (the voicing panel exposes `body` and `body resonance`), because the amount that "feels
+  like a piano" is an ear judgement, not a measurable one.
+
+The **sympathetic-feedback** path (§8) is untouched: it still taps the *modal* response only
+(`feedback() = radiationGain-free modal · couplingGain`), so `REQ-piano-6` and the loop-stability
+margin are unaffected by `b`. The radiativity low-pass is fed the same bus the modes are and adds
+one one-pole filter to a single shared instance — effectively free.
+
+Provable by differencing a `body`-on vs `body`-off render: the remainder is the board's
+transmitted-and-shaped copy of the string, growing with `b` and rolled off toward the treble.
+
 ### 9. Pedals
 
 - **Sustain** (`PianoEngine::setSustainPedal(bool)` → broadcasts `setDamperHeld(true/false)`

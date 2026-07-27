@@ -107,6 +107,13 @@ namespace arstro
         // Shared soundboard/bridge for sympathetic resonance (REQ-piano-6). Optional —
         // null means the voice still works standalone (no cross-string coupling).
         void setBridge(PianoBridge *bridge) { mBridge = bridge; }
+        // README ## 8.2 (M10): body-radiation mix. 0 = string heard raw (M0–M9); 1 =
+        // string radiated only through the shared soundboard (series). The engine also
+        // scales the board's radiativity by this, so the string level is conserved.
+        void setBodyMix(Sample mix);
+        // The velocity→line-level transduction constant, exposed so the engine can match
+        // the board's radiativity level to the direct string level (README ## 8.2, ## Units).
+        static constexpr Sample velocityToSignal() { return kVelocityToSignal; }
 
         void noteOn(Sample velocity);
         void noteOff();
@@ -152,6 +159,7 @@ namespace arstro
         bool mTensionModOverridden = false;
         bool mUnaCorda = false;
         bool mDamperHeld = false;
+        Sample mBodyMix = 0.0; // README ## 8.2 (M10): 0 = raw string, 1 = fully through the board
 
         Sample mHammerBaseStiffness = 0.0; // set per-note by ## 11.3 from the ctor on
         Sample mLastSample = 0.0;

@@ -440,6 +440,46 @@ Small, independent, ship in any order:
 
 ---
 
+## M10 — Body radiation: the soundboard as a SERIES stage (post-M9)
+
+**Why.** Added after the user played the finished M0–M9 model and judged it still sounds like
+bare strings, not a piano — and pointed at OpenPiano (a wave/FDTD string). The most tractable,
+highest-leverage cause found in the code is a **documented structural gap** (M6 verification note,
+`REQ-piano-5`): the string sum is added to the output *directly*, and the soundboard is only a
+small *parallel* addition (`radiationGain = 0.5`). A real piano is **series** — essentially all
+sound leaves through the soundboard, which imposes the instrument's body/formant colour on
+everything. Hearing mostly raw modal strings is a plausible reason it reads as "additive-synth."
+
+**Physics.** Give `PianoBridge` a **broadband radiativity** (direct transmission with the board's
+frequency envelope — a gentle HF rolloff, the board radiates less at high frequency) *in addition
+to* its resonant modes (§8), the same "direct + resonant" split §12.3 uses for the longitudinal
+bank. Then route the string through it:
+
+```
+out = (1−body)·(raw string)  +  body·[ radiativity(bus) ]  +  radiationGain·(modal resonance)  +  noise
+```
+
+`body ∈ [0,1]` crossfades the string from heard-raw (`0`, the M0–M9 behaviour) to heard through
+the board's radiativity (`1`, fully series). At the low end the level is conserved; toward the
+treble the board's rolloff warms it — the body character.
+
+**Acceptance.** With `body` up, the rendered output is measurably shaped by the board (difference
+a body-on/off render; the remainder carries the board's rolloff + resonance) and the change grows
+with `body`. Every M1–M9 criterion must still hold at the shipped default `body` (choose the
+largest value that keeps them passing; expose `body` as a live control so the user can go
+further). Perf: the board is one shared instance, so this is ~free.
+
+**Exposed for tuning.** `body` (series amount) and `body resonance` (`radiationGain`) become live
+voicing controls (the panel added post-M9), so the final timbre is dialled by ear — which is the
+only way "feels like a piano" can be judged.
+
+Follow-up (M11, deferred): **attack realism** — richer hammer/action launch transient and a
+real tuning/stretch curve; and, if body radiation is not enough, a **wave-based string** (digital
+waveguide: traveling waves + dispersion allpass + loss filter + nonlinear hammer) as the efficient
+full-range alternative to OpenPiano's FDTD (whose author notes treble-resolution and CPU limits).
+
+---
+
 ## Cross-cutting rules
 
 - **Every milestone** follows `arstro.dsp.implement`: math derived and written into

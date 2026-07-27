@@ -1826,6 +1826,28 @@ TEST(PianoVoice_una_corda_strikes_a_subset)
     CHECK(u1 > n1 * 0.75);            // no string dropped: not the ~0.5-0.66 drop above
 }
 
+// README ## 8.2 (M10): body-radiation mix. At body = 1 the string leaves the voice's
+// DIRECT output entirely (it would radiate through the shared board instead); with no
+// board attached here, only duplex + mechanical noise remain, so the direct output
+// collapses — proof the string was routed off the direct path.
+TEST(PianoVoice_body_mix_routes_string_off_the_direct_output)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+    auto directPeak = [](Sample body) {
+        PianoVoice v;
+        v.setFrequency(261.6); // C4
+        v.setBodyMix(body);    // no bridge set -> the routed string has nowhere to go
+        v.noteOn(0.9);
+        double m = 0.0;
+        for (int i = 0; i < 4800; ++i) m = std::max(m, std::fabs((double)v.out(0.0, 0)));
+        return m;
+    };
+    double raw = directPeak(0.0), routed = directPeak(1.0);
+    CHECK(raw > 0.01);              // the raw string sounds directly
+    CHECK(routed < raw * 0.3);      // routed away: only duplex + noise remain on the direct path
+}
+
 // ───────────────── tension modulation / pitch glide (README ## 12.5, M8) ─────────────────
 
 // Helper: the peak fractional pitch shift delta a struck voice reaches within its

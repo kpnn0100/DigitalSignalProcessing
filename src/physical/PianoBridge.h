@@ -36,15 +36,21 @@ namespace arstro
 
         // Previous sample's response, pre-scaled by couplingGain — add directly
         // to a voice's string excitation for sympathetic resonance (README ## 8).
+        // MODAL response only: the sympathetic loop is unaffected by the M10 body term.
         Sample feedback() const { return mLastResponse * mCouplingGain; }
-        // Previous sample's response, pre-scaled by radiationGain — the bridge's
-        // own audible contribution to the mixed output.
-        Sample radiatedOutput() const { return mLastResponse * mRadiationGain; }
+        // The bridge's audible contribution: the modal resonance (radiationGain) PLUS the
+        // M10 broadband radiativity (README ## 8.2), the board's direct transmission of the
+        // string, low-passed by the board's HF radiation rolloff and scaled by the series mix.
+        Sample radiatedOutput() const { return mLastResponse * mRadiationGain + mBodyDirect * mBodyDirectGain; }
 
         void setCouplingGain(Sample g);
         void setRadiationGain(Sample g);
+        // README ## 8.2 (M10): gain of the broadband radiativity path. 0 = pure parallel
+        // modal coloration (M0–M9); >0 routes the string through the board in series.
+        void setBodyDirectGain(Sample g) { mBodyDirectGain = g; }
 
         void update() override;
+        void onSampleRateChanged() override { update(); } // README ## 8.2: refresh mBodyCoeff
 
     protected:
         // Single-input convenience path (unit-test / standalone use):
@@ -58,5 +64,11 @@ namespace arstro
         Sample mLastResponse = 0.0;
         Sample mCouplingGain = 0.0;
         Sample mRadiationGain = 0.0;
+        // README ## 8.2 (M10): broadband radiativity — a one-pole low-pass of the string
+        // bus at the board's HF radiation corner, its direct-transmission path.
+        Sample mBodyLp = 0.0;         // LPF state
+        Sample mBodyDirect = 0.0;     // this sample's radiativity output
+        Sample mBodyCoeff = 0.0;      // one-pole coefficient (from the radiation corner)
+        Sample mBodyDirectGain = 0.0; // series mix × velocity→signal, set by the engine
     };
 }

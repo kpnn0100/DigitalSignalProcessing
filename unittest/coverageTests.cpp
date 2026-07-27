@@ -756,6 +756,34 @@ TEST(PianoBridge_api_bypass_and_multi_voice_bus)
     bridge2.accumulate(0.5); // two voices contributing to the same sample
     bridge2.tick();
     CHECK(bridge2.feedback() != 0.0 || bridge2.radiatedOutput() != 0.0);
+
+    // README ## 8.2 (M10): the broadband radiativity term. With a body-direct gain set,
+    // radiatedOutput() carries a low-passed copy of the bus (the board's HF-rolled
+    // transmission), so a high-frequency drive comes out more attenuated than a DC one.
+    resetConfig(1);
+    PianoBridge bridge3;
+    bridge3.setRadiationGain(0.0);      // isolate the direct term from the modal one
+    bridge3.setBodyDirectGain(1.0);
+    // A steady (DC-ish) bus settles the radiativity LPF near unity.
+    for (int i = 0; i < 4000; ++i) { bridge3.accumulate(1.0); bridge3.tick(); }
+    const double dcOut = bridge3.radiatedOutput();
+    // An alternating (Nyquist) bus is rolled off hard by the one-pole LPF. Measure the
+    // SETTLED amplitude (last samples), past the transient from the DC phase above.
+    double hfPeak = 0.0;
+    for (int i = 0; i < 4000; ++i)
+    {
+        bridge3.accumulate((i & 1) ? 1.0 : -1.0);
+        bridge3.tick();
+        if (i >= 3500) hfPeak = std::max(hfPeak, std::fabs((double)bridge3.radiatedOutput()));
+    }
+    CHECK(dcOut > 0.5);          // low frequency transmits ~unity
+    CHECK(hfPeak < dcOut * 0.35); // high frequency is rolled off (the board radiates less HF)
+
+    // onSampleRateChanged() refreshes the radiativity coefficient (README ## 8.2).
+    AudioConfig::instance().setSampleRate(44100.0);
+    bridge3.accumulate(1.0); bridge3.tick();
+    CHECK(std::isfinite((double)bridge3.radiatedOutput()));
+    AudioConfig::instance().setSampleRate(48000.0);
 }
 
 TEST(PianoVoice_unison_una_corda_and_pedal_api)

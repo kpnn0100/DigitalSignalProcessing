@@ -240,6 +240,13 @@ namespace arstro
 
     void PianoVoice::setDuplexDriveGain(Sample kappa) { mDuplex.setDriveGain(kappa); }
 
+    void PianoVoice::setBodyMix(Sample mix)
+    {
+        if (mix < 0.0) mix = 0.0;
+        if (mix > 1.0) mix = 1.0;
+        mBodyMix = mix;
+    }
+
     void PianoVoice::setTensionModulation(Sample kappaT)
     {
         mTensionModOverridden = true; // stop setFrequency() reapplying README ## 12.5
@@ -414,7 +421,10 @@ namespace arstro
         if (mBridge)
             mBridge->accumulate(stringSum); // README ## 8.1: bridge sees string+longitudinal, not duplex
 
-        mLastSample = arstroFlush((stringSum + duplex) * kVelocityToSignal + noise);
+        // README ## 8.2 (M10): body-radiation mix. (1−mBodyMix) of the string is heard raw;
+        // the rest leaves through the board's radiativity, supplied by the shared bridge at
+        // the matching level. duplex + mechanical noise stay direct.
+        mLastSample = arstroFlush((stringSum * (1.0 - mBodyMix) + duplex) * kVelocityToSignal + noise);
 
         // Peak follower for isSilent() (README ## 13).
         const Sample mag = std::fabs(mLastSample);
