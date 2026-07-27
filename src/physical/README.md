@@ -232,7 +232,17 @@ T60(f) = ln(1000)/α(f) = 6.907755/α(f)      [s]
 **Solving c₁/c₃ from two decay times.** Raw `c₁`/`c₃` are not values anyone can reason about,
 so the parameters are two *decay times* and the coefficients are solved from them — the
 fundamental's T60 (`baseDecayID`) and a high-frequency reference T60 at `f_ref = 5 kHz`
-(`brightnessDecayID`, default 0.08 s — real ~5 kHz partials die in roughly 50–150 ms):
+(`brightnessDecayID`), graded by register (M12):
+
+> **`brightnessDecayID` is graded by register (M12).** 0.08 s — real ~5 kHz partials die in
+> 50–150 ms — is right for the bass/mid, whose *mellowing* comes from exactly that fast HF loss.
+> But for a **treble** note the whole tone lives up near the 5 kHz anchor, so the same fast loss
+> makes it collapse to a near-sine in ~80 ms (measured C6: 8 partials at the attack, 4 by 50 ms —
+> thin and synthetic). Real short treble strings damp far less proportionally, so
+> `PianoVoice::defaultBrightnessDecay(f0)` raises the reference T60 log-linearly from 0.08 s at C4
+> to 0.30 s by C7 — the treble keeps its partials (measured C6: ~7 audible now), the metallic
+> ping. C4 and below are unchanged, so §1's mid calibration and M1's spectral-evolution criterion
+> are untouched. Live control: `Brightness T60` (× the taper).
 
 ```
 ω₁   = 2π·f₁      (f₁ = the actual first partial, f0·√(1+B) — inharmonicity included)

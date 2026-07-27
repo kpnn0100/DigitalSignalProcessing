@@ -48,6 +48,7 @@ namespace arstro
         // Piano decay spans two orders of magnitude across the keyboard (README ## 3),
         // so the fundamental's T60 is derived from pitch unless explicitly overridden.
         Sample defaultT60 = mBaseDecayOverridden ? 0.0 : defaultBaseDecaySeconds(frequency());
+        Sample defaultBright = mBrightnessOverridden ? 0.0 : defaultBrightnessDecay(frequency());
         for (int k = 0; k < mUnisonCount; ++k)
         {
             Sample offsetNorm = (mUnisonCount <= 1) ? 0.0 : (2.0 * (Sample)k / (Sample)(mUnisonCount - 1) - 1.0);
@@ -58,6 +59,8 @@ namespace arstro
                 mStrings[k].setInharmonicity(defaultB);
             if (!mBaseDecayOverridden)
                 mStrings[k].setBaseDecaySeconds(defaultT60);
+            if (!mBrightnessOverridden)
+                mStrings[k].setBrightnessDecaySeconds(defaultBright); // README ## 3 (M12)
         }
     }
 
@@ -226,8 +229,23 @@ namespace arstro
             mStrings[k].setBaseDecaySeconds(t60);
     }
 
+    Sample PianoVoice::defaultBrightnessDecay(Sample f0Hz)
+    {
+        // README ## 3 (M12): T60 of the 5 kHz anchor, graded by register. The bass/mid keep
+        // the fast HF decay (~80 ms) that gives a real piano its mellowing; but for a TREBLE
+        // note the whole tone lives up near that 5 kHz anchor, so the same fast HF loss makes
+        // it die to a near-sine in ~80 ms (measured C6: 8 partials at the attack, 4 by 50 ms).
+        // Real short treble strings damp far less proportionally, so brightness T60 rises
+        // toward the treble — the highs ring, giving the metallic ping and a longer tail.
+        if (f0Hz <= kBrightRefHz) return kBrightBaseT60;                 // C4 and below: unchanged
+        const Sample t = std::log2(f0Hz / kBrightRefHz) / std::log2(kBrightHiHz / kBrightRefHz);
+        const Sample tc = (t > 1.0) ? 1.0 : t;                          // 0 at C4 → 1 at C7+
+        return kBrightBaseT60 + tc * (kBrightHiT60 - kBrightBaseT60);
+    }
+
     void PianoVoice::setBrightnessDecaySeconds(Sample t60AtRef)
     {
+        mBrightnessOverridden = true; // stop setFrequency() reapplying README ## 3's taper (M12)
         for (int k = 0; k < kMaxUnison; ++k)
             mStrings[k].setBrightnessDecaySeconds(t60AtRef);
     }

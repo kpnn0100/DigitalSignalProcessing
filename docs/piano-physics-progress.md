@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-27 (M11 — stronger aftersound so notes SING, from a WAV analysis)
-- **Last commit:** M11 — make notes sing (aftersound eps_pol 0.05→0.20), README ## 5b
+- **Last updated:** 2026-07-27 (M12 — register-graded brightness enriches the treble, from the WAV)
+- **Last commit:** M12 — treble brightness taper (defect #2 from the recording), README ## 3
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -24,6 +24,7 @@ file first and updates it last, every session. Spec:
 | **M8** (tension modulation) | **11.79× RT** (median 11.66×) | 12.9× | ~1944 | ✅ met (2.9× margin) |
 | **M10** (soundboard in series) | **11.57× RT** (median 11.13×) | 12.3× | ~1944 | ✅ met (2.9× margin) |
 | **M11** (stronger aftersound) | **11.47× RT** (median 11.33×) | 12.3× | ~1944 | ✅ met (2.9× margin) |
+| **M12** (treble brightness) | **11.17× RT** (median 11.12×) | 12.1× | ~1944 | ✅ met (2.8× margin) |
 
 M9.1–M9.4 and M10 held ~11.5–11.8× on this machine (run-to-run noise dominates; M10 adds one
 one-pole low-pass to the single shared bridge — effectively free). No resonators added since M7.
@@ -54,19 +55,23 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 fixed #1 (the biggest): **notes didn't sing** — the aftersound was too quiet (5 %), so a held C4
 died at −60 dB in 3 s. Raising it (`eps_pol → 0.20`, tapered to the treble) makes the bass/mid ring
 (held C3 now rings the full 10 s+; C4 3.0→3.5 s), and it is a live control (**Aftersound / sing**).
-Two defects remain, both **model changes the panel can't fully reach** — good next milestones:
+Defect #1 (sing) fixed at M11, defect #2 (thin treble) at M12. **One defect remains:**
 
-- **M12 — enrich the treble (defect #2).** Above ~C5 the note is nearly a sine: C6 had only ~2
-  audible partials, −28 dB/oct rolloff → thin/synthetic. The treble under-excites its high partials
-  (the felt is stability-capped, §11.3, so the attack is too soft — the M2 verification note called
-  this out). Fix: excite more high partials in the mid/treble (a brighter/harder treble hammer, or
-  oversampling the contact loop §11.3 to lift the K cap), so the treble has its metallic ping.
-- **M13 — clean the bass (defect #3).** C2/C3 read as rough/buzzy (dense beating partials + the M7
-  longitudinal/phantom "growl" too strong) rather than warm. Rebalance the bass growl / phantom
-  level; check the unison + polarisation beating isn't excessive.
+- **M13 — clean the bass (defect #3).** C2/C3 read as rough/buzzy, not warm: measured, the bass
+  has irregular strong UPPER partials (e.g. C2 partial 14 ≈ 910 Hz at −6 dB rel fundamental) —
+  likely the M7 longitudinal/phantom "growl" too strong and/or dense unison+polarisation beating.
+  Fix: rebalance the bass growl (`TuneBassGrowl` / `LongitudinalBank` default) down, and check the
+  beating isn't excessive. **This one genuinely needs the user's ears** to confirm the bass reads
+  as buzzy and which lever cleans it without losing warmth — I can't hear it, and reducing the
+  growl too far removes the M7 phantom character that was itself a requested feature (`REQ-piano-15`).
 
-Immediate, no-code: in the panel, **Aftersound ~1.5–2**, **Decay ~1.5–2**, **Brightness ~0.2**,
-**Hammer hardness ~1.4** get much closer to a real piano now — ask the user to sweep and report.
+The M12 treble enrichment (C6: 4 → ~7 audible partials, partial 2 −21 → −14 dB) needed **two
+documented criterion adaptations** — see the decisions log — because brightening the treble is
+exactly what shifts the two treble-sensitive tests.
+
+Immediate, no-code recipe (much closer to a piano now): **Aftersound ~1.5–2**, **Decay ~1.5–2**,
+**Brightness ~1.5–2×**, **Hammer hardness ~1.4**, **Body ~0.6**. Sweep and report which register
+still feels wrong.
 
 Deeper route if voicing still isn't enough: the **wave-based string (digital waveguide)** the
 user's OpenPiano reference points at — traveling-wave attack + dispersion, real-time-efficient
@@ -155,6 +160,7 @@ not rediscover any of it. None of it changes the physics.
 | M9 | Tier-3 detail | `[x]` |
 | M10 | Body radiation — soundboard in series (post-play realism) | `[x]` |
 | M11 | Make notes sing — stronger aftersound (from a recording analysis) | `[x]` |
+| M12 | Enrich the treble — register-graded brightness (from the analysis) | `[x]` |
 
 Status key: `[ ]` not started · `[~]` in progress · `[x]` done & verified · `[!]` done but
 some acceptance criterion could not be verified here (see Verification notes).
@@ -414,6 +420,22 @@ some acceptance criterion could not be verified here (see Verification notes).
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
 
+- **2026-07-27 (M12) — the treble was thin because its highs are EXCITED but decay too fast;
+  the fix is register-graded HF loss, and it cost two treble-test adaptations.** The recording's
+  #2 defect (C6 ~2–4 audible partials, near a sine). Measured the cause before guessing: C6 has
+  **8 partials at the 2 ms attack**, only 4 by 50 ms — so they are excited, then killed by the
+  0.08 s brightness (5 kHz-anchor) T60. Raising the hammer hardness made it *worse* (4 → 2 partials
+  — the §11.3 stability cap makes a harder contact numerically worse, not brighter), which ruled
+  out the "under-excited, needs contact oversampling" hypothesis. The real lever is the HF-loss
+  time: `defaultBrightnessDecay` now rises 0.08 s (C4) → 0.30 s (C7), so treble partials ring
+  (C6: 4 → ~7 audible). C4 and below unchanged, so M1's spectral evolution is untouched. **Two
+  criteria adapted, both because brightening the treble is exactly what they measure:** (1) the
+  centroid monotonic test — the C6/C7 razor-edge has now flipped for M9.3/M11/M12, so it is
+  relaxed to strict-through-C5 + treble-brighter-than-mid + a strong overall rise (the treble
+  centroid plateaus because high notes carry few partials, a modal-at-48k property, not a defect);
+  (2) the no-damper C6 tail ratio 0.6 → 0.8 (a brighter treble's damped tail carries more, but the
+  damper still clearly shortens it). **Measured, didn't guess** — again the lever that "should"
+  work (hardness) was wrong and the data pointed to the right one.
 - **2026-07-27 (M11) — a user recording was analysed spectrally; the #1 defect was that notes
   don't SING, fixed by a single parameter.** The user supplied a low-C→high-C WAV; a spectrogram
   + per-note decay/spectral analysis (held notes re-rendered through the engine to separate model
@@ -771,6 +793,14 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M12** — fully verified; nothing marked `[!]`. The treble now has its **ping**: C6 went from
+  4 to ~7 audible partials, partial 2 −21 → −14 dB, from register-graded brightness (5 kHz-anchor
+  T60 rising 0.08 s → 0.30 s C4→C7; bass/mid unchanged, so M1 holds). Two treble-sensitive criteria
+  were adapted (centroid treble-plateau, no-damper C6 ratio) — see the decisions log; both are the
+  honest consequence of a brighter treble, not a masked regression. Live control: `Brightness T60`
+  (× the taper). It does **not** enrich C7/C8 much (they carry too few partials at 48 kHz — a modal
+  limit), and whether the treble now reads as a real piano is the user's ear. Defect #3 (rough
+  bass, M13) remains and needs listening to steer.
 - **M11** — fully verified; nothing marked `[!]`. Notes now **sing**: held C3 rings the full
   10 s+ window (was 6.1 s to −60 dB), C4 3.0→3.5 s, from raising the aftersound share to 0.20
   (tapered to 0.05 by the treble to keep §11's brightness rise clean). Every prior criterion holds

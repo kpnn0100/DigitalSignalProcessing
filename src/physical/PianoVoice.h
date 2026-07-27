@@ -60,6 +60,7 @@ namespace arstro
         static bool   defaultHasDamper(Sample f0Hz);        // ## 7.1 (M9.1)
         static Sample defaultFeltHysteresis(Sample f0Hz);   // ## 6 (M9.3): eps tapers to ~0 in the treble
         static Sample defaultAftersound(Sample f0Hz);        // ## 5b (M11): eps_pol, full bass/mid → 0.05 treble
+        static Sample defaultBrightnessDecay(Sample f0Hz);   // ## 3 (M12): HF-loss T60, rises toward the treble
 
         void setStrikePosition(Sample beta);
         void setModalMass(Sample m);
@@ -162,6 +163,7 @@ namespace arstro
         bool mHammerStiffnessOverridden = false;
         bool mTensionModOverridden = false;
         bool mAftersoundOverridden = false;
+        bool mBrightnessOverridden = false;
         bool mUnaCorda = false;
         bool mDamperHeld = false;
         Sample mBodyMix = 0.0; // README ## 8.2 (M10): 0 = raw string, 1 = fully through the board
@@ -232,6 +234,12 @@ namespace arstro
         static constexpr Sample kDecaySlope = 0.906;  // least-squares exponent
         static constexpr Sample kDecayMinSeconds = 0.25;
         static constexpr Sample kDecayMaxSeconds = 60.0;
+        // README ## 3 (M12): brightness (5 kHz-anchor T60) register grading — fast in the
+        // bass/mid (mellowing), rising toward the treble so high notes keep their ping.
+        static constexpr Sample kBrightBaseT60 = 0.08;   // C4 and below (the M1 value)
+        static constexpr Sample kBrightHiT60 = 0.30;     // by C7+
+        static constexpr Sample kBrightRefHz = 261.6;    // C4
+        static constexpr Sample kBrightHiHz = 2093.0;    // C7
         // README ## 12.5 — tension-modulation (pitch-glide) register law. The raw
         // slope-energy E(t) the glide is driven by actually GROWS toward the treble
         // (a top-octave note's modal-velocity sum is larger in the normalised unit

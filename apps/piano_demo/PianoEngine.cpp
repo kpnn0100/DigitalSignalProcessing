@@ -77,7 +77,7 @@ namespace arstro
             {"Felt hysteresis", 0.0, 0.6, 0.2, ""},        // TuneFeltHysteresis
             {"Felt relaxation", 0.0, 2.0, 1.0, "x"},      // TuneFeltRelax
             {"Decay / sustain", 0.3, 2.5, 1.0, "x"},      // TuneDecay
-            {"Brightness T60", 0.02, 0.30, 0.08, "s"},     // TuneBrightness
+            {"Brightness T60", 0.25, 4.0, 1.0, "x"},       // TuneBrightness (× the register taper, M12)
             {"Inharmonicity", 0.0, 3.0, 1.0, "x"},        // TuneInharmonicity
             {"Unison detune", 0.0, 3.0, 0.6, "cents"},     // TuneUnisonDetune
             {"Bass growl", 0.0, 0.03, 0.008, "K"},         // TuneBassGrowl
@@ -121,7 +121,7 @@ namespace arstro
         v.setHammerHysteresisLoss(mTune[TuneFeltHysteresis]);
         v.setHammerRelaxationDepth(PianoVoice::defaultFeltHysteresis(hz) * mTune[TuneFeltRelax]);
         v.setBaseDecaySeconds(PianoVoice::defaultBaseDecaySeconds(hz) * mTune[TuneDecay]);
-        v.setBrightnessDecaySeconds(mTune[TuneBrightness]);
+        v.setBrightnessDecaySeconds(PianoVoice::defaultBrightnessDecay(hz) * mTune[TuneBrightness]); // M12
         v.setInharmonicity(defaultInharmonicity(hz) * mTune[TuneInharmonicity]);
         v.setUnisonDetuneCents(mTune[TuneUnisonDetune]);
         v.setTensionCoupling(mTune[TuneBassGrowl]);

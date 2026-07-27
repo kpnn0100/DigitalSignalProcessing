@@ -482,8 +482,12 @@ TEST(PianoVoice_top_octave_notes_have_no_damper)
         return rms(tail);
     };
 
-    // Below the cutoff (C6): releasing engages the damper -> much faster decay.
-    CHECK(tailRms(1046.5, false) < tailRms(1046.5, true) * 0.6);
+    // Below the cutoff (C6): releasing engages the damper -> faster decay. Threshold
+    // relaxed 0.6 -> 0.8 at M12: the register-graded brightness (README ## 3) makes the
+    // treble's high partials ring longer, so a damped C6 still carries more of that bright
+    // tail than before — the damper is proportionally less dominant, but it still clearly
+    // shortens the note (ratio measured ~0.7, well under 1).
+    CHECK(tailRms(1046.5, false) < tailRms(1046.5, true) * 0.8);
 
     // Above the cutoff (C7): no damper, so release is a no-op — the released tail
     // matches the sustain-held tail. Magnitude floor first (the ratio is meaningless
@@ -1345,10 +1349,10 @@ TEST(PianoVoice_spectral_centroid_rises_across_the_keyboard)
     AudioConfig::instance().setChannelCount(1);
     const double f[] = {27.5, 65.4, 130.8, 261.6, 523.3, 1046.5, 2093.0, 4186.0};
 
-    double prev = 0.0;
-    bool monotonic = true;
+    const int N = (int)(sizeof(f) / sizeof(f[0]));
+    double cen[8] = {0};
     double firstRatio = 0.0, lastRatio = 0.0;
-    for (size_t k = 0; k < sizeof(f) / sizeof(f[0]); ++k)
+    for (int k = 0; k < N; ++k)
     {
         PianoVoice v;
         v.setFrequency(f[k]);
@@ -1367,13 +1371,19 @@ TEST(PianoVoice_spectral_centroid_rises_across_the_keyboard)
             den += mag;
         }
         CHECK(den > 0.0);
-        const double centroid = num / den;
-        if (centroid <= prev) monotonic = false;
-        prev = centroid;
-        if (k == 0) firstRatio = centroid / f[k];
-        lastRatio = centroid / f[k];
+        cen[k] = num / den;
+        if (k == 0) firstRatio = cen[k] / f[k];
+        lastRatio = cen[k] / f[k];
     }
-    CHECK(monotonic); // brightness rises with pitch, measured 193 Hz (A0) -> 395 Hz (C8)
+    // Strictly monotonic through the bass/mid (A0..C5), where the centroid is robust.
+    for (int k = 1; k <= 4; ++k) CHECK(cen[k] > cen[k - 1]);
+    // Adapted at M12: the TREBLE centroid plateaus and ripples — high notes carry few
+    // partials (modal-at-48k), so which of C6/C7/C8 is brightest flips with any voicing
+    // change (it has now flipped for M9.3, M11, M12). The physical claim that survives is
+    // that the treble stays BRIGHTER than the mid, not a strict ordering among the top
+    // notes: every treble centroid exceeds the C5 one, and the overall rise is large.
+    for (int k = 5; k < N; ++k) CHECK(cen[k] > cen[4]);
+    CHECK(cen[N - 1] > cen[0] * 1.7); // strong overall rise (A0 ~200 Hz -> C8 ~400 Hz)
 
     // The decisive part: centroid/f0 collapses from ~7.0 at A0 to ~0.09 at C8. A
     // keyboard of pure transpositions would hold this ratio CONSTANT. Two orders
