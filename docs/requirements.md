@@ -81,6 +81,12 @@ sympathetic resonance, (5) dampers, (6) pedals, (7) secondary mechanical noises.
 - `REQ-piano-7` — **Damper model**: on `noteOff()` (with sustain not held), string damping
   increases over a short, non-instantaneous engagement window (not an instant mute), audibly
   shortening decay versus sustain-held or actively-playing notes.
+  **Amended 2026-07-27 (M9.1) — top-octave exception.** A real piano has no dampers on the top
+  ~1.5–2 octaves, so this applies only *below* a cutoff `f_nodamp = √(f(88)·f(89)) ≈ 1357 Hz`
+  (geometric mean of MIDI 88/89): a note above it has no damper and **always rings**, its
+  `noteOff()` engaging neither the damper ramp nor the damper-release noise. This is a
+  refinement of the model, not a reversal — the damped majority still behaves exactly as above.
+  See README §7.1.
 - `REQ-piano-8` — **Pedals**: sustain (holds dampers off for all voices), sostenuto (holds
   dampers off only for voices already sounding at the moment it's engaged), and una corda
   (audibly softer/mellower tone via reduced hammer excitation) are all controllable and each

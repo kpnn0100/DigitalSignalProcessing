@@ -454,6 +454,46 @@ TEST(PianoVoice_damper_speeds_up_decay_vs_sustain_held)
     CHECK(dampedRms < heldRms * 0.5); // damper (not held) decays much faster than sustain-held
 }
 
+// REQ-piano-7 (M9.1 amendment), README ## 7.1: the top ~1.5-2 octaves have no damper,
+// so releasing the key leaves the string ringing. Below the cutoff the damper still
+// works; at/above it, noteOff() changes nothing.
+TEST(PianoVoice_top_octave_notes_have_no_damper)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    // The cutoff law itself (geometric mean of MIDI 88/89 ~ 1357 Hz).
+    CHECK(PianoVoice::defaultHasDamper(1046.5));   // C6, damped
+    CHECK(PianoVoice::defaultHasDamper(1318.5));   // MIDI 88, still damped (below cutoff)
+    CHECK(!PianoVoice::defaultHasDamper(1396.9));  // MIDI 89, undamped (above cutoff)
+    CHECK(!PianoVoice::defaultHasDamper(2093.0));  // C7, undamped
+
+    // Behavioural: tail energy shortly after noteOff, released vs sustain-held.
+    auto tailRms = [](double f0, bool held) {
+        PianoVoice v;
+        v.setFrequency(f0);
+        v.setDamperHeld(held);
+        v.noteOn(0.8);
+        for (int i = 0; i < 2400; ++i) v.out(0.0, 0); // 50 ms struck
+        v.noteOff();
+        for (int i = 0; i < 1500; ++i) v.out(0.0, 0); // past the ~20 ms damper ramp
+        std::vector<double> tail;
+        for (int i = 0; i < 2400; ++i) tail.push_back(v.out(0.0, 0));
+        return rms(tail);
+    };
+
+    // Below the cutoff (C6): releasing engages the damper -> much faster decay.
+    CHECK(tailRms(1046.5, false) < tailRms(1046.5, true) * 0.6);
+
+    // Above the cutoff (C7): no damper, so release is a no-op — the released tail
+    // matches the sustain-held tail. Magnitude floor first (the ratio is meaningless
+    // if both are silent).
+    double highHeld = tailRms(2093.0, true);
+    double highOff = tailRms(2093.0, false);
+    CHECK(highHeld > 1e-5);              // it is actually still ringing
+    CHECK(highOff > highHeld * 0.9);     // release changed nothing (no damper)
+}
+
 // REQ-piano-6: sympathetic resonance is frequency-selective, emerging from the shared
 // PianoBridge, not from a per-note-pair table (there is none in this codebase).
 TEST(PianoVoice_sympathetic_resonance_is_frequency_selective)

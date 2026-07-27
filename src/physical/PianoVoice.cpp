@@ -126,6 +126,13 @@ namespace arstro
         return kTensionModRefValue * std::pow(kTensionModRefHz / f0Hz, kTensionModExponent);
     }
 
+    bool PianoVoice::defaultHasDamper(Sample f0Hz)
+    {
+        // ## 7.1: no dampers on the top ~1.5–2 octaves. Below the cutoff the note is
+        // damped as normal; at or above it the string always rings.
+        return f0Hz < kNoDamperAboveHz;
+    }
+
     int PianoVoice::defaultUnisonCount(Sample f0Hz)
     {
         // ## 11.5: standard stringing-scale breaks. Single-strung bass is a feature —
@@ -278,7 +285,9 @@ namespace arstro
     void PianoVoice::noteOff()
     {
         SignalGenerator::noteOff(); // long backstop release (kVoiceLifetimeMs) — see README ## isFinished note
-        if (!mDamperHeld)
+        // README ## 7.1 (M9.1): the top ~1.5–2 octaves have no damper, so releasing
+        // the key leaves the string ringing — no ramp to seat, no damper-release noise.
+        if (!mDamperHeld && defaultHasDamper(frequency()))
         {
             for (int k = 0; k < mUnisonCount; ++k)
                 mStrings[k].setDamperEngagement(1.0);

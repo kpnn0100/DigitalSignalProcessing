@@ -261,6 +261,29 @@ def check_piano_damper(binpath):
     return f"engaged_ratio={ratio_engaged:.3f} held_ratio={ratio_held:.3f}"
 
 
+def check_piano_top_octave_no_damper(binpath):
+    """M9.1 (README §7.1): the top octaves have no damper, so releasing a C7 key does
+    nothing — its released tail matches its sustain-held tail, unlike the damped C6 of
+    check_piano_damper. Contrast against a genuinely damped note makes 'no damper' a
+    measured claim, not just 'it still rings'."""
+    pre = SR // 20  # 50 ms struck region the harness writes before noteOff
+    released = render(binpath, "pianonodamper", 0)  # key released
+    held = render(binpath, "pianonodamper", 1)      # sustain held
+
+    # Tail ~150 ms after noteOff, well past any damper ramp.
+    def tail(y):
+        return rms(y[pre + 7000: pre + 7000 + 2400])
+
+    t_released, t_held = tail(released), tail(held)
+    if t_held < 1e-4:
+        raise Failure(f"C7 held tail is silent (rms {t_held:.2e}) — cannot judge damping")
+    ratio = t_released / t_held
+    if ratio < 0.9:
+        raise Failure(f"C7 released tail decayed to {ratio:.2f}x of held — a damper is "
+                      "engaging where there should be none")
+    return f"C7 released tail = {ratio:.2f}x held (no damper: release is a no-op)"
+
+
 def check_piano_voice_reuse_bounded(binpath):
     """Regression: reusing a fully-damped PianoVoice for a new note (the exact
     setFrequency()-then-noteOn() sequence PianoEngine uses when stealing a voice)
@@ -688,6 +711,7 @@ CHECKS = [
     ("synth_deterministic_nonsilent", check_synth_deterministic_nonsilent),
     ("piano_inharmonicity", check_piano_inharmonicity),
     ("piano_damper_decay", check_piano_damper),
+    ("piano_top_octave_no_damper", check_piano_top_octave_no_damper),
     ("piano_voice_reuse_bounded", check_piano_voice_reuse_bounded),
     ("piano_bandwidth", check_piano_bandwidth),
     ("piano_spectral_evolution", check_piano_spectral_evolution),

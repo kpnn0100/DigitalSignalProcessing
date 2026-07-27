@@ -56,6 +56,7 @@ namespace arstro
         static Sample defaultStrikePosition(Sample f0Hz);   // ## 11.4
         static int    defaultUnisonCount(Sample f0Hz);      // ## 11.5
         static Sample defaultTensionModulation(Sample f0Hz);// ## 12.5
+        static bool   defaultHasDamper(Sample f0Hz);        // ## 7.1 (M9.1)
 
         void setStrikePosition(Sample beta);
         void setModalMass(Sample m);
@@ -223,6 +224,10 @@ namespace arstro
         // property and takes those voices off the per-sample tension path entirely
         // (the same off-above-a-crossover economy §12.4's longitudinal bank uses).
         static constexpr Sample kTensionModMaxHz = 523.25;     // C5
+        // README ## 7.1 (M9.1): the top ~1.5–2 octaves have no dampers. Cutoff is the
+        // geometric mean of MIDI 88 (1318.5 Hz) and 89 (1396.9 Hz) so the boundary
+        // sits between notes, not on one — MIDI >= 89 (top 20 keys) rings undamped.
+        static constexpr Sample kNoDamperAboveHz = 1357.11;
         static constexpr Sample kUnaCordaStiffness = 0.85;
         static constexpr Sample kUnaCordaGain = 0.6;
         static constexpr Sample kVoiceLifetimeMs = 8000.0;

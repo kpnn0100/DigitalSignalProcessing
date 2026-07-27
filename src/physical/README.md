@@ -539,6 +539,30 @@ producing a large spurious amplitude spike instead of a normal note. Fixed by ha
 `reset()` end with the same `recomputeEffectivePartials()` call §3's ramp uses, using the
 now-zeroed `d`.
 
+#### 7.1 No dampers in the top octaves (M9.1)
+
+A real piano damps only the lower ~70 keys; the top ~1.5–2 octaves have **no dampers at all**
+— those strings are short, high, and decay quickly on their own, and a felt damper there would
+be both mechanically awkward and pointless. So a note above the cutoff **always rings**: releasing
+the key does nothing, and it stops only when its own decay (§3) runs out or the voice is re-struck.
+
+```
+hasDamper(f0) = f0 < f_nodamp ,   f_nodamp = √(f(88)·f(89)) ≈ 1357 Hz
+```
+
+The cutoff is the geometric mean of MIDI 88 and 89 (`440·2^((n−69)/12)`), so the boundary sits
+*between* two notes rather than on one (floating-point luck deciding a note's damper, the same
+trap §11.5's unison breaks avoid): MIDI ≥ 89 (the top 20 keys) is undamped, matching "above
+~MIDI 88". `PianoVoice::noteOff()` skips both the §7 damper ramp **and** the §10 damper-release
+noise when `hasDamper(f0)` is false — there is no damper to seat, so neither happens.
+
+**Interaction with §13's silent-voice freeze, deliberately left as-is.** An undamped voice never
+satisfies `isSilent()` (its `damperValue` stays `0`), so it is never frozen — which is *correct*,
+not a leak: §13's whole point is that an undamped string can still be re-excited through the
+bridge (`REQ-piano-6`), and a no-damper note is undamped *by design*, so it must stay responsive
+for as long as it is allocated. It costs CPU until the voice is stolen, but top-octave notes are
+the cheapest in the pool (fewest partials, §2).
+
 ### 8. Bridge / soundboard coupling + sympathetic resonance (`PianoBridge`)
 
 All `PianoVoice`s in a `PianoEngine` share **one** `PianoBridge`. Each voice's summed

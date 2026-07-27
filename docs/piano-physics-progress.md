@@ -111,7 +111,7 @@ not rediscover any of it. None of it changes the physics.
 | M6 | Per-register voicing | `[x]` |
 | M7 | Longitudinal modes & phantom partials | `[x]` |
 | M8 | Tension modulation (attack pitch glide) | `[x]` |
-| M9 | Tier-3 detail | `[ ]` |
+| M9 | Tier-3 detail | `[~]` |
 
 Status key: `[ ]` not started · `[~]` in progress · `[x]` done & verified · `[!]` done but
 some acceptance criterion could not be verified here (see Verification notes).
@@ -319,8 +319,14 @@ some acceptance criterion could not be verified here (see Verification notes).
 - [x] Re-run M0 benchmark: **11.79× RT** (median 11.66×) — budget met with 2.9× margin
 - [x] 100 % line coverage held on all **six** `physical/` sources
 
-### M9 — Tier-3 detail `[ ]`
-- [ ] No dampers above ~MIDI 88
+### M9 — Tier-3 detail `[~]`
+- [x] **M9.1 — No dampers above ~MIDI 88.** `defaultHasDamper(f0) = f0 < √(f(88)·f(89)) ≈
+      1357 Hz` (geometric mean, so the boundary is between notes — MIDI ≥ 89, the top 20 keys,
+      ring undamped). `noteOff()` skips both the §7 ramp and the §10 damper noise when false.
+      README `## 7.1`; `REQ-piano-7` amended with the exception. Verified: C7 released tail =
+      **1.00× held** (release is a no-op), C6 damped tail 0.6× (damper still works below cutoff);
+      the `isSilent()` freeze correctly never fires on an undamped voice (README ## 7.1). 100 %
+      coverage held; bench **11.65× RT** (item is off the hot path — `noteOff` isn't benchmarked)
 - [ ] Duplex / aliquot scale
 - [ ] Stulov felt hysteresis (replaces README §6's load/unload simplification)
 - [ ] Una corda proper — **amends `REQ-piano-16`**

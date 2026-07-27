@@ -280,6 +280,27 @@ static std::vector<double> renderPianoDamper(double heldFlag)
     return out;
 }
 
+// M9.1 acceptance (README ## 7.1): the top octaves have no damper. C7 (2093 Hz, MIDI
+// 96 — above the ~1357 Hz cutoff) rings on after noteOff exactly as if the key were
+// held. heldFlag > 0.5 holds the (nonexistent) damper; either way the string keeps
+// ringing, which is the whole point.
+static std::vector<double> renderPianoNoDamper(double heldFlag)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(2093.0); // C7
+    v.setDamperHeld(heldFlag > 0.5);
+    v.noteOn(0.8);
+    const int pre = kSampleRate / 20;  // 50 ms struck
+    const int post = kSampleRate / 4;  // 250 ms tail
+    std::vector<double> out(pre + post);
+    for (int i = 0; i < pre; ++i) out[i] = v.out(0.0, 0);
+    v.noteOff();
+    for (int i = 0; i < post; ++i) out[pre + i] = v.out(0.0, 0);
+    return out;
+}
+
 static std::vector<double> renderPianoSympathetic(double whichFlag)
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -485,6 +506,7 @@ int main(int argc, char **argv)
     else if (scenario == "synthparallel") samples = renderSynthParallel(arg);
     else if (scenario == "piano") samples = renderPiano(arg);
     else if (scenario == "pianodamper") samples = renderPianoDamper(arg);
+    else if (scenario == "pianonodamper") samples = renderPianoNoDamper(arg);
     else if (scenario == "pianoreuse") samples = renderPianoReuse();
     else if (scenario == "pianospectral") samples = renderPianoSpectral();
     else if (scenario == "pianodoubledecay") samples = renderPianoDoubleDecay();
