@@ -44,27 +44,34 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 
 ## ► NEXT
 
-**M9 — Tier-3 detail.** Four small, independent features (plan §M9), shippable in any order:
-no dampers above ~MIDI 88; duplex/aliquot scale (treble shimmer); Stulov felt hysteresis
-(replaces README §6's load/unload simplification); una corda done properly. Start the first
-unchecked one.
+**M9.2 — Duplex / aliquot scale (treble shimmer).** The next unchecked M9 item. Real pianos
+have short un-struck string segments (front/rear duplex) tuned to upper partials of the speaking
+string; they ring **sympathetically** through the shared bridge and add a high, airy shimmer,
+strongest in the treble. Model as a small bank of high-Q `StringResonator`s per voice (reuse the
+primitive — rule 1; the same pattern `LongitudinalBank` used), tuned to aliquot frequencies
+(upper partials), driven by the string's own motion / bridge coupling — **never by the hammer
+directly** — and **treble-weighted** (the opposite register bias to §12.4's longitudinal bank).
+Keep it honest: these are real tuned segments driven sympathetically, not synthetic partials at
+hand-picked frequencies (the distinction `REQ-piano-15`'s amendment insisted on). Needs its own
+`REQ-piano-19` (a gap, like M8 — no requirement covers duplex yet); no conflict.
 
-⚠️ **Before implementing item 4 (una corda), amend `REQ-piano-16` first** — it currently
-specifies the gain-reduction *approximation*, and real una corda (strike a subset of the unison
-strings, the un-struck string driven only through the bridge) contradicts it. This is the one
-**still-pending** requirement conflict; per `arstro.dsp.implement` rule 5, amend the requirement
-with the reason and date *before* the code, not after.
+Then the last two, in any order:
+- **M9.3 — Stulov felt hysteresis** (replaces README §6's load/unload stiffness asymmetry with a
+  rate/history-dependent relaxation kernel). ⚠️ **Highest regression risk in M9** — it rewrites
+  the hammer contact, so it must re-pass M6's energy-conservation guard (all 88 keys × 4
+  velocities, `E_string/E_hammer` bounded) and M3's contact-duration criteria.
+- **M9.4 — Una corda done properly** (strike a *subset* of the unison strings; the un-struck
+  string driven only through the bridge). ⚠️ **Amend `REQ-piano-16` FIRST** — it currently
+  specifies the gain-reduction *approximation* this replaces (rule 5: amend before coding). The
+  reduced-gain `kUnaCordaGain` should then *emerge* from driving fewer strings and be deleted, as
+  `voicingGain`/`registerGain` were once their real physics arrived.
 
-M8 is complete and verified numerically. **This is the point the plan flagged (see M6's
-verification note) where listening is worth more than another measurement** — M4–M8 have added
-specific colours (bloom, soundboard, per-register voicing, bass growl, attack glide) on top of a
-model that was already qualitatively a piano at M3. M9's items are refinements, not missing
-mechanisms. Consider the §"When every milestone is done" whole-project review + a fresh render
-for the user to hear, either after M9 or if the user wants to judge the timbre now.
+**M9.1 done** (no dampers in the top octaves — see checklist). M4–M8 are colours on a model
+already qualitatively a piano at M3; **the plan flagged this as the point where listening beats
+measuring** (M6's verification note). Worth offering the user a fresh render now, or after M9.
 
-Budget headroom on this machine: **11.79× RT**, 2.9× above the gate. M9's items are cheap
-(damper gating and una-corda are free; duplex adds a few resonators per treble note; Stulov
-hysteresis is a per-sample felt-state update, not a partial-loop change).
+Budget headroom on this machine: **11.65× RT**, 2.9× above the gate. Remaining items: duplex adds
+a few resonators per treble voice; Stulov is a per-sample felt-state update; una corda is free.
 
 ---
 
