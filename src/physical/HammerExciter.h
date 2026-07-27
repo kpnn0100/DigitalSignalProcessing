@@ -18,7 +18,9 @@ namespace arstro
             massID,             // m_h, normalized hammer inertia
             stiffnessID,        // K, felt stiffness
             nonlinearExponentID,// p
-            hysteresisLossID,   // epsilon, 0..1 (unloading stiffness fraction lost)
+            hysteresisLossID,   // epsilon_branch, 0..1: base load/unload asymmetry (README ## 6)
+            relaxationDepthID,  // epsilon_relax, 0..1: Stulov fading-memory term depth (M9.3)
+            relaxationTimeID,   // tau, seconds: the felt's fading-memory time constant
             propertyCount
         };
         HammerExciter();
@@ -26,7 +28,9 @@ namespace arstro
         void setMass(Sample m);
         void setStiffness(Sample k);
         void setNonlinearExponent(Sample p);
-        void setHysteresisLoss(Sample eps);
+        void setHysteresisLoss(Sample eps);          // base load/unload asymmetry
+        void setRelaxationDepth(Sample eps);         // README ## 6, Stulov rate-dependent term (M9.3)
+        void setRelaxationTime(Sample tauSeconds);   // README ## 6, the felt's memory time constant
 
         // Begin contact: velocity in 0..1 (matches SignalGenerator::noteOn convention).
         void strike(Sample velocity01);
@@ -42,10 +46,12 @@ namespace arstro
     private:
         Sample mPos = 0.0; // hammer felt compression (>=0 while in contact)
         Sample mVel = 0.0;
+        Sample mHyst = 0.0; // README ## 6: h, the relaxed memory of u^p (Stulov)
         bool mInContact = false;
         long mContactSamples = 0;
 
         static constexpr Sample kMaxContactMs = 15.0;
         static constexpr Sample kMaxImpactSpeed = 4.0; // v0 at velocity01 = 1.0
+        static constexpr Sample kMinRelaxationTime = 1e-6; // guard: tau -> alpha = dt/tau <= 1
     };
 }

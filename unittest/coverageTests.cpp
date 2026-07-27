@@ -705,7 +705,18 @@ TEST(HammerExciter_api_bypass_and_contact_lifecycle)
     h.setStiffness(1.0e10);
     h.setNonlinearExponent(2.5);
     h.setHysteresisLoss(0.2);
+    h.setRelaxationDepth(0.3);        // README ## 6 (M9.3) Stulov term
+    h.setRelaxationTime(1e-9);        // below kMinRelaxationTime -> clamps (setter guard branch)
     exerciseEffect(h, _ok); // covers channel!=0 -> 0.0 branch too (channel 99 in the helper)
+
+    // Tiny tau also exercises the in-process alpha>1 clamp (memory tracks u^p instantly),
+    // and a full strike exercises the force<0 clamp near release (h > u^p as u^p -> 0).
+    resetConfig(1);
+    HammerExciter hTau;
+    hTau.setRelaxationDepth(0.5);
+    hTau.setRelaxationTime(1e-9);
+    hTau.strike(0.9);
+    for (int i = 0; i < 2000 && hTau.isInContact(); ++i) { Sample s = hTau.out(0.0, 0); CHECK(s >= 0.0); }
 
     resetConfig(1);
     HammerExciter h2;
@@ -765,6 +776,7 @@ TEST(PianoVoice_unison_una_corda_and_pedal_api)
     v.setHammerStiffness(1.0e10);
     v.setHammerNonlinearExponent(2.5);
     v.setHammerHysteresisLoss(0.2);
+    v.setHammerRelaxationDepth(0.25); // README ## 6 (M9.3) passthrough
     v.setUnaCorda(true);
     v.setDamperHeld(false);
     v.setBridge(nullptr); // standalone (no cross-string coupling) path

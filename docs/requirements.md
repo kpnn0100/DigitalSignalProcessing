@@ -41,8 +41,19 @@ sympathetic resonance, (5) dampers, (6) pedals, (7) secondary mechanical noises.
   directly), fits the existing property/channel/envelope contract, and is playable via
   `noteOn(velocity)` / `noteOff()` at a given `setFrequency(hz)`.
 - `REQ-piano-2` — **Hammer-string excitation** is a nonlinear, hysteretic felt-contact model
-  (not a fixed excitation curve/table): loading and unloading follow different force laws so
-  contact dissipates energy, and contact force depends on impact velocity.
+  (not a fixed excitation curve/table): contact dissipates energy, and contact force depends on
+  impact velocity.
+  **Amended 2026-07-27 (M9.3) — the hysteresis is a fading-memory relaxation, not a
+  load/unload branch.** The original wording ("loading and unloading follow different force
+  laws") described the M0 stand-in: a hard `v ≥ 0`/`v < 0` stiffness switch, whose energy loss
+  is a fixed fraction independent of how the note was struck. Real felt is **rate- and
+  history-dependent** (Stulov): a single force law `F = K·(uᵖ − ε·h)` where `h` is a
+  relaxed (low-passed) memory of past compression `uᵖ` with time constant `τ`
+  (`dh/dt = (uᵖ − h)/τ`). Loading outruns the memory (stiff); unloading is opposed by it
+  (softer, dissipative); and because the memory fills on the timescale `τ`, the size and shape
+  of the hysteresis loop **depend on the strike speed** — which the branch model cannot do. Still
+  a normalised signal-level model (not SI-calibrated felt), still dissipative, still
+  velocity-dependent. See README §6.
 - `REQ-piano-3` — **String vibration** is represented by a bank of inharmonic partials (stiff
   string: partial frequencies deviate from exact harmonics per an inharmonicity coefficient),
   each partial independently damped (frequency-dependent loss), and each note has 2+ detuned

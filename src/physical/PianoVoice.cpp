@@ -126,6 +126,16 @@ namespace arstro
         return kTensionModRefValue * std::pow(kTensionModRefHz / f0Hz, kTensionModExponent);
     }
 
+    Sample PianoVoice::defaultFeltHysteresis(Sample f0Hz)
+    {
+        // ## 6 (M9.3): ε = ε_ref·(f_cross/f0)^1.5, clamped to ε_ref below C4. Full in the
+        // bass/mid, ~0 by the treble (hard felt + preserve the M6 centroid rise).
+        if (f0Hz < 1.0) f0Hz = 1.0;
+        Sample g = std::pow(kFeltHysteresisCrossHz / f0Hz, kFeltHysteresisExp);
+        if (g > 1.0) g = 1.0;
+        return kFeltHysteresisRef * g;
+    }
+
     bool PianoVoice::defaultHasDamper(Sample f0Hz)
     {
         // ## 7.1: no dampers on the top ~1.5–2 octaves. Below the cutoff the note is
@@ -157,6 +167,10 @@ namespace arstro
         // factor), but a voice that is never struck should still report the right
         // value, and unit tests read it back.
         mHammer.setStiffness(mHammerBaseStiffness);
+        // README ## 6 (M9.3): taper the Stulov relaxation depth to ~0 in the treble,
+        // full in the bass/mid. The base load/unload asymmetry (setHysteresisLoss) is
+        // left at the hammer default, unchanged from the M0 model.
+        mHammer.setRelaxationDepth(defaultFeltHysteresis(f0));
         if (!mStrikePositionOverridden || !mModalMassOverridden || !mTensionModOverridden)
         {
             const Sample beta = defaultStrikePosition(f0);
@@ -253,6 +267,7 @@ namespace arstro
     }
     void PianoVoice::setHammerNonlinearExponent(Sample p) { mHammer.setNonlinearExponent(p); }
     void PianoVoice::setHammerHysteresisLoss(Sample eps) { mHammer.setHysteresisLoss(eps); }
+    void PianoVoice::setHammerRelaxationDepth(Sample eps) { mHammer.setRelaxationDepth(eps); }
     void PianoVoice::setHammerStiffness(Sample k)
     {
         mHammerStiffnessOverridden = true; // stop setFrequency() reapplying README ## 11.3

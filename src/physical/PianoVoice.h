@@ -58,6 +58,7 @@ namespace arstro
         static int    defaultUnisonCount(Sample f0Hz);      // ## 11.5
         static Sample defaultTensionModulation(Sample f0Hz);// ## 12.5
         static bool   defaultHasDamper(Sample f0Hz);        // ## 7.1 (M9.1)
+        static Sample defaultFeltHysteresis(Sample f0Hz);   // ## 6 (M9.3): eps tapers to ~0 in the treble
 
         void setStrikePosition(Sample beta);
         void setModalMass(Sample m);
@@ -80,6 +81,9 @@ namespace arstro
         void setHammerStiffness(Sample k);
         void setHammerNonlinearExponent(Sample p);
         void setHammerHysteresisLoss(Sample eps);
+        // README ## 6 (M9.3): the Stulov relaxation depth. Overrides the register taper
+        // until the next setFrequency(); 0 disables the term (isolates it in tests).
+        void setHammerRelaxationDepth(Sample eps);
 
         /** True when this voice is BOTH fully damped and inaudible, so freezing it
          *  changes nothing. Engines may skip such a voice entirely
@@ -235,6 +239,15 @@ namespace arstro
         // property and takes those voices off the per-sample tension path entirely
         // (the same off-above-a-crossover economy §12.4's longitudinal bank uses).
         static constexpr Sample kTensionModMaxHz = 523.25;     // C5
+        // README ## 6 (M9.3): the Stulov relaxation depth ε is graded by register.
+        // Real treble felt is hard and dense — it barely relaxes — and the treble's
+        // contact is already stability-capped (§11.3), so a full ε there would dull an
+        // attack that must stay bright, breaking M6's centroid rise. So ε is full
+        // through the bass/mid (where felt viscoelasticity is prominent, and where the
+        // rate-dependence perceptually lives) and tapers to ~0 by the top octaves.
+        static constexpr Sample kFeltHysteresisRef = 0.25;    // ε in the bass/mid
+        static constexpr Sample kFeltHysteresisCrossHz = 261.6; // C4 — full at/below, tapering above
+        static constexpr Sample kFeltHysteresisExp = 3.0;
         // README ## 7.1 (M9.1): the top ~1.5–2 octaves have no dampers. Cutoff is the
         // geometric mean of MIDI 88 (1318.5 Hz) and 89 (1396.9 Hz) so the boundary
         // sits between notes, not on one — MIDI >= 89 (top 20 keys) rings undamped.

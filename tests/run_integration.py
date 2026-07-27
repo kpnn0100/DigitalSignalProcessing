@@ -678,6 +678,39 @@ def check_duplex_shimmer(binpath):
             f"sustains {shimmer_sustain/max(1e-9,string_sustain):.0f}x longer than the partial")
 
 
+def check_felt_hysteresis_rate_dependent(binpath):
+    """M9.3 (README §6, REQ-piano-2 amended): the Stulov felt relaxation is a real,
+    rate-dependent, dissipative stage in the rendered audio. Isolated by differencing a
+    relaxation-on and relaxation-off render of a C3 (§12.2's lesson): the difference is
+    the felt term's contribution, and because the term is rate-dependent its contribution
+    RELATIVE to the note differs between a hard and a soft strike — which a fixed
+    load/unload branch could not produce. (The exact restitution-vs-velocity law is pinned
+    numerically by the unit test; here we confirm it survives into the WAV path.)"""
+    def rel_contribution(vel):
+        on = render(binpath, "pianofelt", round(vel * 100))
+        off = render(binpath, "pianofelt", -round(vel * 100))
+        diff = [a - b for a, b in zip(on, off)]
+        note = rms(off)
+        if note < 1e-3:
+            raise Failure(f"C3 note silent at v={vel} (rms {note:.2e})")
+        return rms(diff) / note
+
+    # Wide velocity spread: the coupled (yielding-string) contact lengthens with the
+    # strike, so the rate-dependence is clearest between a hard and a very soft blow.
+    hard = rel_contribution(0.9)
+    soft = rel_contribution(0.1)
+    if hard < 1e-3:
+        raise Failure(f"felt relaxation contributes nothing to the audio (rel {hard:.2e}) — "
+                      "the Stulov stage is not reaching the output")
+    spread = abs(hard - soft) / max(hard, soft)
+    if spread < 0.15:
+        raise Failure(f"felt contribution is ~velocity-independent (hard {hard:.4f}, "
+                      f"soft {soft:.4f}, spread {spread*100:.0f}%) — that is the branch "
+                      "model, not the rate-dependent Stulov relaxation")
+    return (f"felt relaxation audible & rate-dependent: rel contribution "
+            f"hard {hard:.3f} vs soft {soft:.3f} (spread {spread*100:.0f}%)")
+
+
 def check_una_corda_softer(binpath):
     """M9.4 (README §9, REQ-piano-16 amended): the soft pedal strikes a subset of the
     unison strings (C4 trichord 3->2), so the rendered note is measurably softer than a
@@ -774,6 +807,7 @@ CHECKS = [
     ("piano_top_octave_no_damper", check_piano_top_octave_no_damper),
     ("piano_duplex_shimmer", check_duplex_shimmer),
     ("piano_una_corda_softer", check_una_corda_softer),
+    ("piano_felt_hysteresis_rate_dependent", check_felt_hysteresis_rate_dependent),
     ("piano_voice_reuse_bounded", check_piano_voice_reuse_bounded),
     ("piano_bandwidth", check_piano_bandwidth),
     ("piano_spectral_evolution", check_piano_spectral_evolution),

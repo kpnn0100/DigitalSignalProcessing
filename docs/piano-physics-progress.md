@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-27 (M9.4 done — una corda; M9.1/M9.2 done earlier. Only M9.3 left)
-- **Last commit:** M9.4 — una corda done properly (subset strike), README ## 9
+- **Last updated:** 2026-07-27 (M9.3 done — Stulov felt hysteresis. **M0–M9 ALL COMPLETE**)
+- **Last commit:** M9.3 — Stulov felt hysteresis (rate-dependent), README ## 6
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -44,32 +44,29 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 
 ## ► NEXT
 
-**M9.3 — Stulov felt hysteresis.** The **last** unchecked item in M9 (and the whole plan).
-Replaces README §6's load/unload stiffness asymmetry with a proper rate/history-dependent
-relaxation kernel — real hammer felt's force depends not just on current compression but on the
-*history* of compression (a fading-memory integral), which broadens the contact and shapes the
-attack differently at different dynamics.
+**M0–M9 are ALL COMPLETE.** Every milestone in `piano-physics-plan.md` is done and verified
+numerically. What remains is the skill's §"When every milestone is done" **whole-project
+close-out**, ideally as its own session:
 
-⚠️ **Highest regression risk in the project** — it rewrites the `HammerExciter` contact, the
-coupled loop at the heart of M3/M6. It **must** re-pass:
-- **M6's energy-conservation guard** — all 88 keys × 4 velocities, `E_string/E_hammer` bounded
-  (worst case was 0.93; the guard caught a 201× blow-up once). The relaxation kernel adds state to
-  the contact ODE, so re-verify it does not manufacture energy, especially in the stability-capped
-  treble (§11.3).
-- **M3's contact-duration criteria** (pitch-dependent contact time, velocity shortening, the
-  reflection ripple) and **M1's spectral evolution**.
-- Derive the kernel into README `## 6` **before** coding; it likely needs its own requirement
-  (a gap like M8/M9.2 — no `REQ` covers felt hysteresis yet), no conflict expected.
+1. **Re-read `src/physical/README.md` end to end** — does `## Math` still describe the code after
+   nine milestones? Watch the areas that changed most: §6 (now the M9.3 hybrid felt), §11.3 (the
+   stability cap that M9.3 leans on), the Parameters table (new `relaxationDepthID`, `relaxationTimeID`,
+   duplex, tension-mod entries).
+2. **Re-read `docs/requirements.md`** — confirm every `REQ-piano-*` matches what was built,
+   especially the amended ones: `REQ-piano-2` (M9.3 relaxation), `-3` (×2), `-15` (M7 phantom),
+   `-16` (M9.4 subset), and the added `-17/-18/-19`.
+3. **Full `ctest` + M0 bench**, record final numbers (currently 11.6× RT, budget met 2.9×).
+4. **Render a fresh `build/piano_demo.wav` and the `examples/piano` app and HAND IT TO THE USER
+   TO LISTEN.** This is the one thing the whole project has never done — every criterion was
+   numeric by design, and the final timbre judgement was always the user's, never this skill's.
+   The plan flagged M4–M9 as "colours" on a model already qualitatively a piano at M3; whether
+   they add up to a convincing instrument is an ears question, not a measurement.
 
-**M9.1 + M9.2 + M9.4 done** (no top-octave dampers; duplex shimmer; una corda subset-strike).
-After M9.3, M0–M9 are all complete → run the skill's §"When every milestone is done" whole-project
-review (re-read README `## Math` and `docs/requirements.md` end to end, full ctest + M0 bench,
-render a fresh demo). **The plan flagged this stretch as the point where listening beats measuring**
-(M6's verification note) — strongly worth a fresh `build/piano_demo.wav` for the user before/at the
-close-out; the model has had no ears on it.
-
-Budget headroom on this machine: **11.59× RT**, 2.9× above the gate. Stulov is a per-sample
-felt-state update (a small IIR memory), no new resonators.
+Known limitations to carry into that review (all in the verification notes / decisions log, none
+blocking): the treble felt is stability-capped (§11.3, needs contact-loop oversampling); una corda
+is softer but not mellower (M9.4 — needs strong inter-unison bridge coupling); the duplex halo and
+M8 glide are calibrated, not derived. None regress an acceptance criterion; all are documented
+routes for a future pass.
 
 ---
 
@@ -128,7 +125,7 @@ not rediscover any of it. None of it changes the physics.
 | M6 | Per-register voicing | `[x]` |
 | M7 | Longitudinal modes & phantom partials | `[x]` |
 | M8 | Tension modulation (attack pitch glide) | `[x]` |
-| M9 | Tier-3 detail | `[~]` |
+| M9 | Tier-3 detail | `[x]` |
 
 Status key: `[ ]` not started · `[~]` in progress · `[x]` done & verified · `[!]` done but
 some acceptance criterion could not be verified here (see Verification notes).
@@ -354,7 +351,19 @@ some acceptance criterion could not be verified here (see Verification notes).
       duplex (gated off). tanh limiter re-checked (per the standing caution — duplex raises treble
       per-voice level): engagement **0.148 %, identical duplex on/off**, peak +0.2 % — no regression.
       100 % coverage on all **seven** `physical/` sources; bench **11.56× RT** (median 11.44×)
-- [ ] Stulov felt hysteresis (replaces README §6's load/unload simplification)
+- [x] **M9.3 — Stulov felt hysteresis.** `REQ-piano-2` amended. The felt force gains a
+      fading-memory term: `F = keff·uᵖ − K·ε_relax·h`, `h` a one-pole relaxation of `uᵖ`
+      (`dh/dt=(uᵖ−h)/τ`, τ=0.5 ms), clamped ≥ 0 (felt can't pull). **Hybrid, not a pure
+      replacement** — the M0 load/unload branch (`keff`) is *kept* because the pure-memory form
+      rounds the attack and dulls the (already stability-capped, §11.3) treble, breaking M6's
+      centroid rise; the relaxation is layered on top and **tapered to ~0 above C4** (`PianoVoice::
+      defaultFeltHysteresis`, exp 3) so the treble stays byte-identical to the original. README
+      `## 6`. Verified: restitution **rate-dependent** (rigid-wall e: 0.74 fast → 0.70 slow,
+      −6.2%; ε_relax=0 → e≈1, lossless), audible & rate-dependent through the WAV (C3 felt
+      contribution hard 0.059 vs soft 0.083, **28.6 % spread**). **All regressions held:** M6
+      energy guard (88×4), M3 contact durations (2.2–5.2 ms), M1 spectral, centroid monotonic
+      A0→C8. 100 % coverage on all seven sources; bench **11.6× RT**.
+- [x] Re-run M0 benchmark, record — **11.6× RT** (median 11.5×), budget met 2.9× margin
 - [x] **M9.4 — Una corda done properly.** `REQ-piano-16` **amended** (was the gain approximation).
       Real mechanism: `struckUnisonCount() = U−1` (≥1) under una corda — trichord 3→2, bichord 2→1,
       single-strung unchanged; struck strings get `force+feedback`, the un-struck string gets
@@ -368,7 +377,6 @@ some acceptance criterion could not be verified here (see Verification notes).
       not the mellowing — dropping a unison string removes low-frequency chorusing, which slightly
       outweighs the retained softer felt, so net timbre is marginally brighter (see verification
       notes + decisions log). `REQ-piano-8`'s "softer/mellower" met by the softer half.
-- [ ] Re-run M0 benchmark, record
 
 ---
 
@@ -377,6 +385,28 @@ some acceptance criterion could not be verified here (see Verification notes).
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
 
+- **2026-07-27 (M9.3) — a faithful Stulov relaxation dulls the (stability-capped) treble, so
+  the model is a HYBRID, not a pure replacement.** Stulov's felt is a single history-dependent
+  law `F = K(uᵖ − ε·h)`, and it is physically righter than the M0 load/unload branch. But `h` is
+  a *low-pass* of `uᵖ`, so it rounds the force pulse and strips the high-frequency attack — and
+  measured, that pulled the treble spectral centroid *below* the mid (M6's monotonic-rise
+  criterion) even at `ε = 0`, because removing the branch removed the asymmetry that shaped the
+  bright attack. The treble is already softened by §11.3's sample-rate stability cap, so it had no
+  brightness to spare. Resolution: **keep the M0 branch as the base** (it shapes the attack M6
+  needs) and **add the relaxation as a rate-dependent term on top, tapered to ~0 above C4**
+  (`defaultFeltHysteresis`, exp 3) — so the treble is byte-identical to the pre-M9.3 model and the
+  relaxation lives in the bass/mid where felt viscoelasticity is prominent *and* where the M6
+  criterion has headroom. `REQ-piano-2` was amended to describe this. **A "replace" milestone
+  became an "augment" one because the replacement regressed an earlier criterion** — the suite
+  caught it (M6's centroid test), exactly what it is for.
+- **2026-07-27 (M9.3) — measure the felt by restitution from the returned force, no new getter.**
+  The rate-dependence is cleanest against a rigid wall as `e = |1 − J/(m·v0)|`, `J = ΣF·dt` — the
+  impulse is just the sum of the forces the hammer already returns, so the unit test needs no
+  velocity/compression accessor. `ε_relax=0 → e≈1` (confirms the reduction to a lossless spring);
+  `ε_relax>0 → e` falls with strike speed (−6.2% rigid-wall, 28.6% relative-footprint spread in
+  the coupled WAV). The coupled rate-dependence is *weaker* than the rigid-wall one and only clear
+  at a wide velocity spread (v=0.9 vs 0.1), because a yielding string lengthens the contact so `τ`
+  fills more fully regardless of speed — measured, and the integration test uses the wide spread.
 - **2026-07-27 (M9.4) — the honest una corda is SOFTER but not MELLOWER, and that is a real
   finding, not a bug.** Replacing the `×0.6` gain fudge with the true subset-strike (strike `S`
   of `U` strings, un-struck driven only through the bridge) makes the softening *emerge* — RMS
@@ -676,6 +706,14 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M9.3** — fully verified; nothing marked `[!]`. The felt is now genuinely rate-dependent
+  (restitution 0.74 fast → 0.70 slow against a rigid wall; audible & rate-dependent through the
+  WAV at 28.6 % spread), and every prior criterion held (M6 energy guard + centroid monotonic, M3
+  contact durations, M1 spectral). Two honest points, both in the decisions log. (1) It is a
+  **hybrid**, not the pure single-law Stulov form — the pure form dulls the stability-capped
+  treble below M6's monotonic centroid, so the M0 branch is kept as the base and the relaxation is
+  tapered to ~0 above C4. (2) `ε_relax`/`τ` are **calibrated, not derived** (normalised units, like
+  §12.2's κ). No listener was needed — restitution and centroid are numeric.
 - **M9.4** — mechanism fully verified; one aspect is a **documented limitation, not `[!]`**. The
   subset-strike is measured exactly (RMS 0.67× = S/U for a trichord; a bichord halves with no
   bridge, proving the un-struck string gets no hammer drive; single-strung unchanged), and it

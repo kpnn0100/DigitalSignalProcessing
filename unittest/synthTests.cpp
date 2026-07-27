@@ -1708,6 +1708,67 @@ TEST(PianoVoice_duplex_adds_treble_shimmer)
     CHECK(bassDiff < shimmerPeak * 0.01); // bass shimmer is orders of magnitude smaller (here: zero)
 }
 
+// ───────────────── Stulov felt hysteresis (README ## 6, M9.3) ─────────────────
+
+// REQ-piano-2 (amended, M9.3): the felt hysteresis is RATE-dependent — a fading memory
+// of compression, not a fixed load/unload fraction. The defining, measurable signature
+// is that the coefficient of restitution (energy retained on rebound) depends on strike
+// SPEED, which the old branch model could not do. Measured against a rigid wall from the
+// returned force alone: impulse J = ΣF·dt, and e = |1 − J/(m·v0)|.
+TEST(HammerExciter_stulov_hysteresis_is_rate_dependent)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    auto restitution = [](double vel, double epsRelax, double tau) {
+        HammerExciter h;
+        h.setMass(1.0);
+        h.setStiffness(3.0e11);
+        h.setNonlinearExponent(2.5);
+        h.setHysteresisLoss(0.2);        // base branch asymmetry
+        h.setRelaxationDepth(epsRelax);  // the Stulov term under test
+        h.setRelaxationTime(tau);
+        h.strike(vel);
+        const double dt = 1.0 / 48000.0, v0 = 4.0 * vel;
+        double J = 0.0;
+        for (int i = 0; i < 48000 && h.isInContact(); ++i) J += (double)h.out(0.0, 0) * dt;
+        return std::fabs(1.0 - J / (1.0 * v0)); // m = 1
+    };
+
+    // With the relaxation active, a slow strike loses MORE energy than a fast one — the
+    // memory has longer to build against a longer contact. The branch model would give
+    // an identical restitution at every speed.
+    const double eFast = restitution(1.0, 0.25, 0.0005);
+    const double eSlow = restitution(0.15, 0.25, 0.0005);
+    CHECK(eFast < 1.0 && eFast > 0.4);       // dissipative, and bounded (magnitude floor)
+    CHECK(eSlow < eFast * 0.97);             // rate-dependent: slow loses more (measured ~6%)
+
+    // eps_relax = 0 removes the Stulov term: the model reduces to the (still branch-
+    // hysteretic) spring, and its restitution no longer depends on speed the same way —
+    // here, with the base branch also 0, it is lossless and speed-independent.
+    HammerExciter lossless;
+    lossless.setMass(1.0); lossless.setStiffness(3.0e11); lossless.setNonlinearExponent(2.5);
+    lossless.setHysteresisLoss(0.0); lossless.setRelaxationDepth(0.0);
+    auto e0 = [&](double vel) {
+        lossless.strike(vel);
+        const double dt = 1.0 / 48000.0, v0 = 4.0 * vel; double J = 0.0;
+        for (int i = 0; i < 48000 && lossless.isInContact(); ++i) J += (double)lossless.out(0.0, 0) * dt;
+        return std::fabs(1.0 - J / v0);
+    };
+    CHECK(e0(1.0) > 0.98);                   // no loss terms -> (near) elastic
+    CHECK(std::fabs(e0(1.0) - e0(0.15)) < 0.02); // and speed-independent without the memory
+}
+
+// README ## 6 (M9.3): the relaxation depth is tapered by register so the treble stays
+// bright (M6). Full through the bass/mid, ~0 by the top octaves.
+TEST(PianoVoice_felt_hysteresis_tapers_to_the_treble)
+{
+    CHECK_NEAR(PianoVoice::defaultFeltHysteresis(65.4), 0.25, 1e-9);  // C2: clamped to full (below C4)
+    CHECK_NEAR(PianoVoice::defaultFeltHysteresis(261.6), 0.25, 1e-9); // C4: g = 1 exactly
+    CHECK(PianoVoice::defaultFeltHysteresis(523.3) < 0.25 * 0.2);     // C5: tapering
+    CHECK(PianoVoice::defaultFeltHysteresis(4186.0) < 0.001);         // C8: ~0 (bright treble)
+}
+
 // ───────────────── una corda (README ## 9, M9.4) ─────────────────
 
 // REQ-piano-16 (amended, M9.4): the soft pedal strikes a SUBSET of the unison

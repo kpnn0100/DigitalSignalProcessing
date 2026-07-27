@@ -338,6 +338,26 @@ static std::vector<double> renderPianoUnaCorda(double onFlag)
     return out;
 }
 
+// M9.3 acceptance (README ## 6): the Stulov felt relaxation is a real, dissipative stage
+// in the rendered path. C3 (130.8 Hz, below C4 so relaxation is at full depth); arg =
+// |velocity*100|, negated ⇒ relaxation OFF (depth 0). The checker differences the two to
+// isolate the felt term's contribution (## 12.2's lesson). Held so the tails are clean.
+static std::vector<double> renderPianoFelt(double arg)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(130.8); // C3 — relaxation full here
+    v.setDamperHeld(true);
+    if (arg < 0.0)
+        v.setHammerRelaxationDepth(0.0); // the reference render (branch model only)
+    v.noteOn(std::fabs(arg) / 100.0);
+    const int n = (int)(0.5 * kSampleRate);
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i) out[i] = v.out(0.0, 0);
+    return out;
+}
+
 static std::vector<double> renderPianoSympathetic(double whichFlag)
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -546,6 +566,7 @@ int main(int argc, char **argv)
     else if (scenario == "pianonodamper") samples = renderPianoNoDamper(arg);
     else if (scenario == "pianoduplex") samples = renderPianoDuplex(arg);
     else if (scenario == "pianounacorda") samples = renderPianoUnaCorda(arg);
+    else if (scenario == "pianofelt") samples = renderPianoFelt(arg);
     else if (scenario == "pianoreuse") samples = renderPianoReuse();
     else if (scenario == "pianospectral") samples = renderPianoSpectral();
     else if (scenario == "pianodoubledecay") samples = renderPianoDoubleDecay();

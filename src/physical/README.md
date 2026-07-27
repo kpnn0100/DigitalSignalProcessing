@@ -422,9 +422,11 @@ they are simply more resonators with their own coefficients.
 ### 6. Hammer–string contact — nonlinear, hysteretic, and COUPLED (`HammerExciter`)
 
 A single-degree-of-freedom nonlinear-spring hammer: the felt is a compression-only nonlinear
-spring, asymmetric between loading and unloading so contact dissipates energy — that asymmetry
-*is* the hysteresis (a documented simplification of felt viscoelasticity, not the full Stulov
-model).
+spring whose force carries a **fading memory** of how it has been compressed, so contact
+dissipates energy and does so by an amount that depends on *how the note was struck* — that
+history dependence *is* the hysteresis (Stulov's felt model, M9.3; it replaced an M0 stand-in
+that switched stiffness on the sign of `v_h`, whose loss was a fixed fraction regardless of
+strike).
 
 **The string yields (M3).** Before M3 the felt compressed against an infinitely rigid wall —
 the hammer never saw the string at all, which made the excitation open-loop and *is* the
@@ -432,14 +434,28 @@ textbook plucked-string model. Compression is a **relative** displacement:
 
 ```
 c[n] = x_h[n] − y_string(β, n−1)          <- the coupling term
-F[n] = K·max(0, c[n])^p          if v_h[n] ≥ 0   (loading)
-F[n] = K·(1−ε)·max(0, c[n])^p    if v_h[n] < 0   (unloading — softer, dissipative)
+u[n] = max(0, c[n])                        felt compression (compression-only)
 
-v_h[n+1] = v_h[n] − (F[n]/m_h)·dt     (semi-implicit/symplectic Euler)
+h[n] = h[n−1] + (dt/τ)·(u[n]^p − h[n−1])   relaxed memory of u^p  (one-pole, dh/dt=(u^p−h)/τ)
+F[n] = max(0,  K·( u[n]^p − ε·h[n] ) )     Stulov force; clamp ≥ 0 (felt cannot pull the string)
+
+v_h[n+1] = v_h[n] − (F[n]/m_h)·dt          (semi-implicit/symplectic Euler)
 x_h[n+1] = x_h[n] + v_h[n+1]·dt
-string driven by +F[n]                (Newton's third law)
-contact ends when c ≤ 0 and v_h < 0    (the hammer rebounds off the string)
+string driven by +F[n]                     (Newton's third law)
+contact ends when c ≤ 0 and v_h < 0        (the hammer rebounds off the string)
 ```
+
+**Why this is hysteretic, and why it is *rate*-dependent — the whole point of M9.3.** `h` is a
+low-pass of the instantaneous elastic term `u^p`. On the way *in* (`u` rising), `h` lags below
+`u^p`, so `F ≈ K·u^p` — the felt is stiff. On the way *out* (`u` falling), the memory `h` has
+built up and now sits *above* the falling `u^p`, so `F = K·(u^p − ε·h)` is reduced: the unloading
+curve runs below the loading curve and the enclosed loop area is the dissipated energy. Near
+release `u^p → 0` while `h > 0` would drive `F` negative — the felt would *pull* the string,
+which it cannot — so `F` is clamped at 0 and the contact separates. The memory fills on the
+timescale `τ`: a **fast** strike (contact ≈ `τ` or shorter) leaves `h` only partly built, a
+tight thin loop; a **slow/hard-into-a-yielding-string** strike (contact ≫ `τ`) lets `h` saturate,
+a fat loop. The M0 branch model dissipated the *same* fraction `ε` at every dynamic — it had no
+memory, so it could not do this. `ε = 0` recovers the plain nonlinear spring exactly.
 
 `y_string` is taken at `n−1` so the loop is causal — the same one-sample-delay argument as the
 bridge feedback path (§8); at 48 kHz that is a 21 µs lag inside a 1–5 ms contact.
@@ -504,8 +520,11 @@ loudness, which is a legitimate control rather than a fudge factor.
 
 **Properties (empirical/typical, documented as such — not measured from an instrument):**
 `massID` → `m_h`, `stiffnessID` → `K`, `nonlinearExponentID` → `p` (default 2.5; real felt is
-commonly cited in the 2–3.5 range), `hysteresisLossID` → `ε` (default 0.2 — 20 % of loading
-stiffness lost on rebound). `m_h` and `K` are set per note by §11.2/§11.3 and
+commonly cited in the 2–3.5 range), `hysteresisLossID` → `ε` (Stulov relaxation depth, 0..1;
+`0` = a plain lossless nonlinear spring), `relaxationTimeID` → `τ` (the felt's memory time
+constant; comparable to a contact duration so the loop is rate-dependent across the useful
+dynamic range). `ε`/`τ` are calibrated against the coupled loop, holding the M6 energy guard and
+the M3 contact durations (see the decisions log for the shipped values). `m_h` and `K` are set per note by §11.2/§11.3 and
 calibrated **together with `m`** against the coupled loop, targeting real contact durations of
 1–5 ms that shorten with impact velocity; the ratio `m_h/m` matters more than either alone (see
 §11.2, where it spans 0.15 → 184 across the keyboard). `kMaxContactMs` (15 ms) is a numerical
