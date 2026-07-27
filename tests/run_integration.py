@@ -635,6 +635,49 @@ def _glide_cents(on, off, f0, partial, t0, t1):
     return 1200.0 * math.log2(1.0 + frac)
 
 
+def check_duplex_shimmer(binpath):
+    """M9.2 (README §8.1): the duplex/aliquot shimmer. On a treble note (C6) it adds
+    energy at the aliquot 4*f0 that SUSTAINS past the bridge-damped speaking partial,
+    isolated by differencing a duplex-on and duplex-off render (§12.2's lesson)."""
+    f0 = 1046.5  # C6
+    on = render(binpath, "pianoduplex", 1)
+    off = render(binpath, "pianoduplex", 0)
+    diff = [a - b for a, b in zip(on, off)]
+
+    note_peak = peak(off)
+    shimmer_peak = peak(diff)
+    if note_peak < 1e-3:
+        raise Failure(f"C6 note is silent (peak {note_peak:.2e}) — cannot judge duplex")
+    if shimmer_peak < note_peak * 1e-3:
+        raise Failure(f"duplex contributes nothing (peak {shimmer_peak:.2e}) — stage lost")
+    if shimmer_peak > note_peak * 0.2:
+        raise Failure(f"duplex peak {shimmer_peak:.3f} is {shimmer_peak/note_peak:.2f}x the "
+                      "note — that is a second voice, not a shimmer")
+
+    # (a) energy sits at the aliquot 4*f0, not at an off-aliquot bin.
+    early = diff[2400:2400 + 8192]
+    at_aliquot = goertzel_mag(early, 4.0 * f0)
+    off_aliquot = goertzel_mag(early, 3.3 * f0)
+    if at_aliquot < off_aliquot * 3.0:
+        raise Failure(f"duplex energy not at the aliquot: 4f0={at_aliquot:.2e} "
+                      f"off={off_aliquot:.2e}")
+
+    # (b) it sustains past the string's own partial: the aliquot bin decays more
+    # slowly with the duplex than the bare string partial does.
+    def late_over_early(sig):
+        e = goertzel_mag(sig[2400:2400 + 8192], 4.0 * f0)
+        l = goertzel_mag(sig[25000:25000 + 8192], 4.0 * f0)
+        return l / max(1e-12, e)
+
+    shimmer_sustain = late_over_early(diff)
+    string_sustain = late_over_early(off)
+    if shimmer_sustain < string_sustain * 2.0:
+        raise Failure(f"duplex does not sustain past the string partial: shimmer "
+                      f"{shimmer_sustain:.3f} vs string {string_sustain:.3f}")
+    return (f"C6 shimmer {20*math.log10(shimmer_peak/note_peak):.0f} dB rel note, at 4*f0, "
+            f"sustains {shimmer_sustain/max(1e-9,string_sustain):.0f}x longer than the partial")
+
+
 def check_pitch_glide(binpath):
     """M8 acceptance (plan §M8): tension modulation / attack pitch glide. A hard bass
     blow starts sharp and glides down; a soft blow barely does. Measured through the
@@ -712,6 +755,7 @@ CHECKS = [
     ("piano_inharmonicity", check_piano_inharmonicity),
     ("piano_damper_decay", check_piano_damper),
     ("piano_top_octave_no_damper", check_piano_top_octave_no_damper),
+    ("piano_duplex_shimmer", check_duplex_shimmer),
     ("piano_voice_reuse_bounded", check_piano_voice_reuse_bounded),
     ("piano_bandwidth", check_piano_bandwidth),
     ("piano_spectral_evolution", check_piano_spectral_evolution),

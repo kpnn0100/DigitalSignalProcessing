@@ -1648,6 +1648,66 @@ TEST(LongitudinalBank_does_not_destabilise_the_bridge_loop)
     CHECK(peak < 100.0); // measured 6.13 at 10x; 3.14 at the shipped value
 }
 
+// ───────────────── duplex / aliquot shimmer (README ## 8.1, M9.2) ─────────────────
+
+// REQ-piano-19 (plan §M9.2): the duplex adds a treble shimmer that (a) carries energy
+// at the aliquot frequency n*f0, (b) SUSTAINS past the bridge-damped speaking partial
+// there, and (c) is present in the treble but absent in the bass. Isolated by
+// differencing a duplex-on and duplex-off render (README ## 12.2's lesson).
+TEST(PianoVoice_duplex_adds_treble_shimmer)
+{
+    AudioConfig::instance().setSampleRate(48000);
+    AudioConfig::instance().setChannelCount(1);
+
+    auto render = [](double f0, double drive) {
+        PianoVoice v;
+        v.setFrequency(f0);
+        v.setDamperHeld(true);
+        v.setDuplexDriveGain(drive);
+        v.noteOn(0.9);
+        std::vector<double> out(40000);
+        for (int i = 0; i < 40000; ++i) out[i] = v.out(0.0, 0);
+        return out;
+    };
+    auto window = [](const std::vector<double> &x, int a, int n) {
+        return std::vector<double>(x.begin() + a, x.begin() + a + n);
+    };
+
+    // --- Treble note C6: duplex on vs off, difference is the shimmer ---
+    double f0 = 1046.5;
+    std::vector<double> on = render(f0, 90.0), off = render(f0, 0.0);
+    std::vector<double> diff(on.size());
+    for (size_t i = 0; i < on.size(); ++i) diff[i] = on[i] - off[i];
+
+    double notePeak = 0.0, shimmerPeak = 0.0;
+    for (double s : off) notePeak = std::max(notePeak, std::fabs(s));
+    for (double s : diff) shimmerPeak = std::max(shimmerPeak, std::fabs(s));
+    CHECK(notePeak > 1e-3);                       // magnitude floor: the note actually sounds
+    CHECK(shimmerPeak > notePeak * 1e-3);         // the duplex contributes real energy
+    CHECK(shimmerPeak < notePeak * 0.2);          // ...but it is a shimmer, not a second voice
+
+    // (a) the shimmer sits at the aliquot 4*f0, not at an off-aliquot frequency.
+    std::vector<double> dwin = window(diff, 2400, 8192);
+    double atAliquot = goertzelMag(dwin, 4.0 * f0, 48000.0);
+    double offAliquot = goertzelMag(dwin, 3.3 * f0, 48000.0);
+    CHECK(atAliquot > offAliquot * 3.0);
+
+    // (b) it sustains past the bridge-damped speaking partial: the aliquot bin decays
+    // more slowly WITH the duplex than the string's own partial does without it.
+    auto lateOverEarly = [&](const std::vector<double> &sig) {
+        double e = goertzelMag(window(sig, 2400, 8192), 4.0 * f0, 48000.0);
+        double l = goertzelMag(window(sig, 30000, 8192), 4.0 * f0, 48000.0);
+        return l / std::max(1e-12, e);
+    };
+    CHECK(lateOverEarly(diff) > lateOverEarly(off) * 2.0); // slower decay = shimmer tail
+
+    // (c) a bass note has no duplex at all (gated off below the crossover).
+    std::vector<double> bassOn = render(110.0, 90.0), bassOff = render(110.0, 0.0);
+    double bassDiff = 0.0;
+    for (size_t i = 0; i < bassOn.size(); ++i) bassDiff = std::max(bassDiff, std::fabs(bassOn[i] - bassOff[i]));
+    CHECK(bassDiff < shimmerPeak * 0.01); // bass shimmer is orders of magnitude smaller (here: zero)
+}
+
 // ───────────────── tension modulation / pitch glide (README ## 12.5, M8) ─────────────────
 
 // Helper: the peak fractional pitch shift delta a struck voice reaches within its

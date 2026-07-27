@@ -4,8 +4,8 @@
 file first and updates it last, every session. Spec:
 [`piano-physics-plan.md`](piano-physics-plan.md).
 
-- **Last updated:** 2026-07-27 (M8 complete — tension modulation / attack pitch glide)
-- **Last commit:** M8 — tension modulation (attack pitch glide), README ## 12.5
+- **Last updated:** 2026-07-27 (M9.2 done — duplex/aliquot shimmer; M9.1 done earlier)
+- **Last commit:** M9.2 — duplex / aliquot scale (treble shimmer), README ## 8.1
 - **Perf budget:** ≥ 4× real-time, 8 voices @ 48 kHz (`REQ-piano-17`, plan §M0)
 
 ### Perf log
@@ -44,34 +44,36 @@ a ~6.7× per-resonator speedup, which is why the projected 2.9× breach never ha
 
 ## ► NEXT
 
-**M9.2 — Duplex / aliquot scale (treble shimmer).** The next unchecked M9 item. Real pianos
-have short un-struck string segments (front/rear duplex) tuned to upper partials of the speaking
-string; they ring **sympathetically** through the shared bridge and add a high, airy shimmer,
-strongest in the treble. Model as a small bank of high-Q `StringResonator`s per voice (reuse the
-primitive — rule 1; the same pattern `LongitudinalBank` used), tuned to aliquot frequencies
-(upper partials), driven by the string's own motion / bridge coupling — **never by the hammer
-directly** — and **treble-weighted** (the opposite register bias to §12.4's longitudinal bank).
-Keep it honest: these are real tuned segments driven sympathetically, not synthetic partials at
-hand-picked frequencies (the distinction `REQ-piano-15`'s amendment insisted on). Needs its own
-`REQ-piano-19` (a gap, like M8 — no requirement covers duplex yet); no conflict.
+**M9.4 — Una corda done properly.** Two M9 items remain (either order); take una corda next as
+it clears the project's last still-pending requirement conflict. Real mechanism: the shift pedal
+moves the hammer to strike a **subset** of the unison strings (2 of 3, or 1 of 2); the un-struck
+string is then driven **only through the bridge** (sympathetically), adding a soft halo and a
+subtly different decay. Single-strung bass (§11.5) can't lose a string — there the una-corda
+change is just the softer (unworn-felt) contact.
 
-Then the last two, in any order:
-- **M9.3 — Stulov felt hysteresis** (replaces README §6's load/unload stiffness asymmetry with a
-  rate/history-dependent relaxation kernel). ⚠️ **Highest regression risk in M9** — it rewrites
-  the hammer contact, so it must re-pass M6's energy-conservation guard (all 88 keys × 4
-  velocities, `E_string/E_hammer` bounded) and M3's contact-duration criteria.
-- **M9.4 — Una corda done properly** (strike a *subset* of the unison strings; the un-struck
-  string driven only through the bridge). ⚠️ **Amend `REQ-piano-16` FIRST** — it currently
-  specifies the gain-reduction *approximation* this replaces (rule 5: amend before coding). The
-  reduced-gain `kUnaCordaGain` should then *emerge* from driving fewer strings and be deleted, as
-  `voicingGain`/`registerGain` were once their real physics arrived.
+⚠️ **Amend `REQ-piano-16` FIRST** — it currently mandates the gain-reduction *approximation*
+(`kUnaCordaGain = 0.6` + softer `kUnaCordaStiffness`), which the real subset mechanism replaces
+(rule 5: amend before coding, with reason + date). Then `kUnaCordaGain` should be **deleted** —
+the level drop must *emerge* from driving fewer strings, the way `voicingGain`/`registerGain`
+were removed once their real physics arrived. Keep `kUnaCordaStiffness` (the shifted hammer really
+does present softer felt — that part is physical). Implementation lives in `PianoVoice::generate()`
+(drive only the struck subset with the hammer; let the un-struck string(s) receive only the §8
+bridge feedback). Acceptance: an una-corda note is measurably softer/mellower AND the un-struck
+string still shows sympathetic energy at the note's pitch (difference the struck-subset render vs
+a normal render). Watch the §5/§6 contact physics and the M6 energy guard.
 
-**M9.1 done** (no dampers in the top octaves — see checklist). M4–M8 are colours on a model
-already qualitatively a piano at M3; **the plan flagged this as the point where listening beats
-measuring** (M6's verification note). Worth offering the user a fresh render now, or after M9.
+**M9.3 — Stulov felt hysteresis** (the other remaining item; do after, or in a later session).
+Replaces README §6's load/unload stiffness asymmetry with a rate/history-dependent relaxation
+kernel. ⚠️ **Highest regression risk in M9** — it rewrites the hammer contact, so it must re-pass
+M6's energy-conservation guard (all 88 keys × 4 velocities, `E_string/E_hammer` bounded) and M3's
+contact-duration criteria.
 
-Budget headroom on this machine: **11.65× RT**, 2.9× above the gate. Remaining items: duplex adds
-a few resonators per treble voice; Stulov is a per-sample felt-state update; una corda is free.
+**M9.1 + M9.2 done** (no top-octave dampers; duplex shimmer — see checklist). M4–M9 are colours
+on a model already qualitatively a piano at M3; **the plan flagged this as the point where
+listening beats measuring** (M6's verification note) — worth offering the user a fresh render.
+
+Budget headroom on this machine: **11.56× RT**, 2.9× above the gate. Una corda is free (no new
+resonators — it redistributes the hammer drive); Stulov is a per-sample felt-state update.
 
 ---
 
@@ -334,7 +336,16 @@ some acceptance criterion could not be verified here (see Verification notes).
       **1.00× held** (release is a no-op), C6 damped tail 0.6× (damper still works below cutoff);
       the `isSilent()` freeze correctly never fires on an undamped voice (README ## 7.1). 100 %
       coverage held; bench **11.65× RT** (item is off the hot path — `noteOff` isn't benchmarked)
-- [ ] Duplex / aliquot scale
+- [x] **M9.2 — Duplex / aliquot scale (treble shimmer).** New per-voice `DuplexBank` (reuses
+      `StringResonator`, rule 1) — high-Q segments tuned to the aliquot harmonics `n·f0`,
+      `n ∈ {4,6,8}`, driven **feed-forward** by the speaking string's transverse motion (never the
+      hammer, never fed back into the bridge → no loop), treble-weighted (`(f0/C5)^1.5`, off below
+      ~A3). README `## 8.1`; `REQ-piano-19` added (a gap). Verified end-to-end (difference two
+      renders): C6 shimmer **−33 dB** rel note, energy **at 4·f0** (≥3× an off-aliquot bin), and it
+      **sustains 5× longer** than the bridge-damped speaking partial there; a bass note has **zero**
+      duplex (gated off). tanh limiter re-checked (per the standing caution — duplex raises treble
+      per-voice level): engagement **0.148 %, identical duplex on/off**, peak +0.2 % — no regression.
+      100 % coverage on all **seven** `physical/` sources; bench **11.56× RT** (median 11.44×)
 - [ ] Stulov felt hysteresis (replaces README §6's load/unload simplification)
 - [ ] Una corda proper — **amends `REQ-piano-16`**
 - [ ] Re-run M0 benchmark, record
@@ -345,6 +356,30 @@ some acceptance criterion could not be verified here (see Verification notes).
 
 _(newest first — record anything that departs from the plan, or resolves an open choice, so
 it is never re-litigated)_
+
+- **2026-07-27 (M9.2) — the duplex is a feed-forward read-out, deliberately NOT in the bridge
+  loop.** The obvious place to add the duplex output is into `stringSum` before
+  `mBridge->accumulate()`, next to the longitudinal add — but that would put the aliquot
+  resonators inside the string→bridge→string feedback network (duplex → bridge → string → duplex),
+  a new loop needing its own stability calibration. The duplex is physically a *driven segment*,
+  not a coupled oscillator in that network, so it is computed from the transverse motion and added
+  to the **audio only** (`(stringSum + duplex)·kVelocityToSignal`), leaving the bridge bus seeing
+  string+longitudinal exactly as before M9.2. No loop, no re-tune, and every pre-M9.2 criterion
+  (sympathetic 724×, etc.) unmoved. The real duplex does load the bridge slightly; that
+  back-coupling is below the §8 path and documented out of scope (README ## 8.1).
+- **2026-07-27 (M9.2) — tune the aliquot to the HARMONIC n·f0, not the string's inharmonic f_n,
+  and the mistune IS the effect.** The duplex is a separate short segment; its pitch is set by its
+  own geometry, so it lands a few cents off the speaking string's stiff partial `n·f0·√(1+Bn²)`.
+  That offset produces a slow beat between the pure, long-ringing duplex resonance and the stiffer,
+  faster-decaying string partial — which is exactly the shimmer. Tuning it to `f_n` (perfectly
+  aligned) would have removed the beat and made it a plain reinforcement. The measurable signature
+  is the sustain: the aliquot bin decays **5× slower** with the duplex than the bare string partial
+  does — that longer ring, not extra attack level, is what reads as shimmer.
+- **2026-07-27 (M9.2) — `κ_dup` is ~5 orders larger than the tension `κ`, and that is not a
+  smell.** Calibrated to 90 (vs M8's 8e-3) because it multiplies a *sustained-normalised*
+  resonator's drive (small per-sample gain `G=(1−r²)sinθ`, ~1e-4 at high f), where M8's `κ`
+  multiplied a squared amplitude. Different normalisation, different natural scale; the shipped
+  level is −33 dB (C6) to −27 dB (C5) below the note — a shimmer, verified not a second voice.
 
 - **2026-07-27 (M8) — the ledger's "tap M7's DC tracker, it may be nearly free" framing is
   right about the QUANTITY and wrong about the FILTER.** M8's driving signal genuinely is the DC
@@ -606,6 +641,17 @@ it is never re-litigated)_
 
 _(anything marked `[!]` — what could not be checked here and why)_
 
+- **M9.2** — fully verified; nothing marked `[!]`. The treble now **shimmers**: a C6 carries a
+  −33 dB aliquot halo at 4·f0 that outlasts the string's own partial there by 5×, and the bass has
+  none. Two honest points. (1) **`κ_dup` is calibrated, not derived** (like §12.2's `κ`) — set
+  against a subtle −27…−33 dB shimmer level, not computed from segment geometry. (2) **The duplex
+  does not load the bridge back** — it is a feed-forward read-out (see decisions log); a real
+  duplex couples weakly into the bridge, below the §8 sympathetic path, and that back-coupling is
+  out of scope. The tanh limiter was re-checked per the standing caution and is unmoved
+  (0.148 % engagement, identical duplex on/off).
+- **M9.1** — fully verified; nothing marked `[!]`. Top-octave notes ring through `noteOff`
+  (C7 released tail = 1.00× held) while the damped majority is unchanged. No listener needed —
+  it is a decay-rate measurement.
 - **M8** — fully verified; nothing marked `[!]`. The note now **starts sharp**: a C2 fortissimo
   reaches 2.77 cents sharp within the first 50 ms and glides down to nominal, a pianissimo barely
   0.12 c, and the treble does not glide at all — all confirmed both by exact `pitchModulation()`

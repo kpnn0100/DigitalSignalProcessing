@@ -176,6 +176,16 @@ silently reintroduced as bugs or silently promised as done)
   the glide *emerge* from the tension–amplitude physics, never from a scripted pitch envelope.
   Added 2026-07-27 (M8) — no requirement previously covered it (rule 5 requires a written
   requirement before the work; there is no conflict, only a gap).
+- `REQ-piano-19` — **Duplex / aliquot scale (treble shimmer).** The short, un-struck string
+  segments beyond the bridge (front/rear duplex), tuned on the treble so their pitch coincides
+  with an upper partial of the speaking string, must ring **sympathetically** — driven by the
+  speaking string through the shared bridge, never struck directly — and add a high, sustained
+  shimmer that (a) carries energy at the tuned aliquot frequencies, (b) **sustains past** the
+  bridge-damped speaking partial at that frequency (higher `Q`), and (c) is present in the treble
+  and negligible in the bass. **Source:** `docs/piano-physics-plan.md` §M9.2. Like the
+  longitudinal/tension mechanisms it must *emerge* from a driven resonant segment, not be
+  painted on as synthetic partials at hand-picked frequencies. Added 2026-07-27 (M9.2) — no
+  requirement previously covered it (a gap, not a conflict).
 
 ### Performance
 

@@ -301,6 +301,25 @@ static std::vector<double> renderPianoNoDamper(double heldFlag)
     return out;
 }
 
+// M9.2 acceptance (README ## 8.1): the duplex/aliquot shimmer. C6 (1046 Hz, treble)
+// held with the damper lifted; onFlag > 0.5 runs the duplex, else disables it. The
+// checker differences the two to isolate the shimmer (## 12.2's lesson).
+static std::vector<double> renderPianoDuplex(double onFlag)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    PianoVoice v;
+    v.setFrequency(1046.5); // C6
+    v.setDamperHeld(true);
+    if (onFlag <= 0.5)
+        v.setDuplexDriveGain(0.0); // the reference render
+    v.noteOn(0.9);
+    const int n = (int)(0.8 * kSampleRate);
+    std::vector<double> out(n);
+    for (int i = 0; i < n; ++i) out[i] = v.out(0.0, 0);
+    return out;
+}
+
 static std::vector<double> renderPianoSympathetic(double whichFlag)
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -507,6 +526,7 @@ int main(int argc, char **argv)
     else if (scenario == "piano") samples = renderPiano(arg);
     else if (scenario == "pianodamper") samples = renderPianoDamper(arg);
     else if (scenario == "pianonodamper") samples = renderPianoNoDamper(arg);
+    else if (scenario == "pianoduplex") samples = renderPianoDuplex(arg);
     else if (scenario == "pianoreuse") samples = renderPianoReuse();
     else if (scenario == "pianospectral") samples = renderPianoSpectral();
     else if (scenario == "pianodoubledecay") samples = renderPianoDoubleDecay();

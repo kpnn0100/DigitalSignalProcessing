@@ -805,6 +805,68 @@ TEST(PianoVoice_sustain_pedal_defers_damper)
     for (int i = 0; i < 2000; ++i) { Sample s = v.out(0.0, 0); CHECK(!std::isnan(s)); }
 }
 
+// README ## 8.1 duplex bank: the register/aliquot laws, the Nyquist guard, and the
+// process() bypass branches (wrong channel, inactive bank, disabled drive).
+TEST(DuplexBank_laws_and_edges)
+{
+    resetConfig(1);
+
+    // Register law: off in the bass (< the audible-gain floor), full by C5.
+    CHECK(DuplexBank::registerGainFor(110.0) < 0.28);       // A2, inactive
+    CHECK_NEAR(DuplexBank::registerGainFor(523.25), 1.0, 1e-9); // C5, full
+    CHECK_NEAR(DuplexBank::registerGainFor(2093.0), 1.0, 1e-9); // C7, clamped to 1
+    CHECK(DuplexBank::registerGainFor(0.0) < 0.28);         // f0<1 guard, still inactive
+
+    // Aliquot tuning: n*f0 for valid indices, 0 out of range and for f0<1.
+    CHECK_NEAR(DuplexBank::aliquotHz(500.0, 0), 2000.0, 1e-9); // n=4
+    CHECK_NEAR(DuplexBank::aliquotHz(500.0, 1), 3000.0, 1e-9); // n=6
+    CHECK(DuplexBank::aliquotHz(500.0, -1) == 0.0);
+    CHECK(DuplexBank::aliquotHz(500.0, 99) == 0.0);
+    CHECK(DuplexBank::aliquotHz(0.0, 0) > 0.0);               // f0<1 clamped to 1 -> n*1
+
+    // Inactive in the bass: no segments run, process() returns 0.
+    {
+        DuplexBank bank;
+        bank.setFundamentalHz(110.0);
+        CHECK(!bank.isActive());
+        CHECK(bank.activeStringCount() == 0);
+        CHECK(bank.out(1.0, 0) == 0.0);
+    }
+
+    // Active in the treble: segments run, and the wrong-channel / driveGain=0 bypasses.
+    {
+        DuplexBank bank;
+        bank.setFundamentalHz(1046.5); // C6
+        CHECK(bank.isActive());
+        CHECK(bank.activeStringCount() > 0);
+        CHECK(bank.out(1.0, 1) == 0.0);       // channel != 0 bypass
+        bank.setDriveGain(0.0);
+        double s = 0.0;
+        for (int i = 0; i < 64; ++i) s += std::fabs((double)bank.out(1.0, 0));
+        CHECK(s == 0.0);                      // drive 0 -> silent even though active
+    }
+
+    // Nyquist guard: for a high enough note the top aliquot (8*f0) exceeds 0.45*fs and
+    // is skipped, so fewer than kMaxStrings segments run (covers the `continue`).
+    {
+        DuplexBank bank;
+        bank.setFundamentalHz(2800.0); // 8*2800 = 22400 > 0.45*48000 = 21600
+        CHECK(bank.isActive());
+        CHECK(bank.activeStringCount() < DuplexBank::kMaxStrings);
+        CHECK(bank.activeStringCount() >= 1);
+    }
+
+    // reset() clears history without disturbing configuration.
+    {
+        DuplexBank bank;
+        bank.setFundamentalHz(1046.5);
+        bank.setDriveGain(50.0);
+        for (int i = 0; i < 100; ++i) bank.out((i == 0) ? 1.0 : 0.0, 0);
+        bank.reset();
+        CHECK(bank.out(0.0, 0) == 0.0); // history zeroed -> silent with no drive
+    }
+}
+
 // README ## 12.5 tension modulation at the bank level: the enabled path, the
 // decimated re-tune, and both stability clamps. Driving a bank hard builds a real
 // slope-energy envelope, so pitchModulation() moves; an absurd kappa_t drives delta

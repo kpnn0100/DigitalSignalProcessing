@@ -654,6 +654,52 @@ string keeps accepting bridge energy at full strength while supposedly being sil
 channel identically. Stereo width, if ever added, belongs here (the way `Reverb` decorrelates
 per-channel delay lines for width) — not in per-voice hammer/string physics.
 
+#### 8.1 Duplex / aliquot scale — the treble shimmer (M9.2)
+
+Beyond each bridge pin a real grand leaves a **short, un-struck string segment** free to
+vibrate — the front and rear *duplex*. On the treble it is deliberately tuned (the **aliquot
+scale**) so its pitch coincides with an upper partial of the speaking string; it is never hit,
+but the speaking string drives it **sympathetically** through the shared bridge, and it rings
+back a high, sustained shimmer that reinforces those partials. It is a treble effect — the
+segments are short and bright, and the bass has no functional duplex.
+
+Modelled as a small per-voice bank of high-`Q` `StringResonator`s (rule 1 — reuse the primitive,
+the same pattern `LongitudinalBank` used), tuned to harmonics `n·f0` of the note:
+
+```
+f_alq,i      = n_i · f0 ,     n_i ∈ {4, 6, 8}   (upper partials, in the ~2–8 kHz brilliance band)
+duplex[n]    = g_dup(f0) · Σ_i w_i · Resonator(f_alq,i, T60_dup)[ stringSum[n] ]
+```
+
+Three deliberate choices, each with a reason:
+
+- **Driven by the speaking string's own motion `stringSum`, feed-forward — never by the hammer,
+  and not fed back into the strings.** The duplex is excited only by what the speaking string
+  puts across the bridge, so `stringSum` (§5, the transverse sum before the §12 longitudinal add)
+  is the physically correct drive. It is *not* routed back into the bridge bus or the string
+  drive, so it cannot form a feedback loop — it is a resonant *read-out* of the string, not a
+  new term in the coupled network. (A documented simplification: a real duplex does load the
+  bridge slightly; that back-coupling is below the level of the §8 sympathetic path and out of
+  scope here.)
+- **Tuned to the *harmonic* `n·f0`, not the string's inharmonic `f_n = n·f0·√(1+Bn²)` (§2).** The
+  duplex is a separate short segment whose pitch is set by *its* geometry, not the speaking
+  string's stiffness, so it lands a few cents off the string's own partial — exactly as a real
+  aliquot does. That small offset is the shimmer: a slow beat between the pure, long-ringing
+  duplex resonance and the stiffer, faster-decaying string partial at nearly the same frequency.
+- **High `Q` and treble-weighted.** `T60_dup` is long (the segment is undamped), so the duplex
+  *sustains past* the bridge-damped speaking partial — which is why it reads as an airy tail, not
+  just a louder attack. `g_dup(f0)` rises from ~0 in the bass to 1 in the treble and switches the
+  bank **off** below a crossover, so the bass pays nothing (the same off-below-a-crossover economy
+  §12.4 uses, with the opposite register sign):
+
+```
+g_dup(f0) = clamp( (f0/f_cross)^1.5,  0,  1 ) ,     f_cross ≈ C4 ;  off below ~A3
+```
+
+The effect is provable by differencing a duplex-on and duplex-off render (§12.2's lesson): the
+remainder carries energy at `n·f0` that **decays more slowly** than the same bin without the
+duplex — the sustained shimmer — and it is present in the treble and absent in the bass.
+
 ### 9. Pedals
 
 - **Sustain** (`PianoEngine::setSustainPedal(bool)` → broadcasts `setDamperHeld(true/false)`

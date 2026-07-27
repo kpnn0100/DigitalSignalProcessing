@@ -18,6 +18,7 @@
 #include "HammerExciter.h"
 #include "PianoBridge.h"
 #include "LongitudinalBank.h"
+#include "DuplexBank.h"
 #include "../equalizer/LowPassFilter.h"
 #include <array>
 #include <cstdint>
@@ -67,6 +68,10 @@ namespace arstro
         // an override of the §12.5 register default, like the other §11/§12 laws.
         void setTensionModulation(Sample kappaT);
         const LongitudinalBank &longitudinal() const { return mLongitudinal; }
+        // README ## 8.1: duplex/aliquot shimmer drive scale (0 disables the stage,
+        // useful for isolating it by differencing two renders).
+        void setDuplexDriveGain(Sample kappa);
+        const DuplexBank &duplex() const { return mDuplex; }
         // Introspection for tests: the first unison bank's current glide state.
         Sample pitchModulation() const { return mStrings[0].pitchModulation(); }
         void setDamperEngageMs(Sample ms);
@@ -117,6 +122,9 @@ namespace arstro
         // are within a cent of each other and the hammer already drives them from
         // their mean displacement (## 6).
         LongitudinalBank mLongitudinal;
+        // README ## 8.1: one duplex bank per voice — the aliquot segments belong to
+        // this note's strings. Treble-weighted, off in the bass.
+        DuplexBank mDuplex;
         LowPassFilter mThumpFilter;
         LowPassFilter mDamperNoiseFilter;
         PianoBridge *mBridge = nullptr;

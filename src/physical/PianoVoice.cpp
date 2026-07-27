@@ -148,6 +148,7 @@ namespace arstro
         if (!mUnisonOverridden)
             mUnisonCount = defaultUnisonCount(f0);
         mLongitudinal.setFundamentalHz(f0); // README ## 12: mode set + register gain
+        mDuplex.setFundamentalHz(f0);        // README ## 8.1: aliquot tuning + treble gain
         if (!mHammerMassOverridden)
             mHammer.setMass(defaultHammerMass(f0));
         if (!mHammerStiffnessOverridden)
@@ -223,6 +224,8 @@ namespace arstro
 
     void PianoVoice::setTensionCoupling(Sample kappa) { mLongitudinal.setTensionCoupling(kappa); }
 
+    void PianoVoice::setDuplexDriveGain(Sample kappa) { mDuplex.setDriveGain(kappa); }
+
     void PianoVoice::setTensionModulation(Sample kappaT)
     {
         mTensionModOverridden = true; // stop setFrequency() reapplying README ## 12.5
@@ -279,6 +282,7 @@ namespace arstro
         for (int k = 0; k < kMaxUnison; ++k)
             mStrings[k].reset();
         mLongitudinal.reset(); // same voice-steal reasoning (README ## 12)
+        mDuplex.reset();       // README ## 8.1
         mOutputEnvelope = 0.0; // a struck voice is not silent (README ## 13)
     }
 
@@ -364,8 +368,15 @@ namespace arstro
         // The nonlinearity puts energy at 2*f_i and f_i +/- f_j, where the
         // transverse series has no partial at all. The bank switches itself off
         // above the ## 12.4 crossover, so the treble pays nothing for it.
-        const Sample longitudinal = mLongitudinal.out(stringSum, 0);
+        const Sample transverse = stringSum; // the speaking string's motion, pre-longitudinal
+        const Sample longitudinal = mLongitudinal.out(transverse, 0);
         stringSum += longitudinal;
+
+        // M9.2 (README ## 8.1): the duplex/aliquot segments ring sympathetically off
+        // the speaking string's transverse motion and add a treble shimmer. Driven
+        // feed-forward and radiated ONLY — deliberately NOT summed into stringSum
+        // before the bridge accumulate below, so it cannot form a bridge feedback loop.
+        const Sample duplex = mDuplex.out(transverse, 0);
 
         Sample noise = 0.0;
         if (mThumpAmp > 1e-6)
@@ -380,9 +391,9 @@ namespace arstro
         }
 
         if (mBridge)
-            mBridge->accumulate(stringSum);
+            mBridge->accumulate(stringSum); // README ## 8.1: bridge sees string+longitudinal, not duplex
 
-        mLastSample = arstroFlush(stringSum * kVelocityToSignal + noise);
+        mLastSample = arstroFlush((stringSum + duplex) * kVelocityToSignal + noise);
 
         // Peak follower for isSilent() (README ## 13).
         const Sample mag = std::fabs(mLastSample);
