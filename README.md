@@ -135,7 +135,8 @@ By following these guidelines, you can contribute effectively to the Arstro DSP 
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [GNU Lesser General Public License v2.1](LICENSE).
+Releases published before the relicensing remain available under the MIT License.
 
 ## Disclaimer
 

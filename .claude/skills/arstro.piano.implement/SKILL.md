@@ -30,9 +30,12 @@ The repo is self-contained; nothing below is needed to *implement* a milestone, 
 test and **listen**. Milestone work is verified numerically and headless, so a machine with no
 audio device can still do every step of the loop except the final listening check.
 
-Only two submodules matter here: **`DigitalSignalProcessing`** (all the physics) and
-**`Artboard`** (only for the playable UI). `ImageProcessing/lib/LibRaw` is a large, unrelated
-submodule — skip it. Work happens on branch **`feature/1.0.0`** in the umbrella *and* in the
+Only two of the umbrella's core libraries matter here: **`core/DigitalSignalProcessing`**
+(all the physics, i.e. THIS repo) and **`core/Artboard`** (only for the playable UI).
+`core/ImageProcessing/lib/LibRaw` is a large, unrelated submodule — skip it. Note the umbrella
+is laid out as `arstro/core/` (libraries) + `arstro/apps/` (applications) + `arstro/examples/`
+(demos, including `examples/piano`); paths below are relative to THIS repo's root unless they
+start with `examples/`, and this repo's own `apps/piano_demo` is unrelated to `arstro/apps/`. Work happens on branch **`feature/1.0.0`** in the umbrella *and* in the
 submodules; a fresh clone can land on a detached HEAD, which will lose commits.
 
 ```bash

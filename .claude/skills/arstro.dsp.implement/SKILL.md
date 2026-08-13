@@ -10,6 +10,13 @@ Skipping a rule is the bug — do not reorder or shortcut them.
 
 ## 0. Orient (facts about this repo)
 
+- **Where this repo sits.** This is `arstro/core/DigitalSignalProcessing/` in the umbrella
+  repo. The Arstro core libraries live under `arstro/core/` (`core/Artboard/`,
+  `core/DigitalSignalProcessing/`, `core/ImageProcessing/`); the applications that consume them
+  live under `arstro/apps/` (`apps/cosmo`, `apps/genesis`, `apps/pulsar`, `apps/launcher`, plus
+  spec-stage `apps/solaris`, `apps/interstellar`); small demos stay at `arstro/examples/`. Every
+  path below is relative to THIS repo's root, not the umbrella's — this repo's own `apps/`
+  (`apps/wav_demo`, `apps/piano_demo`) is a DSP demo folder, unrelated to `arstro/apps/`.
 - **Layout.** Sources under `src/` (`base`, `simpleProcessor`, `functional`, `generator`,
   `envelope`, `equalizer`, `effects`, `reverb`, `synth`, `output`). Aggregate header
   `src/synth_dsp.h` is the buildable, tested surface — `src/spatial/`, `src/util/`, and
