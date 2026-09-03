@@ -171,8 +171,11 @@ git branch --show-current   # must print "experimental" — if not, stop, do not
 - Commit with a message describing what module was added/changed and which requirement ID it
   satisfies, same bar as `arstro.dsp.implement`. Do not commit with failing tests, missing
   `## Math` docs, or an unresolved requirement conflict.
-- Do not push, merge, or fast-forward `main` from `experimental` as part of this skill —
-  promoting experimental work to `main` is a separate, explicit decision for the user.
+- **Pull and push `experimental`** once the tests pass (`arstro.rule` §7) — experimental work that
+  exists on one machine is not experimental, it is lost. Push the branch you are on and no other.
+- **Never push, merge, or fast-forward `main` from `experimental`** — promoting experimental work to
+  `main` is a separate, explicit decision for the user. This is the branch exemption `arstro.rule`
+  §7 names: the push rule says push *the branch this skill commits to*, which here is not `main`.
 
 ## Definition of done
 
