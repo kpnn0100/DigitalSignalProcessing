@@ -5,6 +5,13 @@ description: Use to advance (or resume, in any session or on a freshly cloned ma
 
 # arstro.piano.implement
 
+> **Invoke `arstro.rule` first.** It carries the suite-wide rules this skill builds on:
+> requirements-first and the conflict rule, the V-model doc-sync loop, the agent-drivable surface,
+> and the ledger/defect/commit conventions. **Follow both; where they overlap, this file's
+> checklist is the one to satisfy.** If `arstro.rule` is not in your skill list you are in a
+> standalone checkout of this submodule — the rules still apply, and the copy of record is
+> `.claude/skills/arstro.rule/SKILL.md` in the arstro umbrella.
+
 The **resume-driven** workflow for the piano physics upgrade. All state lives in committed
 files, so any session can pick up exactly where the last one stopped.
 

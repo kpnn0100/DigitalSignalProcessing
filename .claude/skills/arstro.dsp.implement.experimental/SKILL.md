@@ -5,6 +5,13 @@ description: Same six-rule workflow as arstro.dsp.implement (read-first/inherit-
 
 # arstro.dsp.implement.experimental
 
+> **Invoke `arstro.rule` first.** It carries the suite-wide rules this skill builds on:
+> requirements-first and the conflict rule, the V-model doc-sync loop, the agent-drivable surface,
+> and the ledger/defect/commit conventions. **Follow both; where they overlap, this file's
+> checklist is the one to satisfy.** If `arstro.rule` is not in your skill list you are in a
+> standalone checkout of this submodule — the rules still apply, and the copy of record is
+> `.claude/skills/arstro.rule/SKILL.md` in the arstro umbrella.
+
 Identical rules to `arstro.dsp.implement`, with one difference: **the destination branch is
 `experimental`, never the branch you started on.** If you were invoked while on `main` (or any
 other branch), do not commit there under this skill — switch first.

@@ -5,6 +5,13 @@ description: Use when implementing, changing, or fixing a DSP module in the Arst
 
 # arstro.dsp.implement
 
+> **Invoke `arstro.rule` first.** It carries the suite-wide rules this skill builds on:
+> requirements-first and the conflict rule, the V-model doc-sync loop, the agent-drivable surface,
+> and the ledger/defect/commit conventions. **Follow both; where they overlap, this file's
+> checklist is the one to satisfy.** If `arstro.rule` is not in your skill list you are in a
+> standalone checkout of this submodule — the rules still apply, and the copy of record is
+> `.claude/skills/arstro.rule/SKILL.md` in the arstro umbrella.
+
 Six rules, applied in order, every time a DSP module is added or changed in this repo.
 Skipping a rule is the bug — do not reorder or shortcut them.
 
