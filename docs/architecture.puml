@@ -74,6 +74,9 @@ SignalGenerator --|> SignalProcessor
 
 ' ─────────────────────────── Modules ───────────────────────────
 package generator {
+  class Noise <<value type>> {
+    +setSeed(s) / next() : [-1,1)
+  }
   enum Waveform
   class Oscillator {
     +setWaveform(Waveform)
@@ -82,6 +85,9 @@ package generator {
 }
 package envelope {
   class ADSREnvelope
+  class DecayEnvelope <<value type>> {
+    +trigger(peak) / next() / choke(ms)
+  }
 }
 package simpleProcessor {
   class Gain
@@ -92,6 +98,21 @@ package equalizer {
   class LowPassFilter
   class HighPassFilterBase
   class HighPassFilter
+  class Biquad {
+    +design(type, hz, q, gainDb, fs) : Coeffs
+    +magnitudeDb(Coeffs, hz, fs)
+    -mZ1, mZ2 : per-channel TDF-II
+  }
+  class ParametricEQ {
+    +band(i) : Biquad&
+    +setBandEnabled(i, on)
+    +magnitudeDbAt(hz)
+  }
+  class StateVariableFilter {
+    +tick(in, ch, cutoffHz)
+    +qFor(resonance)
+    -mIc1, mIc2 : per-channel
+  }
 }
 package reverb {
   class Reverb {
@@ -182,6 +203,10 @@ LowPassFilterBase --|> SignalProcessor
 LowPassFilter --|> LowPassFilterBase
 HighPassFilterBase --|> SignalProcessor
 HighPassFilter --|> LowPassFilter
+Biquad --|> SignalProcessor
+ParametricEQ --|> Block
+ParametricEQ *--> "7" Biquad : bands, in series
+StateVariableFilter --|> SignalProcessor
 Reverb --|> SignalProcessor
 Compressor --|> SignalProcessor
 Overdrive --|> SignalProcessor

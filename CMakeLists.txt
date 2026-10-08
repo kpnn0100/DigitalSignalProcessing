@@ -21,7 +21,7 @@ target_link_libraries(arstro_dsp PUBLIC Threads::Threads)
 
 # ── Unit tests (dependency-free MiniTest harness) ──
 enable_testing()
-add_executable(synth_tests unittest/synthTests.cpp unittest/coverageTests.cpp)
+add_executable(synth_tests unittest/synthTests.cpp unittest/coverageTests.cpp unittest/filterTests.cpp)
 target_link_libraries(synth_tests PRIVATE arstro_dsp)
 add_test(NAME unit COMMAND synth_tests)
 

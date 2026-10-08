@@ -794,6 +794,68 @@ def check_parallel_render_is_identical(binpath):
     return f"serial == 1/3/7 workers, bit-identical over {len(ref)} samples"
 
 
+# ───────────────────────── D1 primitives ─────────────────────────
+
+def _rbj_mag_db(kind, f0, q, gain_db, f, fs=SR):
+    """The RBJ cookbook response, computed here independently of the C++ (REQ-eq-1)."""
+    w0 = 2 * math.pi * f0 / fs
+    cw, sw = math.cos(w0), math.sin(w0)
+    alpha = sw / (2 * q)
+    A = 10 ** (gain_db / 40)
+    if kind == "peak":
+        b = [1 + alpha * A, -2 * cw, 1 - alpha * A]
+        a = [1 + alpha / A, -2 * cw, 1 - alpha / A]
+    elif kind == "lowpass":
+        b = [(1 - cw) / 2, 1 - cw, (1 - cw) / 2]
+        a = [1 + alpha, -2 * cw, 1 - alpha]
+    w = 2 * math.pi * f / fs
+    z1, z2 = complex(math.cos(-w), math.sin(-w)), complex(math.cos(-2 * w), math.sin(-2 * w))
+    h = (b[0] + b[1] * z1 + b[2] * z2) / (a[0] + a[1] * z1 + a[2] * z2)
+    return 20 * math.log10(abs(h))
+
+
+def check_parametric_eq_matches_rbj(binpath):
+    """ParametricEQ's measured gain at five frequencies = the RBJ formulas, to 0.1 dB."""
+    worst = 0.0
+    for f in (125.0, 700.0, 1000.0, 2500.0, 15000.0):
+        y = render(binpath, "peq", f)[48000:]
+        measured = 20 * math.log10(rms(y) / (0.5 / math.sqrt(2)))
+        expected = _rbj_mag_db("peak", 1000.0, 1.0, 6.0, f) + _rbj_mag_db("lowpass", 12000.0, 0.7071, 0.0, f)
+        worst = max(worst, abs(measured - expected))
+        if abs(measured - expected) > 0.1:
+            raise Failure(f"peq @{f} Hz: measured {measured:.3f} dB, RBJ says {expected:.3f} dB")
+    return f"worst deviation {worst:.3f} dB over 5 frequencies"
+
+
+def check_svf_matches_bilinear_prototype(binpath):
+    """The TPT SVF low-pass = the bilinear transform of 1/(s^2 + k s + 1), prewarped at fc (REQ-svf-1)."""
+    fc, fs = 1000.0, SR
+    q = 0.70710678 * 2 ** (5.5 * 0.5)
+    k = 1.0 / q
+    worst = 0.0
+    for f in (200.0, 1000.0, 3000.0, 9000.0):
+        y = render(binpath, "svf", f)[48000:]
+        measured = 20 * math.log10(rms(y) / (0.1 / math.sqrt(2)))
+        wa = math.tan(math.pi * f / fs) / math.tan(math.pi * fc / fs)
+        expected = -10 * math.log10((1 - wa * wa) ** 2 + (k * wa) ** 2)
+        worst = max(worst, abs(measured - expected))
+        if abs(measured - expected) > 0.15:
+            raise Failure(f"svf @{f} Hz: measured {measured:.3f} dB, prototype says {expected:.3f} dB")
+    return f"worst deviation {worst:.3f} dB over 4 frequencies (resonant peak {20*math.log10(q):.1f} dB)"
+
+
+def check_decay_envelope_slope(binpath):
+    """Noise x DecayEnvelope(200 ms): the windowed RMS falls 60 dB per 200 ms (REQ-decay-1)."""
+    y = render(binpath, "noisedecay")
+    win = 480  # 10 ms
+    def level(i):
+        return 20 * math.log10(rms(y[i * win:(i + 1) * win]))
+    slope = (level(16) - level(2)) / (14 * 0.010)   # dB per second between 25 ms and 165 ms
+    if abs(slope - (-300.0)) > 15.0:
+        raise Failure(f"decay slope {slope:.1f} dB/s, expected -300 dB/s (60 dB per 200 ms)")
+    return f"slope {slope:.1f} dB/s"
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -818,6 +880,9 @@ CHECKS = [
     ("piano_phantom_partials", check_piano_phantom_partials),
     ("piano_pitch_glide", check_pitch_glide),
     ("parallel_render_is_identical", check_parallel_render_is_identical),
+    ("parametric_eq_matches_rbj", check_parametric_eq_matches_rbj),
+    ("svf_matches_bilinear_prototype", check_svf_matches_bilinear_prototype),
+    ("decay_envelope_slope", check_decay_envelope_slope),
 ]
 
 

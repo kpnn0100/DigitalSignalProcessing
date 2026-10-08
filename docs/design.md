@@ -20,8 +20,8 @@ the verified build here.
 | Core | `base/SignalProcessor` | Per-sample dispatch `process(in, ch)` + smoothing schedule. |
 | Params | `base/SmoothedParameter`, `ParameterSet` | Click-free parameter ramps (extracted from the core for SRP). |
 | Composites | `base/Block`, `FeedbackBlock` | Per-channel chains; serial/parallel routing; feedback. |
-| Sources | `base/SignalGenerator` → `generator/Oscillator` | Enveloped sound sources (own their ADSR). |
-| Modules | `simpleProcessor/`, `equalizer/`, `reverb/`, `effects/`, `envelope/` | Concrete processors. |
+| Sources | `base/SignalGenerator` → `generator/Oscillator`; `generator/Noise` | Enveloped sound sources (own their ADSR); seeded noise as a plain primitive. |
+| Modules | `simpleProcessor/`, `equalizer/`, `reverb/`, `effects/`, `envelope/` | Concrete processors — incl. `equalizer/Biquad` + `ParametricEQ` (RBJ EQ), `equalizer/StateVariableFilter` (resonant, per-sample sweepable), `envelope/DecayEnvelope` (struck-sound T60 envelope). See [`../src/equalizer/README.md`](../src/equalizer/README.md). |
 | Physical modeling | `physical/` | Struck-string synthesis (piano): modal resonators, nonlinear hammer contact, shared bridge/sympathetic coupling. See [`../src/physical/README.md`](../src/physical/README.md) for the full math. Not sample playback. |
 | Engine | `synth/SynthEngine`, `VoiceManager`, `Voice` | Polyphony → shared effects → output. |
 | Compute | `compute/` | Block-grain work scheduling: `ParallelExecutor` (interface) + `SerialExecutor` (default) + `ThreadPoolExecutor`, selected via `ComputeConfig`. No OS calls — built on the platform adapter. See [`parallel-architecture.md`](parallel-architecture.md). |

@@ -17,11 +17,16 @@
 #include "simpleProcessor/Gain.h"
 #include "equalizer/LowPassFilter.h"
 #include "equalizer/HighPassFilter.h"
+#include "equalizer/Biquad.h"
+#include "equalizer/ParametricEQ.h"
+#include "equalizer/StateVariableFilter.h"
 #include "reverb/Reverb.h"
 
 // Generators + envelope
 #include "envelope/ADSREnvelope.h"
 #include "generator/Oscillator.h"
+#include "generator/Noise.h"
+#include "envelope/DecayEnvelope.h"
 
 // Physical modeling (struck-string / piano) — see src/physical/README.md
 #include "physical/StringResonator.h"

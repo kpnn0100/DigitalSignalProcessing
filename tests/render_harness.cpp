@@ -30,6 +30,9 @@
  *    pianoreuse <out>     PianoVoice: strike C4, release (damper engages+settles),
  *                         then setFrequency(A4)+noteOn() on the SAME voice —
  *                         the exact voice-steal sequence PianoEngine uses
+ *    peq <out> <hz>       unit sine through a ParametricEQ (+6 dB @ 1 kHz, high cut 12 kHz), ×0.5
+ *    svf <out> <hz>       unit sine through a 1 kHz resonance-0.5 low-pass SVF, ×0.1
+ *    noisedecay <out>     seeded noise × DecayEnvelope(200 ms), peak 0.9
  *    pianosympathetic <out> <0|1>  Struck A3 (220Hz) + a silently-depressed voice
  *                         sharing one PianoBridge; arg=0 renders the SAME-pitch
  *                         silent voice, arg=1 the OFF-pitch (233.08Hz) one
@@ -534,6 +537,51 @@ static std::vector<double> renderBridgeImpulse()
     return out;
 }
 
+// ── D1 primitives (REQ-eq-*, REQ-svf-1, REQ-noise-1, REQ-decay-1) ─────────────────────────────
+
+// A unit sine at `hz` for 1.5 s through a ParametricEQ with Peak2 = +6 dB @ 1 kHz (Q 1) and the
+// high cut on at 12 kHz (Q 0.7071). Python compares the settled RMS gain with the RBJ closed form
+// it computes itself.
+static std::vector<double> renderPeq(double hz)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    ParametricEQ eq;
+    eq.band(ParametricEQ::Peak2).setGainDb(6.0);
+    eq.setBandEnabled(ParametricEQ::HighCut, true);
+    eq.band(ParametricEQ::HighCut).setFrequency(12000.0);
+    std::vector<double> y(72000);
+    for (size_t n = 0; n < y.size(); ++n)
+        y[n] = 0.5 * eq.out(std::sin(2 * M_PI * hz * n / kSampleRate), 0);
+    return y;
+}
+
+// A unit sine at `hz` through a low-pass StateVariableFilter at 1 kHz, resonance 0.5. Python
+// compares with the bilinear-transformed analog 2-pole low-pass it computes itself.
+static std::vector<double> renderSvf(double hz)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(1);
+    StateVariableFilter f(StateVariableFilter::LowPass, 1000.0, 0.5);
+    std::vector<double> y(72000);
+    for (size_t n = 0; n < y.size(); ++n)
+        y[n] = 0.1 * f.out(std::sin(2 * M_PI * hz * n / kSampleRate), 0); // ×0.1: the 4.76× resonant peak must not clip the 16-bit WAV
+    return y;
+}
+
+// Seeded noise under a DecayEnvelope (decay 200 ms): Python fits the slope of the windowed RMS.
+static std::vector<double> renderNoiseDecay()
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    Noise noise(42);
+    DecayEnvelope env;
+    env.setDecayMs(200.0);
+    env.trigger(0.9);
+    std::vector<double> y(kSampleRate / 2);
+    for (auto &v : y) v = noise.next() * env.next();
+    return y;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3)
@@ -575,6 +623,9 @@ int main(int argc, char **argv)
     else if (scenario == "pianosympathetic") samples = renderPianoSympathetic(arg);
     else if (scenario == "pianoregister") samples = renderPianoRegister(arg);
     else if (scenario == "pianophantom") samples = renderPianoPhantom(arg);
+    else if (scenario == "peq") samples = renderPeq(arg);
+    else if (scenario == "svf") samples = renderSvf(arg);
+    else if (scenario == "noisedecay") samples = renderNoiseDecay();
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

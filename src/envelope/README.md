@@ -82,3 +82,34 @@ separate envelope stage.
 
 - Should `noteOff` during Attack/Decay release **from the current instantaneous level**
   (smoothest, recommended) or snap to sustain first? Default: release from current level.
+
+---
+
+## DecayEnvelope (REQ-decay-1) — `envelope/DecayEnvelope.{h,cpp}`
+
+A struck sound's envelope: an optional short linear attack, then an exponential fall, no sustain,
+no note-off. Why not `ADSREnvelope` with sustain 0: the ADSR's stages are linear, and a drum is a
+damped resonance, which loses a fixed *fraction* of its amplitude per sample — a straight line in
+dB, not in amplitude. Composing an ADSR cannot produce that curve.
+
+### Math — `DecayEnvelope::trigger`, `next`, `choke`
+
+```
+(D1)  attack (if attackMs ≥ 1 sample):  e[n+1] = e[n] + (peak − e₀)/N_a,  N_a = attackMs·fs/1000
+                                        ; starts from the CURRENT level, so a retrigger never clicks to 0
+(D2)  decay:  e[n+1] = r · e[n],   r = 10^(−3/N_d),  N_d = decayMs·fs/1000
+              ⇒ e after decayMs = peak · 10⁻³  (−60 dB)          ; "decay" is a T60
+(D3)  finished when e < peak · 10⁻⁴ (−80 dB); then e = 0 exactly
+      choke(ms): from wherever it is, continue (D2) with N_d = ms·fs/1000
+```
+
+| parameter | symbol | unit |
+|---|---|---|
+| `setAttackMs` | N_a | ms (clamped ≥ 0) |
+| `setDecayMs` | N_d | ms to −60 dB (clamped ≥ 1) |
+| `trigger(peak)` | peak | 0..1 |
+
+Times become samples at `trigger()`, from `AudioConfig`, so a sample-rate change between hits is
+honoured. Verified: `DecayEnvelope_falls_60dB_in_its_decay_time` (−60.0 ± 0.05 dB at exactly
+250 ms) and the integration check `decay_envelope_slope` (windowed RMS of noise × envelope falls at
+−298.5 dB/s against the −300 the formula gives).

@@ -281,3 +281,30 @@ the measurements behind it: [`parallel-architecture.md`](parallel-architecture.m
   analysis, the attack/decay decomposition that would make it viable, and the verdict that this
   workload is latency-bound rather than throughput-bound. An untested backend is worse than none,
   because it looks like a feature.
+
+---
+
+## Solaris instruments & effects — D1: filters and primitives
+
+**Source for every entry below:** the user's request of 2026-10-08 for the Solaris DAW — *"make me
+some basic instruments: Drum Machine, Basic Synth with 2 OSC; and some basic filters: Compressor,
+EQ, Reverb, …; make sure all the core of those instruments and basic filters is in dsp"*
+(Solaris `R-DSP-1`, `R-INST`, `R-FX`, in `apps/solaris/REQUIREMENTS.md` of the umbrella).
+
+- `REQ-eq-1` — A `Biquad` implements the RBJ cookbook's seven shapes (low-pass, high-pass,
+  band-pass with 0 dB peak, notch, peaking, low shelf, high shelf) as one TDF-II section with
+  per-channel state; frequency, Q and gain are smoothed properties so a sweep does not click; its
+  closed-form magnitude response is available for curves and tests. Math: `src/equalizer/README.md`
+  (B1)–(B10).
+- `REQ-eq-2` — A `ParametricEQ` is seven switchable Biquad bands in series (low cut, low shelf,
+  three peaks, high shelf, high cut), **transparent when fresh** (every gain 0 dB, cuts off).
+  Composition only — no new math.
+- `REQ-svf-1` — A `StateVariableFilter` gives low-, band-, high-pass and notch from one TPT state,
+  resonance 0..1 mapped to Q 0.707..32, stable at full resonance; its response equals the
+  bilinear-prewarped analog prototype. Math: (S1)–(S6).
+- `REQ-svf-2` — The SVF can be swept every sample with a caller-supplied cutoff (`tick`), with no
+  property smoothing in the way — the synth's filter envelope and the drum voices need it.
+- `REQ-noise-1` — `Noise` is seeded, deterministic (same seed → same samples everywhere), uniform
+  on [−1, 1); no clock, no global state.
+- `REQ-decay-1` — `DecayEnvelope`: an optional linear attack from the current level, then an
+  exponential fall whose `decay` is the time to −60 dB; finished below −80 dB; can be choked.

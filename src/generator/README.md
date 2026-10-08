@@ -91,3 +91,28 @@ Voice (per note):
 2. **Unison shape:** dedicated `UnisonOscillator` class vs. a parallel `Block` of
    `Oscillator`s assembled by the `Voice`. (Leaning: dedicated class for a clean public
    parameter surface.)
+
+---
+
+## Noise (REQ-noise-1) — `generator/Noise.h`
+
+Seeded white noise for the drum voices and the synth's noise source. A **primitive**, not a
+`SignalGenerator`: a value type with `next()`, like a phase accumulator, so a voice owns one without
+inheriting an ADSR it would have to neutralise. Not composed from existing modules because none
+produces a random sequence.
+
+### Math
+
+```
+(N1)  x ← x ⊕ (x ≪ 13);  x ← x ⊕ (x ≫ 17);  x ← x ⊕ (x ≪ 5)     ; xorshift32 (Marsaglia), period 2³² − 1
+(N2)  out = (x ≫ 8) · 2/2²⁴ − 1                                  ; top 24 bits → uniform on [−1, 1)
+```
+
+| parameter | symbol | |
+|---|---|---|
+| `setSeed(s)` | x₀ | `0` is replaced by `0x9E3779B9` — a zero state would stay zero forever |
+
+Uniform on [−1, 1): mean 0, RMS 1/√3 ≈ 0.577 (asserted to ±0.005 over 200 000 samples in
+`Noise_is_deterministic_uniform_and_bounded`). **The same seed gives the same samples on every
+run and machine** — there is no clock and no shared generator, which is what lets a render that
+contains a snare be a pure function of its project.
