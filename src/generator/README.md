@@ -116,3 +116,18 @@ Uniform on [−1, 1): mean 0, RMS 1/√3 ≈ 0.577 (asserted to ±0.005 over 200
 `Noise_is_deterministic_uniform_and_bounded`). **The same seed gives the same samples on every
 run and machine** — there is no clock and no shared generator, which is what lets a render that
 contains a snare be a pure function of its project.
+
+---
+
+## Phasor (REQ-drum-1) — `generator/Phasor.h`
+
+A bare phase accumulator, the primitive under the drum voices. Not `Oscillator`, because a drum's
+pitch moves every sample and `Oscillator::setFrequency` recomputes every unison voice's increment on
+every channel with a `pow` each; a phasor takes its increment from the caller.
+
+### Math
+
+```
+(P1)  φ[n+1] = φ[n] + inc − ⌊φ[n] + inc⌋,   inc = f/fs          ; wrapped to [0,1) for any inc, negative too
+      sine   = sin(2π·φ)      square = (φ < ½) ? +1 : −1        ; NOT band-limited (see instrument/README.md)
+```

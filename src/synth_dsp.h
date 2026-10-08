@@ -26,6 +26,7 @@
 #include "envelope/ADSREnvelope.h"
 #include "generator/Oscillator.h"
 #include "generator/Noise.h"
+#include "generator/Phasor.h"
 #include "envelope/DecayEnvelope.h"
 
 // Physical modeling (struck-string / piano) — see src/physical/README.md
@@ -46,6 +47,11 @@
 #include "effects/Overdrive.h"
 #include "effects/Chorus.h"
 #include "effects/Repeater.h"
+
+// Instruments a host plays (Solaris) — see instrument/README.md
+#include "instrument/Instrument.h"
+#include "instrument/BasicSynth.h"
+#include "instrument/DrumMachine.h"
 
 // Output + engine
 #include "output/OutputBlock.h"

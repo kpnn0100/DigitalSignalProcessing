@@ -856,6 +856,41 @@ def check_decay_envelope_slope(binpath):
     return f"slope {slope:.1f} dB/s"
 
 
+# ───────────────────────── D2 instruments ─────────────────────────
+
+def _pitch(xs):
+    """Frequency from the first to the last rising zero crossing."""
+    ups = [i for i in range(1, len(xs)) if xs[i - 1] < 0.0 <= xs[i]]
+    return (len(ups) - 1) * SR / (ups[-1] - ups[0]) if len(ups) > 1 else 0.0
+
+
+def check_synth2_equal_temperament(binpath):
+    """BasicSynth plays 440·2^((n−69)/12), computed here (REQ-synth2-2)."""
+    worst = 0.0
+    for note in (45, 69, 81):
+        want = 440.0 * 2 ** ((note - 69) / 12)
+        got = _pitch(render(binpath, "synth2", note)[4800:])
+        cents = 1200 * math.log2(got / want)
+        worst = max(worst, abs(cents))
+        if abs(cents) > 1.0:
+            raise Failure(f"note {note}: {got:.2f} Hz, expected {want:.2f} Hz ({cents:+.2f} cents)")
+    return f"worst {worst:.3f} cents over 3 notes"
+
+
+def check_kick_settles_on_its_tuned_fundamental(binpath):
+    """The kick's pitch falls to 48·2^(tune/12) Hz and starts well over an octave above it (REQ-drum-2)."""
+    for tune in (0.0, 7.0):
+        y = render(binpath, "kick", tune)
+        want = 48.0 * 2 ** (tune / 12)
+        late = _pitch(y[9600:19200])
+        early = _pitch(y[0:1440])
+        if abs(1200 * math.log2(late / want)) > 50:
+            raise Failure(f"kick tune {tune}: settles at {late:.1f} Hz, expected {want:.1f} Hz")
+        if early < 2 * late:
+            raise Failure(f"kick tune {tune}: no sweep — {early:.1f} Hz early vs {late:.1f} Hz late")
+    return f"tune 0 → {_pitch(render(binpath, 'kick', 0.0)[9600:19200]):.1f} Hz, tune +7 → {late:.1f} Hz"
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -883,6 +918,8 @@ CHECKS = [
     ("parametric_eq_matches_rbj", check_parametric_eq_matches_rbj),
     ("svf_matches_bilinear_prototype", check_svf_matches_bilinear_prototype),
     ("decay_envelope_slope", check_decay_envelope_slope),
+    ("synth2_equal_temperament", check_synth2_equal_temperament),
+    ("kick_settles_on_its_tuned_fundamental", check_kick_settles_on_its_tuned_fundamental),
 ]
 
 

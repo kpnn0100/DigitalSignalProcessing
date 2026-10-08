@@ -308,3 +308,33 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   on [−1, 1); no clock, no global state.
 - `REQ-decay-1` — `DecayEnvelope`: an optional linear attack from the current level, then an
   exponential fall whose `decay` is the time to −60 dB; finished below −80 dB; can be choked.
+
+## Solaris instruments & effects — D2: instruments
+
+**Source:** the same request (Solaris `R-INST-1/2`).
+
+- `REQ-inst-1` — An `Instrument` interface for a host: `noteOn(note, velocity)`, `noteOff`,
+  `allNotesOff`, `reset`, `render` that ADDS into the host's buffers, `activeVoices`. No time stamps:
+  the host splits blocks at note events for sample accuracy. Deterministic from a `reset()`.
+- `REQ-synth2-1` — `BasicSynth`: two oscillators (waveform, octave, semitone, cents, level, unison
+  voices + detune) and noise → one resonant filter (LP/BP/HP/notch) → an amplitude ADSR, in that
+  order; 16 voices. A composition of `Oscillator`, `StateVariableFilter`, `ADSREnvelope`, `Noise`.
+- `REQ-synth2-2` — Pitch is equal-tempered from A4 = 440 Hz, moved by each oscillator's octave,
+  semitones and cents (instrument/README.md (Y1), (Y2)).
+- `REQ-synth2-3` — The filter has its own ADSR; the envelope and key tracking move the cutoff in
+  octaves (Y3), clamped to 20 Hz…20 kHz.
+- `REQ-synth2-4` — Level = volume × velocity scaled by a sensitivity (Y4); the release tail is never
+  cut (the oscillators' own envelopes are gates closed only when the amp envelope ends).
+- `REQ-synth2-5` — Voice allocation: same note retriggers its voice, else an idle voice, else the
+  oldest note is stolen (Y5).
+- `REQ-drum-1` — `DrumMachine`: ten pads on the GM drum notes (kick 36, rim 37, snare 38, clap 39,
+  low tom 41, closed hat 42, mid tom 45, open hat 46, high tom 48, cowbell 56), each synthesized
+  from `Phasor`, `Noise`, `StateVariableFilter`, `DecayEnvelope` — no sample files. A `Phasor`
+  primitive is added because a per-sample pitch sweep through `Oscillator` costs ten `pow`s a sample.
+- `REQ-drum-2` — The kick and toms sweep their pitch down exponentially to a fundamental set by
+  `tune` (kick: 48·2^(tune/12) Hz) (K1), (K2).
+- `REQ-drum-3` — Each pad has tune (semitones), decay (T60, ms), tone (0..1, per-pad meaning), level
+  (dB), pan (balance law, unity at centre).
+- `REQ-drum-4` — The closed hat chokes the open hat (−60 dB in 8 ms) (K6).
+- `REQ-drum-5` — Deterministic: every pad's noise is seeded from its index and `reset()` reseeds,
+  so a pattern from a reset renders the same bytes.

@@ -33,6 +33,8 @@
  *    peq <out> <hz>       unit sine through a ParametricEQ (+6 dB @ 1 kHz, high cut 12 kHz), ×0.5
  *    svf <out> <hz>       unit sine through a 1 kHz resonance-0.5 low-pass SVF, ×0.1
  *    noisedecay <out>     seeded noise × DecayEnvelope(200 ms), peak 0.9
+ *    synth2 <out> <note>  BasicSynth, osc 1 sine only, filter open, MIDI <note> for 1 s
+ *    kick <out> <tune>    DrumMachine kick tuned <tune> semitones, 0.5 s
  *    pianosympathetic <out> <0|1>  Struck A3 (220Hz) + a silently-depressed voice
  *                         sharing one PianoBridge; arg=0 renders the SAME-pitch
  *                         silent voice, arg=1 the OFF-pitch (233.08Hz) one
@@ -582,6 +584,47 @@ static std::vector<double> renderNoiseDecay()
     return y;
 }
 
+// ── D2 instruments (REQ-synth2-*, REQ-drum-*) ────────────────────────────────────────────────
+
+// BasicSynth, osc 1 a sine (osc 2 silent, filter wide open), playing MIDI `note` for 1 s.
+static std::vector<double> renderSynth2(double note)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    BasicSynth s;
+    BasicSynth::Params p;
+    p.osc1.wave = BasicSynth::Sine;
+    p.osc2.level = 0.0;
+    p.cutoff = 20000.0;
+    p.envAmount = 0.0;
+    p.keytrack = 0.0;
+    p.resonance = 0.0;
+    p.volumeDb = -6.0;
+    s.setParams(p);
+    s.noteOn((int)note, 127);
+    std::vector<Sample> L(kSampleRate, 0.0), R(kSampleRate, 0.0);
+    Sample *o[2] = {L.data(), R.data()};
+    s.render(o, 2, kSampleRate);
+    return std::vector<double>(L.begin(), L.end());
+}
+
+// DrumMachine kick tuned `tune` semitones, 0.5 s.
+static std::vector<double> renderKick(double tune)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    DrumMachine d;
+    d.setVolumeDb(0.0);
+    auto p = DrumMachine::defaults(DrumMachine::Kick);
+    p.tune = tune;
+    d.setPad(DrumMachine::Kick, p);
+    d.noteOn(36, 127);
+    std::vector<Sample> L(kSampleRate / 2, 0.0), R(kSampleRate / 2, 0.0);
+    Sample *o[2] = {L.data(), R.data()};
+    d.render(o, 2, (int)L.size());
+    return std::vector<double>(L.begin(), L.end());
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3)
@@ -626,6 +669,8 @@ int main(int argc, char **argv)
     else if (scenario == "peq") samples = renderPeq(arg);
     else if (scenario == "svf") samples = renderSvf(arg);
     else if (scenario == "noisedecay") samples = renderNoiseDecay();
+    else if (scenario == "synth2") samples = renderSynth2(arg);
+    else if (scenario == "kick") samples = renderKick(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

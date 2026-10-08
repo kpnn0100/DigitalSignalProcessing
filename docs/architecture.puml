@@ -73,7 +73,28 @@ FeedbackBlock --|> SignalProcessor
 SignalGenerator --|> SignalProcessor
 
 ' ─────────────────────────── Modules ───────────────────────────
+package instrument {
+  interface Instrument {
+    +noteOn(note, vel) / noteOff(note)
+    +allNotesOff() / reset()
+    +render(out**, channels, frames) : ADDS
+    +activeVoices()
+  }
+  class BasicSynth {
+    +setParams(Params)
+    +oscFrequency(k, note) / cutoffFor(note, env)
+    -16 voices: 2 Oscillator, SVF, 2 ADSR, Noise
+  }
+  class DrumMachine {
+    +setPad(Pad, PadParams)
+    +noteFor(Pad) / padFor(note)
+    -10 pads: Phasor×6, Noise, DecayEnvelope×3, SVF×2
+  }
+}
 package generator {
+  class Phasor <<value type>> {
+    +advance(inc) / sine(inc) / square(inc)
+  }
   class Noise <<value type>> {
     +setSeed(s) / next() : [-1,1)
   }
@@ -207,6 +228,16 @@ Biquad --|> SignalProcessor
 ParametricEQ --|> Block
 ParametricEQ *--> "7" Biquad : bands, in series
 StateVariableFilter --|> SignalProcessor
+BasicSynth ..|> Instrument
+DrumMachine ..|> Instrument
+BasicSynth *--> Oscillator : 2 per voice (gated)
+BasicSynth *--> StateVariableFilter : per voice
+BasicSynth *--> ADSREnvelope : amp + filter
+BasicSynth *--> Noise
+DrumMachine *--> Phasor
+DrumMachine *--> Noise
+DrumMachine *--> DecayEnvelope
+DrumMachine *--> StateVariableFilter
 Reverb --|> SignalProcessor
 Compressor --|> SignalProcessor
 Overdrive --|> SignalProcessor
