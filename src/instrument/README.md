@@ -36,7 +36,7 @@ out[n] = y[n] · amp[n] · G                                            ; amp = 
 (Y4)  G          = 10^(volumeDb/20) · (1 − velocity + velocity·vel/127)
 (Y5)  allocation: the same note retriggers its voice; else the first idle voice; else the voice
                   with the oldest note-on (smallest age) is stolen
-(Y6)  noise seed  = 0x5EED0000 + voice index                         ; deterministic per voice
+(Y6)  noise seed  = 0x5EED0000 + 16·voice + channel                  ; one generator per voice PER CHANNEL
 ```
 
 | parameter | symbol | unit / range | default |
@@ -63,6 +63,11 @@ note — the behaviour of an analog synth's 1 V/oct control voltage.
 note-on and closed when the amplitude envelope finishes. `Oscillator` owns an ADSR by the library's
 voicing model; letting it shape the sound would put an amplitude envelope *before* the filter and
 cut the release tail. The amp envelope runs after the filter: oscillators → filter → amplifier.
+
+**Why one noise generator per channel (Y6).** Each block renders one channel and then the next;
+a generator shared by the channels hands each one whichever stretch of the sequence the block size
+leaves it, so the same notes chopped into blocks of 128 and of 77 sounded different. Found by
+Solaris's chunking-determinism test; guarded here by `BasicSynth_noise_does_not_depend_on_block_size`.
 
 **Levels (empirical).** One voice at `volumeDb = 0`, velocity 127, default patch, C4 peaks at 1.41
 (two oscillators summing); the default −12 dB puts a note at ≈ 0.35, leaving headroom for chords.

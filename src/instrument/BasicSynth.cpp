@@ -10,7 +10,10 @@ namespace arstro
         Oscillator osc[2];
         StateVariableFilter filter;
         ADSREnvelope amp, fenv;
-        Noise noise;
+        // (Y6) one generator PER CHANNEL: a shared one would hand each channel whichever stretch of
+        // the sequence the block size left it, and the output would depend on how a host chops time.
+        std::vector<Noise> noise;
+        uint32_t seed = 0;
         int note = -1;
         bool active = false, held = false;
         long age = 0;
@@ -40,7 +43,7 @@ namespace arstro
         for (int i = 0; i < kVoices; ++i)
         {
             auto v = std::make_unique<Voice>();
-            v->noise.setSeed(0x5EED0000u + (uint32_t)i); // (Y6) deterministic per voice
+            v->seed = 0x5EED0000u + 16u * (uint32_t)i; // (Y6) deterministic per voice and channel
             for (auto &o : v->osc)
             {
                 // The gate: the oscillator's own ADSR must not shape the sound (header comment).
@@ -179,6 +182,7 @@ namespace arstro
         {
             Voice &v = *vp;
             if (!v.active) continue;
+            while ((int)v.noise.size() < chans) v.noise.emplace_back(v.seed + (uint32_t)v.noise.size());
             for (int c = 0; c < chans; ++c)
             {
                 Sample *buf = mScratch.data();
@@ -188,7 +192,7 @@ namespace arstro
                 Sample *dst = c < channels ? out[c] : nullptr;
                 for (int i = 0; i < frames; ++i)
                 {
-                    const Sample x = buf[i] + (nz > 0 ? nz * v.noise.next() : 0.0);
+                    const Sample x = buf[i] + (nz > 0 ? nz * v.noise[c].next() : 0.0);
                     const Sample y = v.filter.tick(x, c, cutoffFor(v.note, v.fenv.nextValue(c)));
                     const Sample s = y * v.amp.nextValue(c) * v.gain;
                     if (dst) dst[i] += s;

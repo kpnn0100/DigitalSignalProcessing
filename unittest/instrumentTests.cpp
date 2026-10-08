@@ -377,3 +377,26 @@ TEST(DrumMachine_decay_level_pan_and_determinism)
     m.render(o, 0, 4800); // no channels: nothing
     CHECK(peakOf(mono, 0, 4800) > 0.05);
 }
+
+TEST(BasicSynth_noise_does_not_depend_on_block_size)
+{
+    configure();
+    // the same note with noise, rendered in blocks of 128 and in blocks of 77: the same samples
+    auto take = [](int block) {
+        BasicSynth s;
+        BasicSynth::Params p;
+        p.noise = 0.5;
+        s.setParams(p);
+        s.noteOn(57, 100);
+        std::vector<Sample> L(9600, 0.0), R(9600, 0.0);
+        for (int pos = 0; pos < 9600; pos += block)
+        {
+            Sample *o[2] = {L.data() + pos, R.data() + pos};
+            s.render(o, 2, std::min(block, 9600 - pos));
+        }
+        return std::make_pair(L, R);
+    };
+    const auto a = take(128), b = take(77);
+    CHECK(a.first == b.first && a.second == b.second);
+    CHECK(a.first != a.second); // and the noise is stereo: each channel has its own
+}
