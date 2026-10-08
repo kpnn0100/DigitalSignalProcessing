@@ -7,7 +7,10 @@
  */
 #include "MiniTest.h"
 #include "../src/synth_dsp.h"
+#include <atomic>
 #include <cmath>
+#include <cstdlib>
+#include <new>
 #include <vector>
 
 using namespace arstro;
@@ -399,4 +402,37 @@ TEST(BasicSynth_noise_does_not_depend_on_block_size)
     const auto a = take(128), b = take(77);
     CHECK(a.first == b.first && a.second == b.second);
     CHECK(a.first != a.second); // and the noise is stereo: each channel has its own
+}
+
+// A counting allocator for the whole test binary: off except inside the window a test opens.
+std::atomic<long> gAllocs{0};      // shared with deviceTests.cpp
+std::atomic<bool> gCounting{false};
+void *operator new(size_t n)
+{
+    if (gCounting.load(std::memory_order_relaxed)) gAllocs.fetch_add(1, std::memory_order_relaxed);
+    if (void *p = std::malloc(n ? n : 1)) return p;
+    throw std::bad_alloc();
+}
+void operator delete(void *p) noexcept { std::free(p); }
+void operator delete(void *p, size_t) noexcept { std::free(p); }
+
+TEST(BasicSynth_render_does_not_allocate_after_construction)
+{
+    configure();
+    // A host's audio thread must not allocate (Solaris R-PLAY-2): every buffer render() touches —
+    // the voices' noise generators, the scratch block — exists once the constructor has run.
+    BasicSynth s;
+    BasicSynth::Params p;
+    p.noise = 0.5;
+    s.setParams(p);
+    for (int n = 0; n < 16; ++n) s.noteOn(40 + n, 100);
+    std::vector<Sample> L(4096, 0.0), R(4096, 0.0);
+    Sample *o[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    s.render(o, 2, 4096);           // the largest block the constructor sized for
+    s.render(o, 2, 128);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0);
+    CHECK(s.activeVoices() == 16);
 }

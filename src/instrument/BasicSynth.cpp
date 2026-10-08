@@ -40,10 +40,13 @@ namespace arstro
 
     BasicSynth::BasicSynth()
     {
+        mScratch.assign(4096, 0.0); // a host's blocks up to 4096 frames never allocate in render()
         for (int i = 0; i < kVoices; ++i)
         {
             auto v = std::make_unique<Voice>();
             v->seed = 0x5EED0000u + 16u * (uint32_t)i; // (Y6) deterministic per voice and channel
+            // made HERE, not on a voice's first note: a host's audio thread must not allocate
+            for (int c = 0; c < AudioConfig::instance().channelCount(); ++c) v->noise.emplace_back(v->seed + (uint32_t)c);
             for (auto &o : v->osc)
             {
                 // The gate: the oscillator's own ADSR must not shape the sound (header comment).
@@ -176,7 +179,7 @@ namespace arstro
         // Every channel the library is configured for is advanced (the envelopes keep per-channel
         // state and a voice ends only when all of them are idle); only `channels` are written.
         const int chans = AudioConfig::instance().channelCount();
-        if ((int)mScratch.size() < frames) mScratch.assign(frames, 0.0);
+        if ((int)mScratch.size() < frames) mScratch.assign(frames, 0.0); // grows once, to the host's largest block
         const Sample l1 = mParams.osc1.level, l2 = mParams.osc2.level, nz = mParams.noise;
         for (auto &vp : mVoices)
         {

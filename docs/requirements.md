@@ -354,3 +354,8 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   `chorus`, `drive`, `filter`. The effects wrap the existing modules unchanged.
 - `REQ-device-4` — Robust at every corner: every parameter of every type at its minimum and at its
   maximum renders finite samples.
+- `REQ-device-5` — **No allocation on the audio path.** Once a device has processed one block (a
+  host warms it), `process`, `noteOn` and `noteOff` allocate nothing — a host's audio thread must
+  not (Solaris R-PLAY-2). `BasicSynth` sizes its per-channel noise generators and a 4096-frame
+  scratch block in its constructor. Guarded by a counting `operator new` in the unit-test binary
+  (`BasicSynth_render_does_not_allocate…`, `Device_process_does_not_allocate_once_warm`).

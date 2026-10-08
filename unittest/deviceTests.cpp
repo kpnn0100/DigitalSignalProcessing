@@ -9,11 +9,15 @@
  */
 #include "MiniTest.h"
 #include "../src/synth_dsp.h"
+#include <atomic>
 #include <cmath>
 #include <set>
 #include <vector>
 
 using namespace arstro;
+
+extern std::atomic<long> gAllocs;     // the counting allocator in instrumentTests.cpp
+extern std::atomic<bool> gCounting;
 
 namespace
 {
@@ -259,4 +263,31 @@ TEST(Device_synth_and_drum_params_reach_the_instrument)
     CHECK(r < 1e-12 && l > 0.05);
     CHECK(dm->type().paramIndex("cowbell.decay") >= 0);
     CHECK(dm->param(dm->type().paramIndex("cowbell.decay")) == 350.0);
+}
+
+TEST(Device_process_does_not_allocate_once_warm)
+{
+    configure();
+    // Solaris runs every device on its audio thread, which must not allocate (R-PLAY-2): after one
+    // warm block (the engine warms every device at build), process() and notes allocate nothing.
+    for (const auto &t : DeviceRegistry::types())
+    {
+        auto d = DeviceRegistry::create(t.name);
+        std::vector<Sample> L(128, 0.0), R(128, 0.0);
+        Sample *io[2] = {L.data(), R.data()};
+        d->process(io, 2, 128);
+        gAllocs = 0;
+        gCounting = true;
+        d->noteOn(36, 120);
+        d->noteOn(60, 100);
+        for (int k = 0; k < 8; ++k)
+        {
+            for (int i = 0; i < 128; ++i) L[i] = R[i] = 0.3 * std::sin(0.05 * (k * 128 + i));
+            d->process(io, 2, 128);
+        }
+        d->noteOff(60);
+        gCounting = false;
+        if (gAllocs.load() != 0) printf("    %s allocated %ld times on the audio path\n", t.name.c_str(), gAllocs.load());
+        CHECK(gAllocs.load() == 0);
+    }
 }
