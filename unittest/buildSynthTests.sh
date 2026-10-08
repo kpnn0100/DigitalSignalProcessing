@@ -7,5 +7,5 @@ cd "$(dirname "$0")/.."   # DigitalSignalProcessing/
 
 SRC=$(find src -name '*.cpp' -not -path 'src/spatial/*' -not -path 'src/util/*')
 
-g++ -std=c++17 -O2 -pthread unittest/synthTests.cpp unittest/coverageTests.cpp unittest/filterTests.cpp unittest/instrumentTests.cpp $SRC -o /tmp/synthTests
+g++ -std=c++17 -O2 -pthread unittest/synthTests.cpp unittest/coverageTests.cpp unittest/filterTests.cpp unittest/instrumentTests.cpp unittest/deviceTests.cpp $SRC -o /tmp/synthTests
 /tmp/synthTests

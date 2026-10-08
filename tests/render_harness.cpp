@@ -35,6 +35,7 @@
  *    noisedecay <out>     seeded noise × DecayEnvelope(200 ms), peak 0.9
  *    synth2 <out> <note>  BasicSynth, osc 1 sine only, filter open, MIDI <note> for 1 s
  *    kick <out> <tune>    DrumMachine kick tuned <tune> semitones, 0.5 s
+ *    deviceeq <out> <hz>  unit sine through DeviceRegistry "eq" with peak2.gain = 6 by name, ×0.5
  *    pianosympathetic <out> <0|1>  Struck A3 (220Hz) + a silently-depressed voice
  *                         sharing one PianoBridge; arg=0 renders the SAME-pitch
  *                         silent voice, arg=1 the OFF-pitch (233.08Hz) one
@@ -625,6 +626,27 @@ static std::vector<double> renderKick(double tune)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// ── D3 the registry (REQ-device-*) ──────────────────────────────────────────────────────────
+
+// A unit sine at `hz` through the registry's "eq" with ONLY `peak2.gain = 6` written by name, ×0.5.
+static std::vector<double> renderDeviceEq(double hz)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("eq");
+    d->setParam("peak2.gain", 6.0);
+    std::vector<Sample> L(72000), R(72000);
+    for (size_t n = 0; n < L.size(); ++n) L[n] = R[n] = std::sin(2 * M_PI * hz * n / kSampleRate);
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, 128);
+    }
+    std::vector<double> y(L.size());
+    for (size_t n = 0; n < L.size(); ++n) y[n] = 0.5 * L[n];
+    return y;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3)
@@ -671,6 +693,7 @@ int main(int argc, char **argv)
     else if (scenario == "noisedecay") samples = renderNoiseDecay();
     else if (scenario == "synth2") samples = renderSynth2(arg);
     else if (scenario == "kick") samples = renderKick(arg);
+    else if (scenario == "deviceeq") samples = renderDeviceEq(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

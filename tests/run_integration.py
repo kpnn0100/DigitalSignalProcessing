@@ -891,6 +891,21 @@ def check_kick_settles_on_its_tuned_fundamental(binpath):
     return f"tune 0 → {_pitch(render(binpath, 'kick', 0.0)[9600:19200]):.1f} Hz, tune +7 → {late:.1f} Hz"
 
 
+# ───────────────────────── D3 the registry ─────────────────────────
+
+def check_registry_eq_by_name(binpath):
+    """A parameter written by NAME through the registry does the module's math (REQ-device-2)."""
+    worst = 0.0
+    for f in (300.0, 1000.0, 3000.0):
+        y = render(binpath, "deviceeq", f)[48000:]
+        measured = 20 * math.log10(rms(y) / (0.5 / math.sqrt(2)))
+        expected = _rbj_mag_db("peak", 1000.0, 1.0, 6.0, f)
+        worst = max(worst, abs(measured - expected))
+        if abs(measured - expected) > 0.1:
+            raise Failure(f"registry eq @{f} Hz: {measured:.3f} dB, RBJ says {expected:.3f} dB")
+    return f"worst deviation {worst:.3f} dB"
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -920,6 +935,7 @@ CHECKS = [
     ("decay_envelope_slope", check_decay_envelope_slope),
     ("synth2_equal_temperament", check_synth2_equal_temperament),
     ("kick_settles_on_its_tuned_fundamental", check_kick_settles_on_its_tuned_fundamental),
+    ("registry_eq_by_name", check_registry_eq_by_name),
 ]
 
 

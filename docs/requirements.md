@@ -338,3 +338,19 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
 - `REQ-drum-4` — The closed hat chokes the open hat (−60 dB in 8 ms) (K6).
 - `REQ-drum-5` — Deterministic: every pad's noise is seeded from its index and `reset()` reseeds,
   so a pattern from a reset renders the same bytes.
+
+## Solaris instruments & effects — D3: the device registry
+
+**Source:** the same request (Solaris `R-DSP-2`, `R-FX-1…5`).
+
+- `REQ-device-1` — Every instrument and effect has ONE description, a `DeviceType` in the
+  `DeviceRegistry`: name, label, kind, summary, and per parameter its name, label, unit, range,
+  default, choices and integer/log hints. Instruments' defaults are read from the instruments.
+- `REQ-device-2` — A `Device` is the uniform face: `process` (effect in place, instrument adds),
+  notes, `reset`, `activeVoices`, parameters by index or name in engineering units. Every write is
+  clamped/rounded per its spec, a non-finite value becomes the default, an unknown index or name
+  changes nothing.
+- `REQ-device-3` — The registry holds: `synth`, `drums`, `compressor`, `eq`, `reverb`, `delay`,
+  `chorus`, `drive`, `filter`. The effects wrap the existing modules unchanged.
+- `REQ-device-4` — Robust at every corner: every parameter of every type at its minimum and at its
+  maximum renders finite samples.

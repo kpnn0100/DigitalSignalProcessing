@@ -73,6 +73,26 @@ FeedbackBlock --|> SignalProcessor
 SignalGenerator --|> SignalProcessor
 
 ' ─────────────────────────── Modules ───────────────────────────
+package device {
+  class ParamSpec {
+    name, label, unit
+    min, max, def, choices
+    +clamp(v)
+  }
+  class DeviceType {
+    name, label, kind, params
+    +create()
+  }
+  abstract class Device {
+    +process(io**, ch, frames)
+    +setParam(i|name, v) : clamped
+    +noteOn / noteOff / reset
+    #apply(i, v)
+  }
+  class DeviceRegistry <<static>> {
+    +types() / find(name) / create(name)
+  }
+}
 package instrument {
   interface Instrument {
     +noteOn(note, vel) / noteOff(note)
@@ -229,6 +249,12 @@ ParametricEQ --|> Block
 ParametricEQ *--> "7" Biquad : bands, in series
 StateVariableFilter --|> SignalProcessor
 BasicSynth ..|> Instrument
+DeviceRegistry o--> "9" DeviceType
+DeviceType o--> "*" ParamSpec
+DeviceType ..> Device : creates
+Device ..> BasicSynth : SynthDevice wraps
+Device ..> DrumMachine : DrumDevice wraps
+Device ..> Compressor : EffectDevice<Proc> wraps the effects
 DrumMachine ..|> Instrument
 BasicSynth *--> Oscillator : 2 per voice (gated)
 BasicSynth *--> StateVariableFilter : per voice
