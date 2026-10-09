@@ -50,6 +50,9 @@ namespace arstro
         DeviceKind kind = DeviceKind::Effect;
         std::string summary;
         std::vector<ParamSpec> params;
+        /** An instrument whose keys MEAN something (a kit's pads): note → its name, ascending.
+         *  Empty for a melodic instrument. A host names its piano-roll keys from it (REQ-device-6). */
+        std::vector<std::pair<int, std::string>> noteNames;
         std::function<std::unique_ptr<Device>(const DeviceType &)> create;
 
         /** −1 when there is no such parameter. */

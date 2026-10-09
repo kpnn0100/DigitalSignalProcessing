@@ -359,3 +359,7 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   not (Solaris R-PLAY-2). `BasicSynth` sizes its per-channel noise generators and a 4096-frame
   scratch block in its constructor. Guarded by a counting `operator new` in the unit-test binary
   (`BasicSynth_render_does_not_allocate…`, `Device_process_does_not_allocate_once_warm`).
+- `REQ-device-6` — **A kit names its keys.** `DeviceType::noteNames` lists, ascending, the notes of an
+  instrument whose keys mean something and what each is — the Drum Machine's ten pads ("Kick" 36 …
+  "Cowbell" 56), taken from its own pad table, so a host's piano roll can label them; empty for a
+  melodic instrument and for effects. Guarded by `DeviceRegistry_names_the_drum_kits_keys`.

@@ -389,6 +389,14 @@ namespace arstro
             drums.summary = "Ten synthesized pads on the GM drum notes (36 kick … 56 cowbell); the closed hat chokes the open hat.";
             drums.params = specsOf(drumBindings());
             drums.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<DrumDevice>(self); };
+            {
+                // the pads' keys, named for a person (the prefixes are the parameters' names)
+                static const char *kLabels[DrumMachine::PadCount] = {"Kick", "Rim", "Snare", "Clap", "Low Tom",
+                                                                     "Closed Hat", "Mid Tom", "Open Hat", "High Tom", "Cowbell"};
+                for (int p = 0; p < DrumMachine::PadCount; ++p)
+                    drums.noteNames.emplace_back(DrumMachine::noteFor((DrumMachine::Pad)p), kLabels[p]);
+                std::sort(drums.noteNames.begin(), drums.noteNames.end());
+            }
             v.push_back(drums);
 
             v.push_back(effectType<Compressor>("compressor", "Compressor", "Feed-forward peak compressor.", &compressorBindings));

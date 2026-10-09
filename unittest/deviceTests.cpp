@@ -101,6 +101,19 @@ TEST(DeviceRegistry_has_every_instrument_and_effect_with_unique_names)
     }
 }
 
+TEST(DeviceRegistry_names_the_drum_kits_keys)
+{
+    // REQ-device-6: a kit's keys mean something; a melodic instrument's do not
+    const DeviceType *drums = DeviceRegistry::find("drums");
+    CHECK(drums->noteNames.size() == (size_t)DrumMachine::PadCount);
+    CHECK(drums->noteNames.front().first == 36 && drums->noteNames.front().second == "Kick");
+    CHECK(drums->noteNames.back().first == 56 && drums->noteNames.back().second == "Cowbell");
+    for (size_t i = 1; i < drums->noteNames.size(); ++i) CHECK(drums->noteNames[i - 1].first < drums->noteNames[i].first);
+    for (const auto &n : drums->noteNames) CHECK(DrumMachine::padFor(n.first) >= 0); // every named key plays a pad
+    CHECK(DeviceRegistry::find("synth")->noteNames.empty());
+    CHECK(DeviceRegistry::find("eq")->noteNames.empty());
+}
+
 TEST(Device_writes_are_clamped_rounded_and_named)
 {
     configure();
