@@ -5,10 +5,12 @@
 #include "pluginterfaces/base/ibstream.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/ivstevents.h"
+#include "pluginterfaces/vst/ivstmessage.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "public.sdk/source/vst/utility/stringconvert.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <sstream>
 
 namespace arstro
@@ -193,6 +195,13 @@ namespace vst3
                 else if (e.type == Event::kNoteOffEvent)
                     mChanges.push_back(Change{at, 2, e.noteOff.pitch, 0.0});
             }
+        // the editor's notes (REQ-vst-7): at the block's start, in the order they were played
+        for (unsigned t = mLiveTail.load(std::memory_order_relaxed), h = mLiveHead.load(std::memory_order_acquire); t != h && (int)mChanges.size() < kMaxChanges; ++t)
+        {
+            const LiveNote &n = mLive[t % kLiveNotes];
+            mChanges.push_back(Change{0, n.velocity > 0 ? 1 : 2, n.pitch, (double)n.velocity});
+            mLiveTail.store(t + 1, std::memory_order_release);
+        }
         std::stable_sort(mChanges.begin(), mChanges.end(), [](const Change &a, const Change &b) { return a.offset < b.offset; });
 
         // the block, split at each change (the device ADDS into silence)
@@ -236,6 +245,20 @@ namespace vst3
         return writeAll(state, stateText(*mType, v)) ? kResultOk : kResultFalse;
     }
 
+    tresult PLUGIN_API Processor::notify(IMessage *message)
+    {
+        if (!message || std::strcmp(message->getMessageID(), "arstro.note") != 0) return AudioEffect::notify(message);
+        int64 pitch = -1, velocity = 0;
+        IAttributeList *a = message->getAttributes();
+        if (!a || a->getInt("pitch", pitch) != kResultOk || a->getInt("velocity", velocity) != kResultOk || pitch < 0 || pitch > 127)
+            return kInvalidArgument;
+        const unsigned h = mLiveHead.load(std::memory_order_relaxed);
+        if (h - mLiveTail.load(std::memory_order_acquire) >= (unsigned)kLiveNotes) return kResultFalse; // full: dropped, never waited for
+        mLive[h % kLiveNotes] = LiveNote{(int)pitch, (int)std::clamp<int64>(velocity, 0, 127)};
+        mLiveHead.store(h + 1, std::memory_order_release);
+        return kResultOk;
+    }
+
     // ── the controller ──────────────────────────────────────────────────────────────────────
 
     Controller::Controller(const PluginId &id) : mType(DeviceRegistry::find(id.type)) {}
@@ -276,6 +299,17 @@ namespace vst3
     }
 
     void Controller::editEnd(int i) { endEdit((ParamID)i); }
+
+    void Controller::playNote(int pitch, int velocity)
+    {
+        // through the host to the processor (the plugin's two halves talk only by messages)
+        IPtr<IMessage> m = owned(allocateMessage());
+        if (!m) return; // no host to carry it: nothing is heard, nothing breaks
+        m->setMessageID("arstro.note");
+        m->getAttributes()->setInt("pitch", pitch);
+        m->getAttributes()->setInt("velocity", velocity);
+        sendMessage(m);
+    }
 
     tresult PLUGIN_API Controller::setComponentState(IBStream *state)
     {

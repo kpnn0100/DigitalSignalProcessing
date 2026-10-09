@@ -114,6 +114,26 @@ TEST(DeviceRegistry_names_the_drum_kits_keys)
     CHECK(DeviceRegistry::find("eq")->noteNames.empty());
 }
 
+TEST(DeviceRegistry_joins_a_kits_keys_to_their_parameters)
+{
+    // REQ-device-9: the same keys, each with the prefix of the parameters that shape it — a name is for a
+    // person ("Closed Hat"), a prefix for an address (`chat.decay`)
+    const DeviceType *drums = DeviceRegistry::find("drums");
+    CHECK(drums->notePrefixes.size() == drums->noteNames.size());
+    for (size_t i = 0; i < drums->notePrefixes.size(); ++i)
+    {
+        const auto &np = drums->notePrefixes[i];
+        CHECK(np.first == drums->noteNames[i].first);                                    // the same keys, the same order
+        CHECK(np.second == DrumMachine::padName((DrumMachine::Pad)DrumMachine::padFor(np.first))); // the pad that key plays
+        for (const char *f : {".tune", ".decay", ".tone", ".level", ".pan"}) CHECK(drums->paramIndex(np.second + f) >= 0);
+    }
+    bool hat = false;
+    for (size_t i = 0; i < drums->noteNames.size(); ++i)
+        hat |= drums->noteNames[i].second == "Closed Hat" && drums->notePrefixes[i].second == "chat";
+    CHECK(hat);
+    CHECK(DeviceRegistry::find("synth")->notePrefixes.empty());
+}
+
 TEST(Device_writes_are_clamped_rounded_and_named)
 {
     configure();

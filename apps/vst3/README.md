@@ -32,6 +32,7 @@ settings reach the rest of the build. Bundles land in `build/vst3/<Name>.vst3/Co
 | parameters | one per registry parameter: id = its index in the type, title = its label, unit, steps (an integer's range or a choice's count − 1), default — all from the spec; normalised by `normalizedFromValue` / `valueFromNormalized` (REQ-device-7); a choice is a list |
 | timing | the block is split at every note and every parameter point at its sample offset; a note-on at velocity 0 is a note-off |
 | state | text: `arstro-device 1`, `type=<t>`, `<name>=<value>` per parameter (the values a Solaris `.slp` stores); another type's state is refused, an unknown name skipped |
+| notes from its editor | `arstro.note` messages (`pitch`, `velocity`, 0 = off) to the processor, played at the next block (REQ-vst-7) — the editor's pads |
 | editor | built from this repo alone: none — the host draws its generic parameter view. Built in the arstro umbrella: Solaris's own, in the Arstro look (`apps/solaris/plugins`, R-VST-7), through the seam in `Editor.h` (REQ-vst-6) |
 
 ## The editor seam (REQ-vst-6)

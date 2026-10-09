@@ -381,6 +381,12 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   by the next read. Guarded by `Device_reports_its_latency_and_lags_by_exactly_it` (every type's default,
   the limiter at 0 / 1 / 5 / 10 ms, and a click through the Device face arriving exactly `latency()`
   samples late).
+- `REQ-device-9` — **A kit's keys are joined to their parameters** (source: Solaris R-VST-7, the Drum
+  Machine editor's pads, 2026-10-09; and Solaris D-3: a pad was `closed-hat` to a note and `chat` to an
+  address). `DeviceType::notePrefixes` lists, for the same keys as `noteNames` and in the same order, the
+  prefix of the parameters that shape each (42 → `chat`: `chat.tune` … `chat.pan`), from the kit's own
+  pad table (`DrumMachine::padName`); empty for a melodic instrument. A name is for a person, a prefix for
+  an address — this joins them. Guarded by `DeviceRegistry_joins_a_kits_keys_to_their_parameters`.
 
 ## Solaris instruments & effects — D4: VST3 (Solaris R-VST, 2026-10-09)
 
@@ -412,6 +418,15 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   host window. Verified there: the validator passes both plugins with the editor linked in, and the
   umbrella's `solaris_plugin_editor` drives the editor over this controller (a drag → beginEdit once,
   performEdit = `normalizedFromValue` of the value chosen, endEdit at release).
+- `REQ-vst-7` — **The editor plays notes through the processor** (source: Solaris R-VST-7, the Drum
+  Machine's pads). `Controller::playNote(pitch, velocity)` sends the message `arstro.note` (ints `pitch`,
+  `velocity`; 0 = its note-off) through the host's connection; `Processor::notify` queues it — a
+  single-producer, single-consumer ring of 64, no lock, a full ring drops it, a pitch outside 0–127 is
+  refused — and `process` plays it at the next block's start, in the order played. Without a host to carry
+  the message nothing is heard and nothing breaks. Guarded by `vst3_equivalence` (the hosted Drum Machine:
+  silence without the message, the kick with it; a pitch of 300 refused) and the umbrella's
+  `solaris_plugin_editor` (a pad clicked in the editor, the processor and the controller connected by the
+  SDK's host classes: heard at the next block).
 - `REQ-fx-sidechain-1` — **The Compressor can listen to a key** (source: Solaris R-MIX-15 / R-EDM-3,
   2026-10-09). With `sidechain` on (a registry parameter, APPENDED so existing ids hold) its detector
   follows a key handed in before each block (`Device::setKey`; `DeviceType::takesKey`), the gain still

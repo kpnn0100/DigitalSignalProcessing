@@ -41,6 +41,9 @@ modules unchanged: `Compressor`, `ParametricEQ`, `Reverb`, `Repeater` (= delay),
   0 for every other type (a chorus's or a delay's delay is its SOUND, not a lag). A host delays every
   other path by it so all signals meet in time; it changes with `lookahead`, so a host reads it again
   after that write.
+- **A kit's keys** (REQ-device-6, REQ-device-9): `noteNames` says what each key is for a person
+  ("Closed Hat"), `notePrefixes` which parameters shape it for an address (`chat.*`) — the same keys,
+  the same order, both from the kit's own pad table.
 - `reset()` clears what the module can clear (instrument voices, the EQ's and the filter's
   memory). `Reverb`, `Repeater` and `Chorus` have no reset, so their tails survive a seek; a host
   that needs silence after a seek builds a fresh device.

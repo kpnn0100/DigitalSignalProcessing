@@ -463,8 +463,12 @@ namespace arstro
                 static const char *kLabels[DrumMachine::PadCount] = {"Kick", "Rim", "Snare", "Clap", "Low Tom",
                                                                      "Closed Hat", "Mid Tom", "Open Hat", "High Tom", "Cowbell"};
                 for (int p = 0; p < DrumMachine::PadCount; ++p)
+                {
                     drums.noteNames.emplace_back(DrumMachine::noteFor((DrumMachine::Pad)p), kLabels[p]);
+                    drums.notePrefixes.emplace_back(DrumMachine::noteFor((DrumMachine::Pad)p), DrumMachine::padName((DrumMachine::Pad)p));
+                }
                 std::sort(drums.noteNames.begin(), drums.noteNames.end());
+                std::sort(drums.notePrefixes.begin(), drums.notePrefixes.end());
             }
             v.push_back(drums);
 

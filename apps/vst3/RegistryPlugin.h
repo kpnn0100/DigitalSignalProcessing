@@ -58,8 +58,12 @@ namespace vst3
         Steinberg::tresult PLUGIN_API process(Steinberg::Vst::ProcessData &data) SMTG_OVERRIDE;
         Steinberg::tresult PLUGIN_API setState(Steinberg::IBStream *state) SMTG_OVERRIDE;
         Steinberg::tresult PLUGIN_API getState(Steinberg::IBStream *state) SMTG_OVERRIDE;
+        /** REQ-vst-7: a note its editor plays (a pad clicked) — message `arstro.note`, ints `pitch` and
+         *  `velocity` (0 = off) — queued for the audio thread, played at the next block's start. */
+        Steinberg::tresult PLUGIN_API notify(Steinberg::Vst::IMessage *message) SMTG_OVERRIDE;
 
         static constexpr int kMaxChanges = 2048; // notes + parameter points in one block; more are dropped
+        static constexpr int kLiveNotes = 64;    // editor notes waiting for a block; more are dropped
 
     private:
         struct Change
@@ -81,6 +85,10 @@ namespace vst3
         std::mutex mPendingLock;
         std::vector<Sample> mL, mR;
         std::vector<Change> mChanges;
+        // the editor's notes: one producer (the host's thread, `notify`), one consumer (`process`), no lock
+        struct LiveNote { int pitch, velocity; };
+        LiveNote mLive[kLiveNotes];
+        std::atomic<unsigned> mLiveHead{0}, mLiveTail{0};
     };
 
     class Controller : public Steinberg::Vst::EditController
@@ -98,6 +106,8 @@ namespace vst3
         void editBegin(int index);
         void editPerform(int index, double plain);     // normalised by `normalizedFromValue`, told to the host
         void editEnd(int index);
+        /** REQ-vst-7: a note heard through the processor (an editor's pad) — velocity 0 is its note-off. */
+        void playNote(int pitch, int velocity);
 
     private:
         const DeviceType *mType;

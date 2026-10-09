@@ -72,6 +72,10 @@ namespace arstro
         /** An instrument whose keys MEAN something (a kit's pads): note → its name, ascending.
          *  Empty for a melodic instrument. A host names its piano-roll keys from it (REQ-device-6). */
         std::vector<std::pair<int, std::string>> noteNames;
+        /** …and, for the same keys, the prefix of the parameters that shape each one (a kit's pad: 42 →
+         *  "chat", so `chat.tune`, `chat.decay`…), ascending. Empty for a melodic instrument. A key's NAME is
+         *  for a person and its prefix for an address; this joins them (REQ-device-9). */
+        std::vector<std::pair<int, std::string>> notePrefixes;
         /** It has a key input (a compressor's sidechain): a host hands it another track's audio
          *  through `Device::setKey` before each block (REQ-fx-sidechain-1). */
         bool takesKey = false;

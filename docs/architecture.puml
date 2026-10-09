@@ -81,6 +81,7 @@ package device {
   }
   class DeviceType {
     name, label, kind, params
+    noteNames / notePrefixes : a kit's keys, named and joined to their parameters (REQ-device-6/9)
     +create()
   }
   abstract class Device {
@@ -104,6 +105,7 @@ package vst3 <<apps/vst3>> {
     AudioEffect: notes in, stereo out
     +process() : split at every offset
     +getState / setState : text
+    +notify("arstro.note") : an editor's note, queued lock-free (REQ-vst-7)
   }
   class Controller {
     EditController
@@ -111,6 +113,7 @@ package vst3 <<apps/vst3>> {
     +createView("editor") : createEditor(*this) when ARSTRO_VST3_EDITOR (REQ-vst-6)
     +type() / plainValue(i)
     +editBegin / editPerform(plain) / editEnd : normalizedFromValue
+    +playNote(pitch, vel) : a message to the processor (REQ-vst-7)
   }
   note right of Controller : Editor.h — the seam; the editor is the umbrella's (Solaris R-VST-7)
   class RegistryParameter {

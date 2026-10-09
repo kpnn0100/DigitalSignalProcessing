@@ -201,6 +201,60 @@ namespace
         for (const auto &p : sc.points) after[(size_t)p.index] = valueFromNormalized(t.params[(size_t)p.index], p.norm);
         check(back == stateOf(t, after), sc.bundle + ": its state reads back as the registry's text");
     }
+
+    // REQ-vst-7: a note the editor plays reaches the processor as a message and is heard at the next block
+    double editorNotePeak(bool send, std::string &why)
+    {
+        const std::string path = std::string(ARSTRO_VST3_DIR) + "/ArstroDrumMachine.vst3";
+        auto module = VST3::Hosting::Module::create(path, why);
+        if (!module) return -1.0;
+        const auto &factory = module->getFactory();
+        VST3::Hosting::ClassInfo info;
+        for (const auto &ci : factory.classInfos())
+            if (ci.category() == kVstAudioEffectClass) info = ci;
+        IPtr<HostApplication> host = owned(new HostApplication());
+        auto comp = factory.createInstance<IComponent>(info.ID());
+        if (!comp || comp->initialize(host) != kResultOk) { why = "the component did not initialise"; return -1.0; }
+        FUnknownPtr<IAudioProcessor> proc(comp);
+        FUnknownPtr<IConnectionPoint> cp(comp);
+        if (!proc || !cp) { why = "no processor or connection point"; return -1.0; }
+        SpeakerArrangement out = SpeakerArr::kStereo;
+        ProcessSetup setup{kRealtime, kSample32, kBlockSize, kRate};
+        proc->setBusArrangements(nullptr, 0, &out, 1);
+        proc->setupProcessing(setup);
+        comp->activateBus(kAudio, kOutput, 0, true);
+        comp->activateBus(kEvent, kInput, 0, true);
+        comp->setActive(true);
+        proc->setProcessing(true);
+        if (send)
+        {
+            IPtr<HostMessage> m = owned(new HostMessage());
+            m->setMessageID("arstro.note");
+            m->getAttributes()->setInt("pitch", 36);
+            m->getAttributes()->setInt("velocity", 120);
+            if (cp->notify(m) != kResultOk) { why = "notify refused the note"; return -1.0; }
+            IPtr<HostMessage> bad = owned(new HostMessage());
+            bad->setMessageID("arstro.note");
+            bad->getAttributes()->setInt("pitch", 300);
+            bad->getAttributes()->setInt("velocity", 120);
+            if (cp->notify(bad) != kInvalidArgument) { why = "a pitch of 300 was accepted"; return -1.0; }
+        }
+        HostProcessData data;
+        data.prepare(*comp, kBlockSize, kSample32);
+        double peak = 0.0;
+        for (int b = 0; b < 8; ++b)
+        {
+            data.numSamples = kBlockSize;
+            data.inputEvents = nullptr;
+            data.inputParameterChanges = nullptr;
+            proc->process(data);
+            for (int i = 0; i < kBlockSize; ++i) peak = std::max(peak, (double)std::fabs(data.outputs[0].channelBuffers32[0][i]));
+        }
+        proc->setProcessing(false);
+        comp->setActive(false);
+        comp->terminate();
+        return peak;
+    }
 }
 
 int main()
@@ -239,6 +293,13 @@ int main()
         const int decay = t.paramIndex(t.params[0].name);
         sc.points = {{24000 + 33, decay, 0.9}};
         scene(sc);
+    }
+    // the editor's pad: silence without it, the kick with it
+    {
+        std::string why;
+        const double quiet = editorNotePeak(false, why), heard = editorNotePeak(true, why);
+        if (!why.empty()) std::printf("    %s\n", why.c_str());
+        check(why.empty() && quiet == 0.0 && heard > 0.05, "an editor's note (`arstro.note` by message) is heard at the next block: peak " + std::to_string(heard) + " where there was silence");
     }
     std::printf("\n%d failed\n", failures);
     return failures ? 1 : 0;
