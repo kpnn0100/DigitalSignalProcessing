@@ -75,6 +75,9 @@ namespace arstro
         /** It has a key input (a compressor's sidechain): a host hands it another track's audio
          *  through `Device::setKey` before each block (REQ-fx-sidechain-1). */
         bool takesKey = false;
+        /** It plays a recorded sound (the Sampler): a host decodes a file and hands the frames in
+         *  through `Device::setSample` (REQ-inst-sampler-1). The library never opens a file. */
+        bool takesSample = false;
         std::function<std::unique_ptr<Device>(const DeviceType &)> create;
 
         /** −1 when there is no such parameter. */
@@ -105,6 +108,12 @@ namespace arstro
         /** The key for the NEXT process() call (a type with `takesKey`): `channels` buffers of at
          *  least that many frames, valid until it returns; nullptr = silence. Others ignore it. */
         virtual void setKey(const Sample *const *key, int channels) { (void)key; (void)channels; }
+        /** The sound to play (a type with `takesSample`): `frames` interleaved frames of `channels`
+         *  floats recorded at `rate` Hz, COPIED — it allocates, so never on the audio thread. Others ignore it. */
+        virtual void setSample(const float *interleaved, long long frames, int channels, double rate)
+        {
+            (void)interleaved; (void)frames; (void)channels; (void)rate;
+        }
         /** Clear all state: tails, voices, filter memory (a seek). */
         virtual void reset() = 0;
         /** Voices still sounding (instruments); 0 for an effect. */

@@ -3,6 +3,7 @@
 #include "../effects/Chorus.h"
 #include "../effects/Compressor.h"
 #include "../effects/Limiter.h"
+#include "../instrument/Sampler.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
 #include "../equalizer/ParametricEQ.h"
@@ -173,6 +174,49 @@ namespace arstro
         private:
             BasicSynth mSynth;
             BasicSynth::Params mP;
+        };
+
+        const std::vector<Binding<Sampler::Params>> &samplerBindings()
+        {
+            using P = Sampler::Params;
+            static const std::vector<Binding<P>> b = {
+                {choice("mode", "Mode", {"chromatic", "one-shot"}, 0), [](P &p, double x) { p.mode = (Sampler::Mode)(int)x; }},
+                {num("root", "Root Key", "", 0, 127, 60, false, true), [](P &p, double x) { p.root = (int)x; }},
+                {num("start", "Start", "", 0, 1, 0), [](P &p, double x) { p.start = x; }},
+                {num("end", "End", "", 0, 1, 1), [](P &p, double x) { p.end = x; }},
+                {choice("reverse", "Reverse", {"off", "on"}, 0), [](P &p, double x) { p.reverse = x > 0.5; }},
+                {num("attack", "Attack", "ms", 0, 2000, 0), [](P &p, double x) { p.attackMs = x; }},
+                {num("decay", "Decay", "ms", 0, 2000, 0), [](P &p, double x) { p.decayMs = x; }},
+                {num("sustain", "Sustain", "", 0, 1, 1), [](P &p, double x) { p.sustain = x; }},
+                {num("release", "Release", "ms", 1, 5000, 30, true), [](P &p, double x) { p.releaseMs = x; }},
+                {num("level", "Level", "dB", -40, 12, 0), [](P &p, double x) { p.levelDb = x; }},
+                {num("velocity", "Velocity", "", 0, 1, 1), [](P &p, double x) { p.velocity = x; }},
+            };
+            return b;
+        }
+
+        class SamplerDevice : public Device
+        {
+        public:
+            explicit SamplerDevice(const DeviceType &t) : Device(t), mP(mSampler.params()) { applyAll(); }
+            void process(Sample *const *io, int channels, int frames) override { mSampler.render(io, channels, frames); }
+            void noteOn(int n, int v) override { mSampler.noteOn(n, v); }
+            void noteOff(int n) override { mSampler.noteOff(n); }
+            void allNotesOff() override { mSampler.allNotesOff(); }
+            void reset() override { mSampler.reset(); }
+            int activeVoices() const override { return mSampler.activeVoices(); }
+            void setSample(const float *x, long long frames, int channels, double rate) override { mSampler.setSample(x, frames, channels, rate); }
+
+        protected:
+            void apply(int i, double v) override
+            {
+                samplerBindings()[i].set(mP, v);
+                mSampler.setParams(mP);
+            }
+
+        private:
+            Sampler mSampler;
+            Sampler::Params mP;
         };
 
         const std::vector<Binding<DrumMachine>> &drumBindings()
@@ -419,6 +463,14 @@ namespace arstro
                 std::sort(drums.noteNames.begin(), drums.noteNames.end());
             }
             v.push_back(drums);
+
+            DeviceType sampler;
+            sampler.name = "sampler"; sampler.label = "Sampler"; sampler.kind = DeviceKind::Instrument;
+            sampler.summary = "Plays a recorded sound: pitched by the note (chromatic) or as recorded (one-shot); a span, reverse, an ADSR.";
+            sampler.params = specsOf(samplerBindings());
+            sampler.takesSample = true;
+            sampler.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<SamplerDevice>(self); };
+            v.push_back(sampler);
 
             DeviceType comp = effectType<Compressor>("compressor", "Compressor", "Feed-forward peak compressor; with Sidechain on it listens to another track (its key).", &compressorBindings);
             comp.takesKey = true;

@@ -129,6 +129,11 @@ package instrument {
     +noteFor(Pad) / padFor(note)
     -10 pads: Phasor×6, Noise, DecayEnvelope×3, SVF×2
   }
+  class Sampler {
+    +setSample(frames*, n, ch, rate) : a copy
+    +setParams(mode, root, span, reverse, ADSR, level, velocity)
+    -16 voices: interpolated playback, ADSREnvelope
+  }
 }
 package generator {
   class Phasor <<value type>> {
@@ -280,6 +285,7 @@ DeviceType o--> "*" ParamSpec
 DeviceType ..> Device : creates
 ParamMapping ..> ParamSpec : reads
 Device ..> Limiter : EffectDevice wraps
+Device ..> Sampler : SamplerDevice wraps
 Processor --> Device : DeviceRegistry::create
 Controller o--> RegistryParameter
 RegistryParameter ..> ParamMapping
@@ -287,6 +293,8 @@ Device ..> BasicSynth : SynthDevice wraps
 Device ..> DrumMachine : DrumDevice wraps
 Device ..> Compressor : EffectDevice<Proc> wraps the effects
 DrumMachine ..|> Instrument
+Sampler ..|> Instrument
+Sampler *-- "16" ADSREnvelope
 BasicSynth *--> Oscillator : 2 per voice (gated)
 BasicSynth *--> StateVariableFilter : per voice
 BasicSynth *--> ADSREnvelope : amp + filter

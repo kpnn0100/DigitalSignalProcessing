@@ -401,4 +401,10 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   lookahead (0…10 ms, its latency); channels linked; the output never above the ceiling BY
   CONSTRUCTION ((L1)–(L5)); a glide of at most 1/(L+1) a frame; transparent under the ceiling. Registry
   type `limiter`. Guarded by `Limiter_never_exceeds_its_ceiling_and_glides` and `limiter_ceiling`.
+- `REQ-inst-sampler-1` — **A sampler** (source: Solaris R-EDM-8, 2026-10-09): registry instrument
+  `sampler` playing a host-decoded recording (`DeviceType::takesSample`, `Device::setSample` — the library
+  never opens a file); chromatic (pitched by the key from its root, and by the file's rate against
+  ours) or one-shot (as recorded, to its end); a span, reverse, an ADSR, level, velocity sensitivity;
+  16 voices. (S1)–(S5) in `src/instrument/README.md`. Guarded by
+  `Sampler_plays_its_sound_pitched_spanned_and_reversed` and `sampler_pitch`.
 

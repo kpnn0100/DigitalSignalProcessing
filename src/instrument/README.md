@@ -130,3 +130,42 @@ Verified: the kick settles on 48·2^(tune/12) Hz — 48.1 Hz at tune 0 and 72.0 
 (`kick_settles_on_its_tuned_fundamental`, Python), sweeping from more than an octave above; every
 pad sounds on its GM note and stops (`DrumMachine_every_pad_…`); the choke drops the open hat by more
 than 60 dB (`DrumMachine_closed_hat_chokes_…`); a reset replays a pattern byte-identically.
+
+## Sampler — Math (REQ-inst-sampler-1)
+
+A recorded sound s[k] (N frames, recorded at fr Hz, mono or stereo) played by notes at fs Hz.
+
+```
+(S1)  ratio = 2^((note − root)/12) · fr / fs    ; chromatic          (`noteOn`)
+      ratio = fr / fs                           ; one-shot: as recorded, whatever the key
+(S2)  [a, b) = [⌊start·N⌋, ⌈end·N⌉)             ; the span (start > end is swapped)
+      forward:  p₀ = a,     Δp = +ratio
+      reverse:  p₀ = b − 1, Δp = −ratio
+(S3)  x(p) = (1 − f)·s[k] + f·s[min(k+1, b−1)],  k = ⌊p⌋, f = p − k   ; linear interpolation  (`render`)
+(S4)  y = x(p) · env · 10^(level/20) · (1 − σ + σ·vel/127)            ; σ = velocity sensitivity
+(S5)  the voice ends when p leaves [a, b − 1] — or, chromatic, when its release has finished
+```
+
+`env` is the library's `ADSREnvelope` per voice (attack 0 → 1 from the first sample, so a note at the
+root with sustain 1 reproduces the recording exactly). A one-shot ignores its note-off. Sixteen voices:
+the same note retriggers, else an idle voice, else the oldest is stolen. The host decodes the file and
+hands the frames in (`setSample`, a copy); the library never opens a file.
+
+| parameter | unit | symbol |
+|---|---|---|
+| `mode` | chromatic / one-shot | which (S1) |
+| `root` | key | root |
+| `start`, `end` | fraction | (S2) |
+| `reverse` | on / off | (S2) |
+| `attack`, `decay`, `sustain`, `release` | ms, ms, 0…1, ms | env |
+| `level` | dB | level |
+| `velocity` | 0…1 | σ |
+
+Why not composed: the library had no resampler; pitching by interpolated playback is (S3). The
+envelope IS composed (ADSREnvelope). Verified: at the root the output equals the recording sample for
+sample, reversed and spanned likewise; an octave up is 880 Hz and over in half the time; a fifth down is
+440·2^(−7/12) and within 2e-3 of the analytic tone (nearest-frame playback misses by 1.4e-2 — a mutant
+showed it); a 24 kHz recording keeps its pitch at 48 kHz (`Sampler_plays_its_sound_pitched_spanned_and_reversed`);
+through the registry a 44.1 kHz 220 Hz recording plays 109 / 218 / 326 / 436 Hz at −12 / 0 / +7 / +12
+(`sampler_pitch`).
+

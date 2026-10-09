@@ -945,6 +945,25 @@ def check_sidechain_pump(binpath):
     return f"keyed dips {min(keyed):.1f}–{max(keyed):.1f} dB; unkeyed {max(abs(d) for d in free):.2f} dB"
 
 
+# ───────────────────────── D5 the sampler ─────────────────────────
+
+def check_sampler_pitch(binpath):
+    """(S1): a 220 Hz recording at 44.1 kHz plays 220·2^(n/12) Hz at 48 kHz, n semitones from its root."""
+    out = []
+    for n in (0, 7, 12, -12):
+        # the note lasts 22050 recorded frames at 2^(n/12)·44100/48000 a sample: measure inside 90 % of it
+        lasts = 22050 * 48000 / 44100 / 2 ** (n / 12)
+        y = render(binpath, "sampler", n)[:int(0.9 * min(24000, lasts))]
+        want = 220.0 * 2 ** (n / 12)
+        got = rising_zero_crossings(y) / (len(y) / SR)
+        if abs(got - want) / want > 0.02:
+            raise Failure(f"sampler {n:+d} st: {got:.1f} Hz, want {want:.1f}")
+        if goertzel_mag(y, want) < 10 * goertzel_mag(y, 220.0 if n else 330.0):
+            raise Failure(f"sampler {n:+d} st: not a clean {want:.1f} Hz tone")
+        out.append(f"{n:+d}→{got:.0f}")
+    return "Hz " + " ".join(out)
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -977,6 +996,7 @@ CHECKS = [
     ("registry_eq_by_name", check_registry_eq_by_name),
     ("limiter_ceiling", check_limiter_ceiling),
     ("sidechain_pump", check_sidechain_pump),
+    ("sampler_pitch", check_sampler_pitch),
 ]
 
 

@@ -472,3 +472,105 @@ TEST(Compressor_sidechain_ducks_on_the_key_not_the_input)
     }
     CHECK(L.back() < 0.01 * std::pow(10.0, -20.0 / 20.0));
 }
+
+TEST(Sampler_plays_its_sound_pitched_spanned_and_reversed)
+{
+    configure();
+    // REQ-inst-sampler-1, (S1)–(S5): a 440 Hz recording at 48 kHz, a second long
+    const int N = 48000;
+    std::vector<float> rec(N);
+    for (int i = 0; i < N; ++i) rec[(size_t)i] = (float)(0.5 * std::sin(2 * M_PI * 440.0 * i / 48000.0));
+    auto play = [&](Sampler::Params p, int note, int frames, double rate = 48000.0, bool release = false) {
+        Sampler s;
+        s.setParams(p);
+        s.setSample(rec.data(), N, 1, rate);
+        s.noteOn(note, 127);
+        if (release) s.noteOff(note);
+        std::vector<Sample> L(frames, 0.0), R(frames, 0.0);
+        Sample *io[2] = {L.data(), R.data()};
+        for (int pos = 0; pos < frames; pos += 128)
+        {
+            Sample *seg[2] = {L.data() + pos, R.data() + pos};
+            s.render(seg, 2, std::min(128, frames - pos));
+        }
+        (void)io;
+        return L;
+    };
+    auto crossingsHz = [](const std::vector<Sample> &y, int from, int to) {
+        int n = 0;
+        for (int i = from + 1; i < to; ++i) n += (y[(size_t)i - 1] < 0.0) != (y[(size_t)i] < 0.0);
+        return n / 2.0 / ((to - from) / 48000.0);
+    };
+    Sampler::Params flat;
+    flat.velocity = 0.0; // every note full: the level is the recording's
+    // at the root: the recording itself, sample for sample (a mono sound on both sides)
+    const auto root = play(flat, 60, N);
+    bool exact = true;
+    for (int i = 0; i < N - 1; ++i) exact &= root[(size_t)i] == (Sample)rec[(size_t)i];
+    CHECK(exact);
+    // an octave up: twice the frequency, and over in half the time
+    const auto up = play(flat, 72, N);
+    CHECK(std::fabs(crossingsHz(up, 0, 12000) - 880.0) < 4.0);
+    double tail = 0;
+    for (int i = 24100; i < N; ++i) tail = std::max(tail, std::fabs(up[(size_t)i]));
+    CHECK(tail == 0.0);
+    // a fifth down: 440 · 2^(−7/12) — and (S3)'s linear interpolation keeps it a clean tone: within
+    // 2e-3 of the analytic sine (nearest-frame playback is off by ~1.4e-2)
+    const auto fifth = play(flat, 53, N);
+    const double f5 = 440.0 * std::pow(2.0, -7.0 / 12.0);
+    CHECK(std::fabs(crossingsHz(fifth, 0, 24000) - f5) < 4.0);
+    double err = 0;
+    for (int i = 0; i < 24000; ++i) err = std::max(err, std::fabs(fifth[(size_t)i] - 0.5 * std::sin(2 * M_PI * f5 * i / 48000.0)));
+    CHECK(err < 2e-3);
+    // one-shot: as recorded whatever the key, and a note-off does not stop it
+    Sampler::Params shot = flat;
+    shot.mode = Sampler::OneShot;
+    const auto hit = play(shot, 84, N, 48000.0, true);
+    CHECK(std::fabs(crossingsHz(hit, 0, 24000) - 440.0) < 4.0 && std::fabs(hit[40000]) > 0.0);
+    // reversed: the recording backwards; a span: from its middle
+    Sampler::Params rev = flat;
+    rev.reverse = true;
+    const auto back = play(rev, 60, N);
+    bool reversed = true;
+    for (int i = 0; i < N - 1; ++i) reversed &= back[(size_t)i] == (Sample)rec[(size_t)(N - 1 - i)];
+    CHECK(reversed);
+    Sampler::Params half = flat;
+    half.start = 0.5;
+    const auto mid = play(half, 60, N / 2);
+    bool spanned = true;
+    for (int i = 0; i < N / 2 - 1; ++i) spanned &= mid[(size_t)i] == (Sample)rec[(size_t)(N / 2 + i)];
+    CHECK(spanned);
+    // recorded at 24 kHz, it keeps its pitch at 48 kHz (the file's rate against ours)
+    {
+        std::vector<float> r24(24000);
+        for (int i = 0; i < 24000; ++i) r24[(size_t)i] = (float)(0.5 * std::sin(2 * M_PI * 440.0 * i / 24000.0));
+        Sampler s;
+        s.setParams(flat);
+        s.setSample(r24.data(), 24000, 1, 24000.0);
+        s.noteOn(60, 127);
+        std::vector<Sample> L(24000, 0.0), R(24000, 0.0);
+        Sample *io[2] = {L.data(), R.data()};
+        s.render(io, 2, 24000);
+        CHECK(std::fabs(crossingsHz(L, 0, 24000) - 440.0) < 4.0);
+    }
+    // chromatic: released, it rings out by its release and stops
+    Sampler::Params rel = flat;
+    rel.releaseMs = 10.0;
+    const auto off = play(rel, 60, N, 48000.0, true);
+    double late = 0;
+    for (int i = 1000; i < N; ++i) late = std::max(late, std::fabs(off[(size_t)i]));
+    CHECK(late == 0.0);
+    // through the registry: it takes a sample, nothing else does, and with none it is silence
+    const DeviceType *t = DeviceRegistry::find("sampler");
+    CHECK(t && t->takesSample && t->kind == DeviceKind::Instrument && !DeviceRegistry::find("synth")->takesSample);
+    auto d = DeviceRegistry::create("sampler");
+    std::vector<Sample> L(256, 0.0), R(256, 0.0);
+    Sample *io[2] = {L.data(), R.data()};
+    d->noteOn(60, 100);
+    d->process(io, 2, 256);
+    CHECK(L[100] == 0.0);
+    d->setSample(rec.data(), N, 1, 48000.0);
+    d->noteOn(60, 127);
+    d->process(io, 2, 256);
+    CHECK(std::fabs(L[100]) > 0.0);
+}

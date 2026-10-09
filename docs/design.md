@@ -26,7 +26,7 @@ the verified build here.
 | Engine | `synth/SynthEngine`, `VoiceManager`, `Voice` | Polyphony → shared effects → output (the ESP32 firmware synth). |
 | Devices | `device/Device`, `DeviceRegistry` | Every instrument and effect behind one face; every parameter described once (name, unit, range, default, choices) — what a host reads instead of restating; its normalised 0…1 and its text derived once (`ParamMapping`). See [`../src/device/README.md`](../src/device/README.md). |
 | VST3 plugins | `apps/vst3` (`Processor`, `Controller`, `RegistryParameter`) | Basic Synth and Drum Machine as VST3 instruments, wrapping the registry's devices; built only when the SDK is present. See [`../apps/vst3/README.md`](../apps/vst3/README.md). |
-| Instruments | `instrument/Instrument` → `BasicSynth`, `DrumMachine` | Note-driven sources a host (the Solaris DAW) plays: blocks added into the host's buffers, host-side sample-accurate splitting. See [`../src/instrument/README.md`](../src/instrument/README.md). |
+| Instruments | `instrument/Instrument` → `BasicSynth`, `DrumMachine`, `Sampler` (plays a host-decoded recording) | Note-driven sources a host (the Solaris DAW) plays: blocks added into the host's buffers, host-side sample-accurate splitting. See [`../src/instrument/README.md`](../src/instrument/README.md). |
 | Compute | `compute/` | Block-grain work scheduling: `ParallelExecutor` (interface) + `SerialExecutor` (default) + `ThreadPoolExecutor`, selected via `ComputeConfig`. No OS calls — built on the platform adapter. See [`parallel-architecture.md`](parallel-architecture.md). |
 | Platform | `base/platform/` | Thin thread/mutex adapter (the only OS-specific code). |
 

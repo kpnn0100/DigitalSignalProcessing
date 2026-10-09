@@ -700,6 +700,27 @@ static std::vector<double> renderSidechain(double keyed)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// D5: a 220 Hz recording (half a second, mono, at 44.1 kHz) through the registry's sampler, the note
+// `semitones` from its root — pitch by the key and by the file's rate (REQ-inst-sampler-1)
+static std::vector<double> renderSampler(double semitones)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    std::vector<float> rec(22050);
+    for (size_t i = 0; i < rec.size(); ++i) rec[i] = (float)(0.6 * std::sin(2 * M_PI * 220.0 * (double)i / 44100.0));
+    auto d = DeviceRegistry::create("sampler");
+    d->setParam("velocity", 0.0);
+    d->setSample(rec.data(), (long long)rec.size(), 1, 44100.0);
+    d->noteOn(60 + (int)std::lround(semitones), 100);
+    std::vector<Sample> L(24000, 0.0), R(24000, 0.0);
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos)); // the last block is short
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3)
@@ -749,6 +770,7 @@ int main(int argc, char **argv)
     else if (scenario == "deviceeq") samples = renderDeviceEq(arg);
     else if (scenario == "limiter") samples = renderLimiter(arg);
     else if (scenario == "sidechain") samples = renderSidechain(arg);
+    else if (scenario == "sampler") samples = renderSampler(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);
