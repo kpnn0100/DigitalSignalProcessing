@@ -400,6 +400,18 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   `vst3_equivalence` hosts each bundle offline and equals the device rendered Solaris's way (warm-up
   included) sample for sample — every synth parameter moved, notes mid-block, the cutoff automated
   mid-block, 100-sample blocks — not silence, and its state reads back as the registry's text.
+- `REQ-vst-6` — **An editor seam** (source: Solaris R-VST-7, user request 2026-10-09: *"make the UI follow
+  Arstro theme"*). The plugins' own editor is drawn by Artboard in the Arstro look, which this repo does
+  not carry, so it is the umbrella's (`apps/solaris/plugins`) and is compiled INTO the plugins there,
+  with `ARSTRO_VST3_EDITOR`: the controller's `createView("editor")` returns `createEditor(*this)`
+  (`apps/vst3/Editor.h`). Built from this repo alone there is no editor — `createView` returns nothing
+  and a host draws its generic view — so this repo still needs no window system. The editor reaches
+  the plugin only through `Controller`: `type()`, `plainValue(i)`, and `editBegin` / `editPerform` /
+  `editEnd` in engineering units, `editPerform` normalising by REQ-device-7 before telling the host.
+  `vst3_editorhost` (the SDK's editor host, X11) is built beside the validator to open an editor in a real
+  host window. Verified there: the validator passes both plugins with the editor linked in, and the
+  umbrella's `solaris_plugin_editor` drives the editor over this controller (a drag → beginEdit once,
+  performEdit = `normalizedFromValue` of the value chosen, endEdit at release).
 - `REQ-fx-sidechain-1` — **The Compressor can listen to a key** (source: Solaris R-MIX-15 / R-EDM-3,
   2026-10-09). With `sidechain` on (a registry parameter, APPENDED so existing ids hold) its detector
   follows a key handed in before each block (`Device::setKey`; `DeviceType::takesKey`), the gain still

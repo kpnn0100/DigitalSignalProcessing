@@ -1,7 +1,9 @@
 #include "RegistryPlugin.h"
+#include "Editor.h"
 #include "base/AudioConfig.h"
 #include "base/source/fstreamer.h"
 #include "pluginterfaces/base/ibstream.h"
+#include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "public.sdk/source/vst/utility/stringconvert.h"
@@ -246,6 +248,34 @@ namespace vst3
         for (size_t i = 0; i < mType->params.size(); ++i) parameters.addParameter(new RegistryParameter(mType->params[i], (ParamID)i));
         return kResultOk;
     }
+
+    IPlugView *PLUGIN_API Controller::createView(FIDString name)
+    {
+#if ARSTRO_VST3_EDITOR
+        if (name && FIDStringsEqual(name, ViewType::kEditor)) return createEditor(*this);
+#else
+        (void)name;
+#endif
+        return nullptr; // built alone: the host draws its generic parameter view
+    }
+
+    double Controller::plainValue(int i) const
+    {
+        if (i < 0 || i >= (int)mType->params.size()) return 0.0;
+        return valueFromNormalized(mType->params[(size_t)i], const_cast<Controller *>(this)->getParamNormalized((ParamID)i));
+    }
+
+    void Controller::editBegin(int i) { beginEdit((ParamID)i); }
+
+    void Controller::editPerform(int i, double plain)
+    {
+        if (i < 0 || i >= (int)mType->params.size()) return;
+        const ParamValue n = normalizedFromValue(mType->params[(size_t)i], plain);
+        setParamNormalized((ParamID)i, n); // the controller's own copy, then the host (and through it the processor)
+        performEdit((ParamID)i, n);
+    }
+
+    void Controller::editEnd(int i) { endEdit((ParamID)i); }
 
     tresult PLUGIN_API Controller::setComponentState(IBStream *state)
     {

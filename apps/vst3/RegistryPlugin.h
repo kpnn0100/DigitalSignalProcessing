@@ -89,6 +89,15 @@ namespace vst3
         explicit Controller(const PluginId &id);
         Steinberg::tresult PLUGIN_API initialize(Steinberg::FUnknown *context) SMTG_OVERRIDE;
         Steinberg::tresult PLUGIN_API setComponentState(Steinberg::IBStream *state) SMTG_OVERRIDE;
+        /** REQ-vst-6: the plugin's own editor when one is linked in (Editor.h), else none — the host's view. */
+        Steinberg::IPlugView *PLUGIN_API createView(Steinberg::FIDString name) SMTG_OVERRIDE;
+
+        // ── what an editor uses (Editor.h): the type, the values, the host's edits — in engineering units ──
+        const DeviceType &type() const { return *mType; }
+        double plainValue(int index) const;            // the host's value, through the shared mapping
+        void editBegin(int index);
+        void editPerform(int index, double plain);     // normalised by `normalizedFromValue`, told to the host
+        void editEnd(int index);
 
     private:
         const DeviceType *mType;

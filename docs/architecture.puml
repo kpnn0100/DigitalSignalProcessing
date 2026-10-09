@@ -108,7 +108,11 @@ package vst3 <<apps/vst3>> {
   class Controller {
     EditController
     +setComponentState()
+    +createView("editor") : createEditor(*this) when ARSTRO_VST3_EDITOR (REQ-vst-6)
+    +type() / plainValue(i)
+    +editBegin / editPerform(plain) / editEnd : normalizedFromValue
   }
+  note right of Controller : Editor.h — the seam; the editor is the umbrella's (Solaris R-VST-7)
   class RegistryParameter {
     Parameter: toPlain / toNormalized / toString / fromString
   }

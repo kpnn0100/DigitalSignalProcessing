@@ -86,6 +86,20 @@ endfunction()
 arstro_vst3_plugin(arstro_vst3_synth ArstroBasicSynth 1)
 arstro_vst3_plugin(arstro_vst3_drums ArstroDrumMachine 2)
 
+# ── the SDK's editor host (Linux, X11): opens a plugin's editor in a real host window, the L5 check of
+#    an editor (REQ-vst-6) — `vst3_editorhost <bundle>.vst3`. Its sources need X11 only (the SDK's CMake
+#    also asks for gtkmm, which none of them uses). ──
+find_package(X11)
+if(X11_FOUND)
+  set(_eh ${S}/public.sdk/samples/vst-hosting/editorhost/source)
+  add_executable(vst3_editorhost
+    ${_eh}/editorhost.cpp ${_eh}/usediids.cpp ${_eh}/platform/linux/platform.cpp ${_eh}/platform/linux/runloop.cpp
+    ${_eh}/platform/linux/window.cpp ${S}/public.sdk/source/vst/hosting/plugprovider.cpp)
+  target_include_directories(vst3_editorhost PRIVATE ${X11_INCLUDE_DIR})
+  target_compile_options(vst3_editorhost PRIVATE -w)
+  target_link_libraries(vst3_editorhost PRIVATE vst3_hosting ${X11_LIBRARIES})
+endif()
+
 # ── the SDK's validator (its own test suite for any plugin) ──
 file(GLOB_RECURSE _vst3_testsuite ${S}/public.sdk/source/vst/testsuite/*.cpp)
 file(GLOB _vst3_hosttests ${S}/public.sdk/source/vst/hosting/test/*.cpp)
