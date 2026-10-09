@@ -422,6 +422,37 @@ TEST(Limiter_never_exceeds_its_ceiling_and_glides)
     CHECK(rel.lastGain() > 0.99);
 }
 
+TEST(Device_reports_its_latency_and_lags_by_exactly_it)
+{
+    configure();
+    // REQ-device-8: a device says how many samples its output lags its input — the limiter its lookahead,
+    // read again after a write moves it; every other type 0 — so a host can compensate every other path
+    for (const auto &t : DeviceRegistry::types())
+    {
+        auto d = DeviceRegistry::create(t.name);
+        CHECK(d->latency() == (t.name == "limiter" ? 96 : 0)); // 2 ms at 48 kHz, its default
+    }
+    auto lim = DeviceRegistry::create("limiter");
+    CHECK(lim->setParam("lookahead", 5.0) && lim->latency() == 240);
+    CHECK(lim->setParam("lookahead", 0.0) && lim->latency() == 0);
+    CHECK(lim->setParam("lookahead", 10.0) && lim->latency() == 480);
+    CHECK(lim->setParam("lookahead", 1.0) && lim->latency() == 48);
+    // and that IS the lag: under the ceiling, the output through the Device face is the input latency() late
+    std::vector<Sample> L(1000, 0.0), R(1000, 0.0);
+    L[0] = R[0] = 0.5; // a click at sample 0
+    for (size_t n = 1; n < L.size(); ++n) L[n] = R[n] = 0.25 * std::sin(0.03 * (double)n);
+    const std::vector<Sample> in = L;
+    for (size_t pos = 0; pos < L.size(); pos += 100)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        lim->process(io, 2, 100);
+    }
+    const int lat = lim->latency();
+    bool lagged = true;
+    for (int n = 0; n < 1000; ++n) lagged &= L[(size_t)n] == (n < lat ? 0.0 : in[(size_t)(n - lat)]);
+    CHECK(lagged);
+}
+
 TEST(Compressor_sidechain_ducks_on_the_key_not_the_input)
 {
     configure();

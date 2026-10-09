@@ -270,6 +270,7 @@ namespace arstro
             void process(Sample *const *io, int channels, int frames) override { runOf(mProc, io, channels, frames); }
             void reset() override { resetOf(mProc); }
             void setKey(const Sample *const *key, int channels) override { keyOf(mProc, key, channels); }
+            int latency() const override { return latencyOf(mProc); }
 
         protected:
             void apply(int i, double v) override { mB[i].set(mProc, v); }
@@ -284,6 +285,9 @@ namespace arstro
             template <class Q> static void runOf(Q &p, Sample *const *io, int channels, int frames) { runChannels(p, io, channels, frames); }
             static void keyOf(Compressor &p, const Sample *const *key, int channels) { p.setKey(key, channels); }
             template <class Q> static void keyOf(Q &, const Sample *const *, int) {}
+            // REQ-device-8: only the limiter's lookahead delays its output; every other effect is latency-free
+            static int latencyOf(const Limiter &p) { return p.latency(); }
+            template <class Q> static int latencyOf(const Q &) { return 0; }
             Proc mProc;
             const std::vector<Binding<Proc>> &mB;
         };

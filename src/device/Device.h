@@ -118,6 +118,11 @@ namespace arstro
         virtual void reset() = 0;
         /** Voices still sounding (instruments); 0 for an effect. */
         virtual int activeVoices() const { return 0; }
+        /** Samples its output lags its input at its CURRENT parameters (REQ-device-8): a lookahead
+         *  limiter's L, 0 for everything else. A host delays every other path by it so all signals
+         *  meet in time (plugin delay compensation). It may change with a parameter (the limiter's
+         *  `lookahead`); a host reads it again after such a write. */
+        virtual int latency() const { return 0; }
 
     protected:
         /** Push one (already clamped) value into the DSP object. */

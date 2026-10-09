@@ -36,6 +36,11 @@ modules unchanged: `Compressor`, `ParametricEQ`, `Reverb`, `Repeater` (= delay),
   state its spec does not describe. An unknown index or name changes nothing and returns false.
 - **An effect transforms in place; an instrument ADDS** into the buffers.
 - **Channel by channel**, as the library's own block path runs (reverb/README.md).
+- **A device reports its latency** (`latency()`, REQ-device-8): the samples its output lags its input
+  at its current parameters — the `limiter`'s lookahead L (Limiter's (L1)–(L5) delay the audio by L),
+  0 for every other type (a chorus's or a delay's delay is its SOUND, not a lag). A host delays every
+  other path by it so all signals meet in time; it changes with `lookahead`, so a host reads it again
+  after that write.
 - `reset()` clears what the module can clear (instrument voices, the EQ's and the filter's
   memory). `Reverb`, `Repeater` and `Chorus` have no reset, so their tails survive a seek; a host
   that needs silence after a seek builds a fresh device.

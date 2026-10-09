@@ -87,6 +87,7 @@ package device {
     +process(io**, ch, frames)
     +setParam(i|name, v) : clamped
     +noteOn / noteOff / reset
+    +latency() : samples its output lags (REQ-device-8)
     #apply(i, v)
   }
   class DeviceRegistry <<static>> {

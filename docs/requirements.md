@@ -373,6 +373,15 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   (every registry parameter: discrete steps exact both ways and owning equal slices, continuous round
   trip < 1e-12, a log taper's middle at the geometric mean, the default's text exact, nonsense refused).
 
+- `REQ-device-8` — **A device reports its latency** (source: Solaris R-MIX-17, the audit of
+  2026-10-09: the master limiter's lookahead put a whole render 96 samples late). `Device::latency()` is
+  the number of samples its output lags its input at its CURRENT parameters — the `limiter`'s lookahead
+  L (`Limiter::latency()`, 96 at its 2 ms default and 48 kHz), 0 for every other type — so a host can
+  delay every other path by it (plugin delay compensation). A write that moves it (`lookahead`) is seen
+  by the next read. Guarded by `Device_reports_its_latency_and_lags_by_exactly_it` (every type's default,
+  the limiter at 0 / 1 / 5 / 10 ms, and a click through the Device face arriving exactly `latency()`
+  samples late).
+
 ## Solaris instruments & effects — D4: VST3 (Solaris R-VST, 2026-10-09)
 
 - `REQ-vst-1` — **The SDK is outside the repo.** Steinberg's `vst3sdk` v3.8.1_build_84 (MIT licence,
