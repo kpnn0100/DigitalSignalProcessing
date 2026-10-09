@@ -304,3 +304,62 @@ TEST(Device_process_does_not_allocate_once_warm)
         CHECK(gAllocs.load() == 0);
     }
 }
+
+TEST(ParamSpec_normalised_and_text_faces_round_trip)
+{
+    // REQ-device-7: one mapping, so a VST3 plugin, a host and a panel agree to the last digit
+    for (const auto &t : DeviceRegistry::types())
+        for (const auto &p : t.params)
+        {
+            const int steps = paramSteps(p);
+            if (p.isChoice() || p.integer)
+            {
+                // discrete: every step exact both ways, each owning an equal slice of 0…1
+                CHECK(steps == (p.isChoice() ? (int)p.choices.size() - 1 : (int)std::lround(p.max - p.min)));
+                for (int k = 0; k <= steps; ++k)
+                {
+                    const double v = (p.isChoice() ? 0.0 : p.min) + k;
+                    const double n = normalizedFromValue(p, v);
+                    CHECK(steps == 0 || n == (double)k / steps);
+                    CHECK(valueFromNormalized(p, n) == v);
+                    if (steps > 0) CHECK(valueFromNormalized(p, (k + 0.999) / (steps + 1)) == v); // its whole slice
+                }
+            }
+            else
+            {
+                CHECK(steps == 0);
+                CHECK(normalizedFromValue(p, p.min) == 0.0 && normalizedFromValue(p, p.max) == 1.0);
+                CHECK(valueFromNormalized(p, 0.0) == p.min && std::fabs(valueFromNormalized(p, 1.0) - p.max) <= 1e-12 * std::fabs(p.max));
+                for (double n : {0.1, 0.25, 0.5, 0.77, 0.9})
+                {
+                    const double v = valueFromNormalized(p, n);
+                    CHECK(std::fabs(normalizedFromValue(p, v) - n) < 1e-12);
+                }
+                if (p.logScale && p.min > 0.0)
+                {
+                    // equal ratios, equal travel: the geometric mean sits at the middle
+                    CHECK(std::fabs(valueFromNormalized(p, 0.5) - std::sqrt(p.min * p.max)) < 1e-9 * p.max);
+                }
+            }
+            // the default round-trips through both faces exactly
+            double back = -1.0;
+            CHECK(paramFromText(p, paramToText(p, p.def), back) && back == p.def);
+            // out of range and nonsense: clamped, or refused with nothing written
+            CHECK(normalizedFromValue(p, 1e300) == 1.0 && normalizedFromValue(p, -1e300) == 0.0);
+            double untouched = 42.0;
+            CHECK(!paramFromText(p, "loud", untouched) && untouched == 42.0);
+        }
+    // the text is the suite's canonical number (Solaris's .slp): at least one decimal, shortest
+    ParamSpec cut;
+    cut.min = 20.0;
+    cut.max = 20000.0;
+    cut.def = 900.0;
+    CHECK(paramToText(cut, 900.0) == "900.0" && paramToText(cut, 1234.5678) == "1234.5678");
+    const double third = 20000.0 / 3.0;                     // no short text: the shortest that reads back
+    double t3 = 0.0;
+    CHECK(paramFromText(cut, paramToText(cut, third), t3) && t3 == third && paramToText(cut, third) == "6666.666666666667");
+    ParamSpec wave;
+    wave.choices = {"sine", "saw", "square"};
+    double w = -1.0;
+    CHECK(paramToText(wave, 1.0) == "saw" && paramFromText(wave, "square", w) && w == 2.0 && paramFromText(wave, "1", w) && w == 1.0);
+}

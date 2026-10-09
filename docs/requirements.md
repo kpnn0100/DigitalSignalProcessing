@@ -363,3 +363,32 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   instrument whose keys mean something and what each is — the Drum Machine's ten pads ("Kick" 36 …
   "Cowbell" 56), taken from its own pad table, so a host's piano roll can label them; empty for a
   melodic instrument and for effects. Guarded by `DeviceRegistry_names_the_drum_kits_keys`.
+- `REQ-device-7` — **A parameter's normalised and text faces are the library's, once** (source: Solaris
+  R-VST-3/4, 2026-10-09). `normalizedFromValue` / `valueFromNormalized` map a spec's value to 0…1 and
+  back — linear; logarithmic for a `logScale` spec with min > 0; DISCRETE for an integer or a choice by
+  VST3's convention (steps = max − min or choices − 1; k / steps; back min(steps, ⌊n·(steps+1)⌋)) —
+  and `paramToText` / `paramFromText` give its text (a choice's name, else the suite's canonical
+  number: shortest round trip, at least one decimal). A VST3 plugin, Solaris's service and its `.slp`
+  all use these, so they agree to the last digit. Guarded by `ParamSpec_normalised_and_text_faces_round_trip`
+  (every registry parameter: discrete steps exact both ways and owning equal slices, continuous round
+  trip < 1e-12, a log taper's middle at the geometric mean, the default's text exact, nonsense refused).
+
+## Solaris instruments & effects — D4: VST3 (Solaris R-VST, 2026-10-09)
+
+- `REQ-vst-1` — **The SDK is outside the repo.** Steinberg's `vst3sdk` v3.8.1_build_84 (MIT licence,
+  read at install) at `VST3_SDK_ROOT` (default `~/sdk/vst3sdk`); with none, `apps/vst3` says so and
+  builds nothing, and `arstro_dsp` never depends on it. Its sources are compiled with this build's
+  CMake (the SDK's own needs 3.25), from the SDK's own source lists.
+- `REQ-vst-2` — **Basic Synth and Drum Machine are VST3 instruments wrapping the library's own
+  classes** (`apps/vst3`: one generic processor + controller, built per registry type; bundles
+  `ArstroBasicSynth.vst3`, `ArstroDrumMachine.vst3`; class ids frozen in `factory.cpp`).
+- `REQ-vst-3` — **Their parameters are the registry's**: id = index in the type, title / unit / steps /
+  default from the spec, mapped by REQ-device-7; a block is split at every note and parameter point at
+  its sample offset; a note-on at velocity 0 is a note-off.
+- `REQ-vst-4` — **State is text**: `arstro-device 1`, `type=<t>`, `<name>=<paramToText>` per parameter;
+  another type's state is refused, an unknown name skipped.
+- `REQ-vst-5` — **Verified**: the SDK's validator passes both (47/47 each, `vst3_validate_synth|drums`);
+  `vst3_equivalence` hosts each bundle offline and equals the device rendered Solaris's way (warm-up
+  included) sample for sample — every synth parameter moved, notes mid-block, the cutoff automated
+  mid-block, 100-sample blocks — not silence, and its state reads back as the registry's text.
+

@@ -40,6 +40,26 @@ modules unchanged: `Compressor`, `ParametricEQ`, `Reverb`, `Repeater` (= delay),
   memory). `Reverb`, `Repeater` and `Chorus` have no reset, so their tails survive a seek; a host
   that needs silence after a seek builds a fresh device.
 
+## Math — `ParamMapping.cpp` (REQ-device-7)
+
+A spec's normalised value n ∈ [0, 1], used by every plugin host and knob:
+
+```
+(N1)  continuous, linear:   n = (v − min) / (max − min)              v = min + n·(max − min)
+(N2)  continuous, logScale (min > 0):
+                            n = ln(v / min) / ln(max / min)          v = min · (max / min)^n
+(N3)  discrete (an integer: steps = max − min, base = min; a choice: steps = choices − 1, base = 0):
+                            n = (v − base) / steps                   v = base + min(steps, ⌊n · (steps + 1)⌋)
+```
+
+Every result goes through `ParamSpec::clamp`. (N3) is VST3's convention: each step owns the slice
+[k/(steps+1), (k+1)/(steps+1)) of the knob, and k/steps lies inside its own slice, so a step is exact
+both ways. (N2) puts the geometric mean √(min·max) at n = ½ — equal ratios, equal travel.
+
+Text: a choice's name; else the suite's canonical number — the fewest decimals (at least one) that
+`strtod` reads back to the same double, `0.0` for zero, the shortest `%g` that round-trips outside
+1e-6 … 1e15. Solaris's `.slp` and a VST3 plugin's state both store exactly this.
+
 ## Math — `DeviceRegistry.cpp`
 
 The adapters add no DSP; two conversions and one blend:

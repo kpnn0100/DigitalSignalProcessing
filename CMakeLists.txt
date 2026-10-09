@@ -33,6 +33,13 @@ if(Python3_Interpreter_FOUND)
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_integration.py)
 endif()
 
+# ── VST3: Basic Synth and Drum Machine as plugins (REQ-vst-1…5). Needs the SDK outside the repo
+#    (VST3_SDK_ROOT, default ~/sdk/vst3sdk); without it apps/vst3 says so and builds nothing. ──
+option(ARSTRO_DSP_VST3 "Build the VST3 plugins when the SDK is present" ON)
+if(ARSTRO_DSP_VST3)
+  add_subdirectory(apps/vst3)
+endif()
+
 # ── Kitchen-sink bench (default audio I/O via stdout/WAV — no extra deps) ──
 add_executable(arstro_kitchen_sink apps/kitchen_sink/main.cpp)
 target_link_libraries(arstro_kitchen_sink PRIVATE arstro_dsp)

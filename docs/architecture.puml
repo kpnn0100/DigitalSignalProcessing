@@ -92,6 +92,25 @@ package device {
   class DeviceRegistry <<static>> {
     +types() / find(name) / create(name)
   }
+  class ParamMapping <<functions>> {
+    +normalizedFromValue(spec, v) / valueFromNormalized(spec, n)
+    +paramSteps(spec)
+    +paramToText(spec, v) / paramFromText(spec, text, &v)
+  }
+}
+package vst3 <<apps/vst3>> {
+  class Processor {
+    AudioEffect: notes in, stereo out
+    +process() : split at every offset
+    +getState / setState : text
+  }
+  class Controller {
+    EditController
+    +setComponentState()
+  }
+  class RegistryParameter {
+    Parameter: toPlain / toNormalized / toString / fromString
+  }
 }
 package instrument {
   interface Instrument {
@@ -252,6 +271,10 @@ BasicSynth ..|> Instrument
 DeviceRegistry o--> "9" DeviceType
 DeviceType o--> "*" ParamSpec
 DeviceType ..> Device : creates
+ParamMapping ..> ParamSpec : reads
+Processor --> Device : DeviceRegistry::create
+Controller o--> RegistryParameter
+RegistryParameter ..> ParamMapping
 Device ..> BasicSynth : SynthDevice wraps
 Device ..> DrumMachine : DrumDevice wraps
 Device ..> Compressor : EffectDevice<Proc> wraps the effects

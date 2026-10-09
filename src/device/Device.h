@@ -39,6 +39,25 @@ namespace arstro
         double clamp(double v) const;
     };
 
+    /*
+     *  A parameter's TWO other faces, derived from its spec and nothing else (REQ-device-7):
+     *
+     *  - the normalised 0…1 a plugin host and a knob speak — linear over [min, max]; a `logScale`
+     *    spec with min > 0 is logarithmic (equal ratios, equal travel); an integer or a choice is
+     *    DISCRETE by VST3's convention: steps = max − min (an integer) or choices − 1, normalised
+     *    k / steps, and back min(steps, ⌊n · (steps + 1)⌋), so every step owns an equal slice;
+     *  - its text — the choice's name, else the shortest decimal that reads back to the same double
+     *    with at least one decimal ("900.0", "0.35") — what a project file and a plugin's state store.
+     *
+     *  One copy, so a VST3 plugin, the Solaris service and its panel agree to the last digit.
+     */
+    int paramSteps(const ParamSpec &spec);
+    double normalizedFromValue(const ParamSpec &spec, double value);
+    double valueFromNormalized(const ParamSpec &spec, double normalized);
+    std::string paramToText(const ParamSpec &spec, double value);
+    /** A choice's name or a number (clamped); false (nothing written) when it is neither. */
+    bool paramFromText(const ParamSpec &spec, const std::string &text, double &value);
+
     enum class DeviceKind { Instrument, Effect };
 
     class Device;
