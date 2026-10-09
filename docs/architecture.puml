@@ -189,7 +189,14 @@ note bottom of Reverb
   width=0 => identical channels (mono).
 end note
 package effects {
-  class Compressor
+  class Compressor {
+    +setSidechain(on) / setKey(key**, ch) : detector on the key
+  }
+  class Limiter {
+    +setGainDb / setCeilingDb / setReleaseMs / setLookaheadMs
+    +process(io**, ch, frames) : linked, lookahead
+    +latency() / clamped()
+  }
   class Overdrive
   class Chorus
   class Repeater
@@ -272,6 +279,7 @@ DeviceRegistry o--> "9" DeviceType
 DeviceType o--> "*" ParamSpec
 DeviceType ..> Device : creates
 ParamMapping ..> ParamSpec : reads
+Device ..> Limiter : EffectDevice wraps
 Processor --> Device : DeviceRegistry::create
 Controller o--> RegistryParameter
 RegistryParameter ..> ParamMapping

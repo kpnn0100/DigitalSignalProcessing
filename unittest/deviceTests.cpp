@@ -363,3 +363,112 @@ TEST(ParamSpec_normalised_and_text_faces_round_trip)
     double w = -1.0;
     CHECK(paramToText(wave, 1.0) == "saw" && paramFromText(wave, "square", w) && w == 2.0 && paramFromText(wave, "1", w) && w == 1.0);
 }
+
+TEST(Limiter_never_exceeds_its_ceiling_and_glides)
+{
+    configure();
+    // REQ-fx-limiter-1: (L1)–(L5) keep every frame under the ceiling by construction — the final clamp
+    // never does more than round — and the gain moves at most 1/(L+1) a frame (a glide, not a click)
+    for (double look : {0.0, 0.5, 2.0, 10.0})
+        for (int block : {1, 37, 128})
+        {
+            Limiter lim;
+            lim.setGainDb(12.0);
+            lim.setCeilingDb(-1.0);
+            lim.setReleaseMs(40.0);
+            lim.setLookaheadMs(look);
+            const Sample ceiling = std::pow(10.0, -1.0 / 20.0);
+            std::vector<Sample> L(24000), R(24000);
+            for (size_t n = 0; n < L.size(); ++n)
+            {
+                const double t = n / 48000.0;
+                L[n] = 0.6 * std::sin(2 * M_PI * 110 * t) + 0.3 * std::sin(2 * M_PI * 1730 * t) + (n % 4801 == 0 ? 2.5 : 0.0);
+                R[n] = 0.5 * std::sin(2 * M_PI * 220 * t + 0.4) - (n % 3001 == 7 ? 3.0 : 0.0);
+            }
+            Sample worst = 0.0, step = 0.0, prev = 1.0;
+            for (size_t pos = 0; pos < L.size(); pos += (size_t)block)
+            {
+                const int n = (int)std::min<size_t>((size_t)block, L.size() - pos);
+                Sample *io[2] = {L.data() + pos, R.data() + pos};
+                lim.process(io, 2, n);
+                if (block == 1) { step = std::max(step, std::fabs(lim.lastGain() - prev)); prev = lim.lastGain(); }
+                for (int i = 0; i < n; ++i) worst = std::max({worst, std::fabs(io[0][i]), std::fabs(io[1][i])});
+            }
+            CHECK(worst <= ceiling && lim.clamped() == 0);
+            CHECK(worst > 0.9 * ceiling); // and it is limiting, not muting
+            if (block == 1) CHECK(step <= 1.0 / (lim.latency() + 1) + 1e-12);
+        }
+    // under the ceiling it is transparent — the input, L samples late, exactly
+    Limiter quiet;
+    quiet.setLookaheadMs(1.0);
+    std::vector<Sample> L(2000), R(2000), in(2000);
+    for (size_t n = 0; n < L.size(); ++n) in[n] = L[n] = R[n] = 0.5 * std::sin(0.01 * n);
+    Sample *io[2] = {L.data(), R.data()};
+    quiet.process(io, 2, 2000);
+    const int lat = quiet.latency();
+    CHECK(lat == 48);
+    bool exact = true;
+    for (int n = lat; n < 2000; ++n) exact &= L[(size_t)n] == in[(size_t)(n - lat)];
+    CHECK(exact);
+    // after a burst the gain comes back: within 5 release times, above 0.99
+    Limiter rel;
+    rel.setLookaheadMs(0.0);
+    rel.setReleaseMs(20.0);
+    std::vector<Sample> b(48000, 0.0), b2(48000, 0.0);
+    for (int n = 0; n < 480; ++n) b[(size_t)n] = b2[(size_t)n] = 4.0;
+    for (int n = 480; n < 48000; ++n) b[(size_t)n] = b2[(size_t)n] = 0.1;
+    Sample *bio[2] = {b.data(), b2.data()};
+    rel.process(bio, 2, 480 + 4800);
+    CHECK(rel.lastGain() > 0.99);
+}
+
+TEST(Compressor_sidechain_ducks_on_the_key_not_the_input)
+{
+    configure();
+    // REQ-fx-sidechain-1: keyed, the detector follows the key; the gain is (C3) of the KEY's level
+    auto run = [](bool sidechain, bool withKey) {
+        Compressor c;
+        c.setThresholdDb(-30.0);
+        c.setRatio(4.0);
+        c.setAttackMs(1.0);
+        c.setReleaseMs(50.0);
+        c.setSidechain(sidechain);
+        std::vector<Sample> L(9600), R(9600), kL(9600, 1.0), kR(9600, 1.0); // a 0 dBFS key, steady
+        for (size_t n = 0; n < L.size(); ++n) L[n] = R[n] = 0.01 * std::sin(2 * M_PI * 55 * n / 48000.0); // −40 dBFS: below threshold
+        const Sample *key[2] = {kL.data(), kR.data()};
+        for (size_t pos = 0; pos < L.size(); pos += 128)
+        {
+            const Sample *k[2] = {key[0] + pos, key[1] + pos};
+            c.setKey(withKey ? k : nullptr, 2);
+            c.processBlock(L.data() + pos, 128, 0);
+            c.processBlock(R.data() + pos, 128, 1);
+        }
+        // the gain at the end: output / input on the last cycle's peak region
+        double out = 0, in = 0;
+        for (size_t n = 8640; n < 9600; ++n) { out += L[n] * L[n]; const double x = 0.01 * std::sin(2 * M_PI * 55 * n / 48000.0); in += x * x; }
+        return 20.0 * std::log10(std::sqrt(out / in));
+    };
+    // keyed by a 0 dBFS key: (0 − (−30)) · (1 − 1/4) = 22.5 dB of reduction, though the input is quiet
+    CHECK(std::fabs(run(true, true) - (-22.5)) < 0.05);
+    // keyed with no key: a silent key, no reduction
+    CHECK(std::fabs(run(true, false)) < 1e-9);
+    // not keyed: the quiet input is under threshold — untouched, whatever key is handed in
+    CHECK(std::fabs(run(false, true)) < 1e-9);
+    // the registry says so, and the device passes the key through
+    const DeviceType *t = DeviceRegistry::find("compressor");
+    CHECK(t && t->takesKey && t->paramIndex("sidechain") == (int)t->params.size() - 1);
+    CHECK(!DeviceRegistry::find("eq")->takesKey);
+    auto d = DeviceRegistry::create("compressor");
+    d->setParam("threshold", -30.0);
+    d->setParam("sidechain", 1.0);
+    std::vector<Sample> L(4800), R(4800), kL(4800, 1.0), kR(4800, 1.0);
+    for (size_t n = 0; n < L.size(); ++n) L[n] = R[n] = 0.01;
+    for (size_t pos = 0; pos < L.size(); pos += 96)
+    {
+        const Sample *k[2] = {kL.data() + pos, kR.data() + pos};
+        d->setKey(k, 2);
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, 96);
+    }
+    CHECK(L.back() < 0.01 * std::pow(10.0, -20.0 / 20.0));
+}

@@ -138,3 +138,62 @@ chain diverge.
    (diffusion, low/high cut) over UART? Default: expose what it already has.
 3. **Echo stereo:** plain (same on both channels) vs. ping-pong. Default: plain; ping-pong
    is a later option via per-channel delay times.
+
+## Math — `Compressor.cpp` (with its sidechain, REQ-fx-sidechain-1)
+
+```
+(C1)  level[n] = |x[n]|                      ; plain:  the input itself            (`process`)
+      level[n] = |k[n]|                      ; keyed:  the KEY, another track      (`processBlock`, sidechain on)
+                                             ;         no key handed in → k = 0
+(C2)  a = e^(−1/Ta),  r = e^(−1/Tr)          ; Ta, Tr = attack, release in samples (ms · fs / 1000)  (`update`)
+      env[n] = a·(env[n−1] − level[n]) + level[n]   if level[n] > env[n−1]     (attack)
+             = r·(env[n−1] − level[n]) + level[n]   otherwise                  (release)
+(C3)  over  = 20·log10(env + 1e−9) − T       ; T = threshold dB
+      cut   = max(0, over) · (1 − 1/R)       ; R = ratio
+(C4)  y[n]  = x[n] · 10^(−cut/20) · makeup   ; the gain always applies to the INPUT   (`compress`)
+```
+
+| setter | unit | symbol |
+|---|---|---|
+| `setThresholdDb` | dB | T |
+| `setRatio` | :1 | R |
+| `setAttackMs` / `setReleaseMs` | ms | Ta, Tr (stored in samples) |
+| `setMakeupGain` | linear | makeup |
+| `setSidechain`, `setKey` | on/off, buffers | which level (C1) reads |
+
+Per channel; a key with fewer channels than the input repeats its last. Keyed by a steady 0 dBFS key,
+−30 dB at 4:1 cuts (0 + 30)·¾ = 22.5 dB however quiet the input (`Compressor_sidechain_ducks_on_the_key_not_the_input`);
+a kick every half second dips a bass 20.6 dB within 40 ms (`sidechain_pump`).
+
+## Math — `Limiter.cpp` (REQ-fx-limiter-1)
+
+A brickwall lookahead limiter; L = lookahead in samples, c = ceiling (linear), d = drive (linear).
+
+```
+(L1)  r[n] = min(1, c / max_ch |d·x_ch[n]|)             ; the gain frame n needs, channels linked
+(L2)  m[n] = min{ r[k] : n − L ≤ k ≤ n }                ; sliding-window minimum (monotonic deque)
+(L3)  q[n] = min(m[n], 1 − (1 − q[n−1])·ρ),  ρ = e^(−1/(release·fs))   ; release: back toward 1
+(L4)  g[n] = (1/(L+1)) · Σ_{j=0..L} q[n−j]             ; box average (running sum, re-summed each lap)
+(L5)  y_ch[n] = d·x_ch[n−L] · g[n]                      ; the audio, L samples late
+```
+
+**Why it never exceeds c.** Each q[n−j], 0 ≤ j ≤ L, is ≤ m[n−j], whose window [n−j−L, n−j] contains
+n − L; so every term is ≤ r[n−L], so is their average, and |y| ≤ |d·x[n−L]|·r[n−L] ≤ c. A final clamp to
+±c only ever meets rounding error — the limiter counts the frames where it did more (`clamped()`), and
+the tests require zero. **Why it glides.** g changes by at most 1/(L+1) a frame (one term of the box
+replaced), so a peak is met by a ramp of L samples, not a step. Under the ceiling every r = 1, g = 1
+exactly, and the output is the input L samples late, bit for bit. Latency = L.
+
+| setter | unit | symbol |
+|---|---|---|
+| `setGainDb` | dB | d = 10^(dB/20) |
+| `setCeilingDb` | dBFS | c = 10^(dB/20) |
+| `setReleaseMs` | ms | ρ |
+| `setLookaheadMs` | ms | L = round(ms · fs / 1000) |
+
+Not composed from the library's `Delay` (fractional, modulated) — this needs an integer delay, a
+window minimum and a box average, none of which existed. Verified: every lookahead 0…10 ms and block
+size 1/37/128, a mix with 3.0 spikes driven 12 dB into −1 dBFS: never above, clamp idle, step ≤ 1/(L+1)
+(`Limiter_never_exceeds_its_ceiling_and_glides`); through the registry, 18 dB into −1 dBFS peaks at
+−1.000 dBFS (`limiter_ceiling`).
+

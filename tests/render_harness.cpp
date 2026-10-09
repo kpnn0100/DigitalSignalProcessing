@@ -647,6 +647,59 @@ static std::vector<double> renderDeviceEq(double hz)
     return y;
 }
 
+// D4: a loud mix through the registry's limiter, `drive` dB into a −1 dBFS ceiling (REQ-fx-limiter-1)
+static std::vector<double> renderLimiter(double drive)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("limiter");
+    d->setParam("gain", drive);
+    d->setParam("ceiling", -1.0);
+    std::vector<Sample> L(96000), R(96000);
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        const double t = (double)n / kSampleRate;
+        L[n] = 0.45 * std::sin(2 * M_PI * 82.4 * t) + 0.25 * std::sin(2 * M_PI * 659 * t) * (std::fmod(t, 0.25) < 0.05 ? 1.0 : 0.3);
+        R[n] = L[n];
+    }
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, 128);
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
+// D4: a 55 Hz bass through the registry's compressor with Sidechain on, keyed (arg 1) by a kick every
+// half second, or with no key (arg 0) — the pump (REQ-fx-sidechain-1)
+static std::vector<double> renderSidechain(double keyed)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("compressor");
+    d->setParam("threshold", -30.0);
+    d->setParam("ratio", 4.0);
+    d->setParam("attack", 2.0);
+    d->setParam("release", 120.0);
+    d->setParam("sidechain", 1.0);
+    const size_t N = 96000;
+    std::vector<Sample> L(N), R(N), kL(N), kR(N);
+    for (size_t n = 0; n < N; ++n)
+    {
+        L[n] = R[n] = 0.3 * std::sin(2 * M_PI * 55.0 * n / kSampleRate);
+        const double tk = std::fmod((double)n / kSampleRate, 0.5); // a kick: a 60 Hz thump decaying over ~60 ms
+        kL[n] = kR[n] = std::exp(-tk / 0.06) * std::sin(2 * M_PI * 60.0 * tk);
+    }
+    for (size_t pos = 0; pos < N; pos += 128)
+    {
+        const Sample *k[2] = {kL.data() + pos, kR.data() + pos};
+        d->setKey(keyed > 0.5 ? k : nullptr, 2);
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, 128);
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3)
@@ -694,6 +747,8 @@ int main(int argc, char **argv)
     else if (scenario == "synth2") samples = renderSynth2(arg);
     else if (scenario == "kick") samples = renderKick(arg);
     else if (scenario == "deviceeq") samples = renderDeviceEq(arg);
+    else if (scenario == "limiter") samples = renderLimiter(arg);
+    else if (scenario == "sidechain") samples = renderSidechain(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

@@ -906,6 +906,45 @@ def check_registry_eq_by_name(binpath):
     return f"worst deviation {worst:.3f} dB"
 
 
+# ───────────────────────── D4 dynamics for EDM ─────────────────────────
+
+def check_limiter_ceiling(binpath):
+    """(L1)–(L5): driven 18 dB into a −1 dBFS ceiling, no sample is above it, and it got louder."""
+    ceiling = 10 ** (-1 / 20)
+    lsb = 1 / 32767
+    loud = render(binpath, "limiter", 18.0)
+    plain = render(binpath, "limiter", 0.0)
+    peak = max(abs(x) for x in loud)
+    if peak > ceiling + lsb:
+        raise Failure(f"limiter peak {peak:.5f} above the ceiling {ceiling:.5f}")
+    # the ceiling caps how much louder a mix peaking at 0.7 can get; driven, it must use that room:
+    # louder, and its RMS at least half the ceiling (limiting, not muting)
+    gain_db = 20 * math.log10(rms(loud) / rms(plain))
+    if gain_db < 3.0 or rms(loud) < 0.5 * ceiling:
+        raise Failure(f"limiter: {gain_db:.2f} dB louder, RMS {rms(loud):.3f} for 18 dB of drive")
+    return f"peak {20 * math.log10(peak):.3f} dBFS (ceiling −1.000), {gain_db:.1f} dB louder, RMS {rms(loud) / ceiling:.2f} of the ceiling"
+
+
+def check_sidechain_pump(binpath):
+    """(C1)–(C3) keyed: the bass dips after every kick, by at most the key's full reduction; not without a key."""
+    def dips(y):
+        out = []
+        for k in range(1, 4):                         # kicks at 0.5, 1.0, 1.5 s (the first settles in)
+            t0 = int(k * 0.5 * 48000)
+            during = rms(y[t0 + 960:t0 + 1920])      # 20–40 ms after the kick
+            before = rms(y[t0 - 2400:t0 - 960])      # 30–50 ms before it
+            out.append(20 * math.log10(before / during))
+        return out
+    keyed = dips(render(binpath, "sidechain", 1))
+    free = dips(render(binpath, "sidechain", 0))
+    # a 0 dBFS key through −30 dB at 4:1 can take at most 22.5 dB
+    if min(keyed) < 6.0 or max(keyed) > 22.5:
+        raise Failure(f"sidechain dips {keyed} dB: want 6 … 22.5")
+    if max(abs(d) for d in free) > 0.5:
+        raise Failure(f"no key, yet the bass moved {free} dB")
+    return f"keyed dips {min(keyed):.1f}–{max(keyed):.1f} dB; unkeyed {max(abs(d) for d in free):.2f} dB"
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -936,6 +975,8 @@ CHECKS = [
     ("synth2_equal_temperament", check_synth2_equal_temperament),
     ("kick_settles_on_its_tuned_fundamental", check_kick_settles_on_its_tuned_fundamental),
     ("registry_eq_by_name", check_registry_eq_by_name),
+    ("limiter_ceiling", check_limiter_ceiling),
+    ("sidechain_pump", check_sidechain_pump),
 ]
 
 

@@ -72,6 +72,9 @@ namespace arstro
         /** An instrument whose keys MEAN something (a kit's pads): note → its name, ascending.
          *  Empty for a melodic instrument. A host names its piano-roll keys from it (REQ-device-6). */
         std::vector<std::pair<int, std::string>> noteNames;
+        /** It has a key input (a compressor's sidechain): a host hands it another track's audio
+         *  through `Device::setKey` before each block (REQ-fx-sidechain-1). */
+        bool takesKey = false;
         std::function<std::unique_ptr<Device>(const DeviceType &)> create;
 
         /** −1 when there is no such parameter. */
@@ -99,6 +102,9 @@ namespace arstro
         virtual void noteOn(int note, int velocity) { (void)note; (void)velocity; }
         virtual void noteOff(int note) { (void)note; }
         virtual void allNotesOff() {}
+        /** The key for the NEXT process() call (a type with `takesKey`): `channels` buffers of at
+         *  least that many frames, valid until it returns; nullptr = silence. Others ignore it. */
+        virtual void setKey(const Sample *const *key, int channels) { (void)key; (void)channels; }
         /** Clear all state: tails, voices, filter memory (a seek). */
         virtual void reset() = 0;
         /** Voices still sounding (instruments); 0 for an effect. */

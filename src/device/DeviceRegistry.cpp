@@ -2,6 +2,7 @@
 #include "../base/AudioConfig.h"
 #include "../effects/Chorus.h"
 #include "../effects/Compressor.h"
+#include "../effects/Limiter.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
 #include "../equalizer/ParametricEQ.h"
@@ -222,8 +223,9 @@ namespace arstro
         {
         public:
             EffectDevice(const DeviceType &t, const std::vector<Binding<Proc>> &b) : Device(t), mB(b) { applyAll(); }
-            void process(Sample *const *io, int channels, int frames) override { runChannels(mProc, io, channels, frames); }
+            void process(Sample *const *io, int channels, int frames) override { runOf(mProc, io, channels, frames); }
             void reset() override { resetOf(mProc); }
+            void setKey(const Sample *const *key, int channels) override { keyOf(mProc, key, channels); }
 
         protected:
             void apply(int i, double v) override { mB[i].set(mProc, v); }
@@ -231,7 +233,13 @@ namespace arstro
         private:
             // Each processor clears its memory its own way; one without a reset keeps its state.
             static void resetOf(ParametricEQ &p) { p.reset(); }
+            static void resetOf(Limiter &p) { p.reset(); }
             template <class Q> static void resetOf(Q &) {}
+            // a limiter links its channels, so it takes the whole frame; the rest run channel by channel
+            static void runOf(Limiter &p, Sample *const *io, int channels, int frames) { p.process(io, channels, frames); }
+            template <class Q> static void runOf(Q &p, Sample *const *io, int channels, int frames) { runChannels(p, io, channels, frames); }
+            static void keyOf(Compressor &p, const Sample *const *key, int channels) { p.setKey(key, channels); }
+            template <class Q> static void keyOf(Q &, const Sample *const *, int) {}
             Proc mProc;
             const std::vector<Binding<Proc>> &mB;
         };
@@ -244,6 +252,8 @@ namespace arstro
                 {num("attack", "Attack", "ms", 0.1, 200, 5, true), [](Compressor &c, double x) { c.setAttackMs(x); }},
                 {num("release", "Release", "ms", 5, 2000, 100, true), [](Compressor &c, double x) { c.setReleaseMs(x); }},
                 {num("makeup", "Makeup", "dB", 0, 24, 0), [](Compressor &c, double x) { c.setMakeupGain(lin(x)); }},
+                // appended (a parameter's index is its id in a plugin host): detect on the key, not the input
+                {choice("sidechain", "Sidechain", {"off", "on"}, 0), [](Compressor &c, double x) { c.setSidechain(x > 0.5); }},
             };
             return b;
         }
@@ -310,6 +320,17 @@ namespace arstro
                 {num("depth", "Depth", "ms", 0, 10, 3), [](Chorus &c, double x) { c.setDepthMs(x); }},
                 {num("delay", "Delay", "ms", 1, 40, 12), [](Chorus &c, double x) { c.setBaseDelayMs(x); }},
                 {num("mix", "Mix", "", 0, 1, 0.5), [](Chorus &c, double x) { c.setMix(x); }},
+            };
+            return b;
+        }
+
+        const std::vector<Binding<Limiter>> &limiterBindings()
+        {
+            static const std::vector<Binding<Limiter>> b = {
+                {num("gain", "Gain", "dB", 0, 24, 0), [](Limiter &l, double x) { l.setGainDb(x); }},
+                {num("ceiling", "Ceiling", "dB", -24, 0, -0.3), [](Limiter &l, double x) { l.setCeilingDb(x); }},
+                {num("release", "Release", "ms", 1, 1000, 60, true), [](Limiter &l, double x) { l.setReleaseMs(x); }},
+                {num("lookahead", "Lookahead", "ms", 0, Limiter::kMaxLookaheadMs, 2), [](Limiter &l, double x) { l.setLookaheadMs(x); }},
             };
             return b;
         }
@@ -399,7 +420,9 @@ namespace arstro
             }
             v.push_back(drums);
 
-            v.push_back(effectType<Compressor>("compressor", "Compressor", "Feed-forward peak compressor.", &compressorBindings));
+            DeviceType comp = effectType<Compressor>("compressor", "Compressor", "Feed-forward peak compressor; with Sidechain on it listens to another track (its key).", &compressorBindings);
+            comp.takesKey = true;
+            v.push_back(comp);
             v.push_back(effectType<ParametricEQ>("eq", "EQ", "Low cut, low shelf, three peaks, high shelf, high cut.", &eqBindings));
             v.push_back(effectType<Reverb>("reverb", "Reverb", "Feedback-delay-network reverb, decorrelated stereo.", &reverbBindings));
             v.push_back(effectType<Repeater>("delay", "Delay", "Feedback echo, each repeat darker.", &delayBindings));
@@ -413,6 +436,7 @@ namespace arstro
                              num("res", "Resonance", "", 0, 1, 0.3), num("mix", "Mix", "", 0, 1, 1)};
             filter.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<FilterDevice>(self); };
             v.push_back(filter);
+            v.push_back(effectType<Limiter>("limiter", "Limiter", "Brickwall lookahead limiter: the output never exceeds the ceiling.", &limiterBindings));
             return v;
         }();
         return all;

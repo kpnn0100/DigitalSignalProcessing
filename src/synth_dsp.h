@@ -44,6 +44,7 @@
 
 // Effects
 #include "effects/Compressor.h"
+#include "effects/Limiter.h"
 #include "effects/Overdrive.h"
 #include "effects/Chorus.h"
 #include "effects/Repeater.h"

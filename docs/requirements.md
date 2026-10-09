@@ -391,4 +391,14 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   `vst3_equivalence` hosts each bundle offline and equals the device rendered Solaris's way (warm-up
   included) sample for sample — every synth parameter moved, notes mid-block, the cutoff automated
   mid-block, 100-sample blocks — not silence, and its state reads back as the registry's text.
+- `REQ-fx-sidechain-1` — **The Compressor can listen to a key** (source: Solaris R-MIX-15 / R-EDM-3,
+  2026-10-09). With `sidechain` on (a registry parameter, APPENDED so existing ids hold) its detector
+  follows a key handed in before each block (`Device::setKey`; `DeviceType::takesKey`), the gain still
+  on its input; no key = silence = no reduction. (C1)–(C4) in `src/effects/README.md`. Guarded by
+  `Compressor_sidechain_ducks_on_the_key_not_the_input` (22.5 dB exactly as (C3) says) and
+  `sidechain_pump` (a kick dips a bass 20.6 dB; 0.09 dB with no key).
+- `REQ-fx-limiter-1` — **A brickwall limiter** (source: Solaris R-EDM-4): gain, ceiling, release,
+  lookahead (0…10 ms, its latency); channels linked; the output never above the ceiling BY
+  CONSTRUCTION ((L1)–(L5)); a glide of at most 1/(L+1) a frame; transparent under the ceiling. Registry
+  type `limiter`. Guarded by `Limiter_never_exceeds_its_ceiling_and_glides` and `limiter_ceiling`.
 

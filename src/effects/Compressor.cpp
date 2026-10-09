@@ -1,5 +1,6 @@
 #include "Compressor.h"
 #include "../base/AudioConfig.h"
+#include <algorithm>
 #include <cmath>
 
 namespace arstro
@@ -39,11 +40,24 @@ namespace arstro
         mRelCoeff = rel > 0.0 ? std::exp(-1.0 / rel) : 0.0;
     }
 
-    Sample Compressor::process(Sample in, int channel)
+    Sample Compressor::process(Sample in, int channel) { return compress(in, std::fabs(in), channel); }
+
+    void Compressor::processBlock(Sample *buf, int frames, int channel)
+    {
+        if (!mSidechain || isBypassed())
+        {
+            SignalProcessor::processBlock(buf, frames, channel);
+            return;
+        }
+        // keyed: the detector follows the key's level, the gain still applies to the input
+        const Sample *key = mKeyChannels > 0 ? mKey[std::min(channel, mKeyChannels - 1)] : nullptr;
+        for (int i = 0; i < frames; ++i) buf[i] = compress(buf[i], key ? std::fabs(key[i]) : 0.0, channel);
+    }
+
+    Sample Compressor::compress(Sample in, Sample level, int channel)
     {
         if (channel < 0 || channel >= (int)mEnv.size())
             return in;
-        Sample level = std::fabs(in);
         Sample &env = mEnv[channel];
         // One-pole peak follower with separate attack/release.
         if (level > env)
