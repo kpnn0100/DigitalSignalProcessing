@@ -46,6 +46,7 @@ out[n] = y[n] · amp[n] · G                                            ; amp = 
 | `osc1/2.octave`, `.semi`, `.fine` | (Y2) | −3..3 oct, −12..12 st, −100..100 ct | 0 / −1 oct, +7 ct |
 | `osc1/2.level` | L1, L2 | 0..1 | 0.8 / 0.5 |
 | `osc1/2.voices`, `.detune` | unison | 1..5, cents (Oscillator's own) | 1, 15 |
+| `osc1/2.width` | stereo width w | 0..50 cents: channel c detuned by (c − (C−1)/2)·w (Oscillator's `spreadID`); 0 = mono-identical — REQ-synth2-6 | 0 |
 | `noise` | N | 0..1 | 0 |
 | `filterMode` | — | LP · BP · HP · notch | LP |
 | `cutoff` | (Y3) | Hz | 2400 |

@@ -241,6 +241,47 @@ TEST(Piano_reset_is_silent_at_once_and_starts_again_the_same)
     CHECK(after(true) > 4.0 * after(false)); // the pedal holds what the stop let go
 }
 
+TEST(BasicSynth_unison_is_wide_and_does_not_flam)
+{
+    // REQ-synth2-6: a width detunes the channels apart (a supersaw is wide); no width is mono-identical; unison
+    // voices start at spread phases, so a detuned unison's attack is not a spike of five aligned saws
+    configure();
+    auto play = [](double width, std::vector<Sample> &L, std::vector<Sample> &R) {
+        BasicSynth s;
+        BasicSynth::Params p;
+        p.osc1.voices = 5;
+        p.osc1.detune = 30.0;
+        p.osc1.width = width;
+        p.osc2.level = 0.0;
+        p.cutoff = 20000.0;
+        p.envAmount = 0.0;
+        p.ampEnv = {0.0, 10.0, 1.0, 50.0};
+        s.setParams(p);
+        s.noteOn(57, 127);
+        const int n = 48000;
+        L.assign(n, 0.0);
+        R.assign(n, 0.0);
+        for (int i = 0; i < n; i += 128)
+        {
+            Sample *o[2] = {L.data() + i, R.data() + i};
+            s.render(o, 2, 128);
+        }
+    };
+    std::vector<Sample> L, R;
+    play(0.0, L, R);
+    double diff = 0.0;
+    for (size_t i = 0; i < L.size(); ++i) diff = std::max(diff, (double)std::fabs(L[i] - R[i]));
+    CHECK(diff == 0.0);                                          // no width: mono-identical
+    double attack = 0.0;
+    for (int i = 0; i < 144; ++i) attack = std::max(attack, (double)std::fabs(L[(size_t)i]));
+    CHECK(attack / rmsOf(L, 9600, 19200) < 1.5);                 // no aligned spike (aligned saws: well above)
+    play(20.0, L, R);
+    double sl = 0, sr = 0, slr = 0;
+    for (int i = 12000; i < 36000; ++i) { sl += L[(size_t)i] * L[(size_t)i]; sr += R[(size_t)i] * R[(size_t)i]; slr += L[(size_t)i] * R[(size_t)i]; }
+    CHECK(slr / std::sqrt(sl * sr) < 0.7);                       // wide: the channels drift apart
+    CHECK(rmsOf(L, 12000, 36000) > 0.05 && rmsOf(R, 12000, 36000) > 0.05);
+}
+
 TEST(BasicSynth_resonance_is_heard)
 {
     // REQ-inst-synth (Solaris D-4): the filter's resonance rings at the cutoff — a saw at 110 Hz through a low-pass at

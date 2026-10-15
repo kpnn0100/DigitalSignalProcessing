@@ -120,6 +120,7 @@ namespace arstro
             b.push_back({num(k + ".level", "Level", "", 0, 1, d.level), [o](P &p, double v) { (p.*o).level = v; }});
             b.push_back({num(k + ".voices", "Unison", "", 1, 5, d.voices, false, true), [o](P &p, double v) { (p.*o).voices = (int)v; }});
             b.push_back({num(k + ".detune", "Detune", "ct", 0, 100, d.detune), [o](P &p, double v) { (p.*o).detune = v; }});
+            b.push_back({num(k + ".width", "Width", "ct", 0, 50, d.width), [o](P &p, double v) { (p.*o).width = v; }}); // REQ-synth2-6
         }
         void envBindings(std::vector<Binding<BasicSynth::Params>> &b, const std::string &k,
                          BasicSynth::Env BasicSynth::Params::*e, const BasicSynth::Env &d)

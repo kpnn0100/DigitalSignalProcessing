@@ -334,6 +334,13 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   cut (the oscillators' own envelopes are gates closed only when the amp envelope ends).
 - `REQ-synth2-5` — Voice allocation: same note retriggers its voice, else an idle voice, else the
   oldest note is stolen (Y5).
+- `REQ-synth2-6` — **Stereo unison** (source: Solaris R-INST-1 amended, user request 2026-10-15: *"make an edm
+  song, edm require more advance sound"*). Each oscillator has a WIDTH in cents (`osc1/2.width`, 0…50, default
+  0): the `Oscillator`'s per-channel detune offset, the channels detuned apart by it, so a unison spreads across
+  the stereo field. Unison voices start at spread phases — voice v at frac(v/φ), the same on every channel —
+  not all at zero (aligned detuned saws spike at the attack: 7.8× the sustained level, measured; spread 0.9×).
+  No width is mono-identical; one voice starts at 0 as before. Guarded by
+  `BasicSynth_unison_is_wide_and_does_not_flam` (the aligned start seen red).
 - `REQ-drum-1` — `DrumMachine`: ten pads on the GM drum notes (kick 36, rim 37, snare 38, clap 39,
   low tom 41, closed hat 42, mid tom 45, open hat 46, high tom 48, cowbell 56), each synthesized
   from `Phasor`, `Noise`, `StateVariableFilter`, `DecayEnvelope` — no sample files. A `Phasor`

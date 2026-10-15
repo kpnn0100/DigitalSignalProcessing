@@ -42,6 +42,7 @@ namespace arstro
             Sample level = 0.8;    // 0..1
             int voices = 1;        // unison 1..5
             Sample detune = 15.0;  // unison spread, cents
+            Sample width = 0.0;    // REQ-synth2-6: stereo width, cents (each channel detuned apart by it)
         };
         struct Env
         {

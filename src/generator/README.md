@@ -29,6 +29,11 @@ Sample generate(int channel) override;
 ```
 
 - **Default `Saw`.** An unknown waveform value produces silence (`0`).
+- **Starting phases (REQ-synth2-6):** voice v of the stack starts at φ_v = frac(v·0.6180339887…) (voice 0 at 0),
+  the same on every channel. All at zero, a detuned unison's voices are aligned at the attack — a spike of N
+  saws (measured 7.8× the sustained RMS for five) — before they drift apart; spread, the sum starts as it goes
+  on (0.9×). Set when the per-channel state is sized (`ensureChannels`); free-running after. Width (`spreadID`)
+  is a per-channel detune, c_off = (c − (C−1)/2)·spread cents, so phases equal per channel keep width 0 mono.
 - The waveform applies to **every unison voice**; the per-voice detune/spread is unchanged.
 - **Saw / Square** are band-limited with **PolyBLEP**; **Sine** is exact; **Triangle** is the
   naive `asin(sin)` shape (its harmonics roll off ~1/n², so audible aliasing is minimal).

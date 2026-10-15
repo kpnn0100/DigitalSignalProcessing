@@ -70,6 +70,7 @@ namespace arstro
             v.osc[k].setWaveform(toOsc(o[k]->wave));
             v.osc[k].setVoiceCount(o[k]->voices);
             v.osc[k].setDetuneCents(o[k]->detune);
+            v.osc[k].setStereoSpreadCents(o[k]->width); // REQ-synth2-6
             if (v.note >= 0) v.osc[k].setFrequency(oscFrequency(k, v.note));
         }
         v.filter.setMode(mParams.filterMode);

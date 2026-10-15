@@ -46,6 +46,16 @@ namespace arstro
             mInc.assign(need, 0.0);
             mPhaseU.assign(need, 0u);
             mIncU.assign(need, 0u);
+            // REQ-synth2-6: unison voices start at SPREAD phases — voice v at frac(v / phi), the same on every
+            // channel (so no width stays mono-identical) — not all at zero, where a detuned unison's saws line
+            // up at the attack and flam. Voice 0 starts at 0: one voice is as it always was.
+            for (size_t c = 0; c < (size_t)n; ++c)
+                for (int v = 1; v < kMaxVoices; ++v)
+                {
+                    const double ph = std::fmod(v * 0.6180339887498949, 1.0);
+                    mPhase[c * kMaxVoices + (size_t)v] = (Sample)ph;
+                    mPhaseU[c * kMaxVoices + (size_t)v] = (uint32_t)(ph * 4294967296.0);
+                }
         }
     }
 
