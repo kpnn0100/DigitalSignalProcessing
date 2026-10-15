@@ -24,7 +24,7 @@
  *      help                 list commands
  *      quit                 exit
  */
-#include "PianoEngine.h"
+#include "../../src/physical/PianoEngine.h"
 
 #include <cstdio>
 #include <cstdint>

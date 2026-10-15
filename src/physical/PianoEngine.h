@@ -1,8 +1,10 @@
 /*
- *  Arstro DSP — piano_demo
+ *  Arstro DSP — physical
  *
  *  PianoEngine: fixed-size polyphony pool of PianoVoice sharing one PianoBridge,
- *  with MIDI note on/off and the three pedals (REQ-piano-8, REQ-piano-10). Mirrors
+ *  with MIDI note on/off and the three pedals (REQ-piano-8, REQ-piano-10). In the
+ *  library since REQ-inst-piano-1 (it lived in apps/piano_demo), so the demo, the
+ *  bench and a host's `Piano` instrument play ONE engine. Mirrors
  *  src/synth/VoiceManager's fixed-array + oldest-steals-first allocation pattern,
  *  but VoiceManager is hardcoded to Oscillator-owning Voice objects and has no
  *  concept of a shared cross-voice coupling bus (see src/physical/README.md "why
@@ -10,7 +12,9 @@
  *  directly rather than editing VoiceManager for a shape it isn't built for.
  */
 #pragma once
-#include "../../src/synth_dsp.h"
+#include "../base/AudioConfig.h" // its users configure the rate through it
+#include "PianoBridge.h"
+#include "PianoVoice.h"
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -20,13 +24,18 @@ namespace arstro
     class PianoEngine
     {
     public:
-        static constexpr int kVoiceCount = 8; // matches VoiceManager's existing convention
+        // REQ-inst-piano-1 (amends REQ-piano-12's 8): a silent voice costs nothing (README ## 13),
+        // so the pool is sized for pedalled chords; the bench's budget is for 8 SOUNDING.
+        static constexpr int kVoiceCount = 16;
 
         PianoEngine();
 
         void noteOnMidi(int midiNote, Sample velocity);
         void noteOff(int midiNote);
         void panic(); // all notes off, pedals cleared
+        void releaseAll(); // every key up (a transport stop): the pedals stay, tails ring out
+        void silence();    // silent NOW, every state cleared (a seek) — allocates nothing
+        int activeVoices() const; // voices still sounding (0 = the engine may be skipped)
 
         void setSustainPedal(bool on);
         void setSostenutoPedal(bool on);
@@ -75,6 +84,11 @@ namespace arstro
         // resolution on the way through for no reason).
         void renderBlockFloat(float *interleaved, int frames);
 
+        // ADDS `frames` into planar `out[0..channels)` (a host's buffers, zeroed by
+        // it), times `gain` after the limiter: left into channel 0, right into 1,
+        // their mean into a mono channel. Allocates nothing.
+        void renderAdd(Sample *const *out, int channels, int frames, Sample gain = 1.0);
+
     private:
         void renderFrame(Sample &outL, Sample &outR); // one sample, both paths
         int allocateVoice();
@@ -88,6 +102,7 @@ namespace arstro
         std::array<bool, kVoiceCount> mKeyDown;
         std::array<bool, kVoiceCount> mSostenutoLatched;
         std::array<long, kVoiceCount> mAge;
+        std::array<long, kVoiceCount> mReleasedAge; // samples since its key went up; −1 while held
 
         bool mSustainPedal = false;
         bool mSostenutoPedal = false;

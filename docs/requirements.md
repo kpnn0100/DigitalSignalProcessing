@@ -123,6 +123,8 @@ silently reintroduced as bugs or silently promised as done)
 
 - `REQ-piano-12` — Polyphony for the piano voice is bounded (matches `REQ-synth-1`'s existing
   8-voice convention in the demo engine); simultaneous full 88-key coupling is out of scope.
+  (**AMENDED (REQ-inst-piano-1, 2026-10-15):** 16 voices in the library's `PianoEngine`, stolen
+  longest-released first, never-struck voices seated — see REQ-inst-piano-1.)
   **Consequence, found during implementation:** a bounded pool means voices *will* be reused
   for new notes. `StringResonator`/`StringPartialBank` expose `reset()` (zeroes resonator
   history), which `PianoVoice::noteOn()` always calls before retuning — reusing a voice
@@ -449,6 +451,18 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   lookahead (0…10 ms, its latency); channels linked; the output never above the ceiling BY
   CONSTRUCTION ((L1)–(L5)); a glide of at most 1/(L+1) a frame; transparent under the ceiling. Registry
   type `limiter`. Guarded by `Limiter_never_exceeds_its_ceiling_and_glides` and `limiter_ceiling`.
+- `REQ-inst-piano-1` — **The piano, a library instrument** (source: Solaris R-INST-5, user request 2026-10-15:
+  *"if the instrument is not enough, make that instrument"* — a song for the piano). `PianoEngine` — the
+  `PianoVoice` pool sharing one `PianoBridge` (REQ-piano-8/12) — moves from `apps/piano_demo` into
+  `src/physical`, so the demo, the bench and a host share ONE engine; `Piano` (`src/instrument`) is it as an
+  `Instrument` (REQ-inst-1), and registry type `piano` gives a host its voicing bank (hammer, strings, body —
+  the engine's `Tune` rows, same ranges and defaults), the sustain and soft pedals and a volume. **AMENDS
+  REQ-piano-12:** the pool is 16 voices (silent ones cost nothing, README ## 13, so the bench's 8-sounding
+  budget, REQ-piano-17, is unchanged), and a voice is stolen in this order — never used, finished, the
+  longest-RELEASED, and only then the oldest held — so a held note is never taken while a released one
+  still rings (an arpeggio over a held bass keeps its bass). `reset()` silences every voice without
+  allocating; velocity is `v / 127`. Guarded by `Piano_*` unit tests and the registry's every-entry tests.
+
 - `REQ-inst-sampler-1` — **A sampler** (source: Solaris R-EDM-8, 2026-10-09): registry instrument
   `sampler` playing a host-decoded recording (`DeviceType::takesSample`, `Device::setSample` — the library
   never opens a file); chromatic (pitched by the key from its root, and by the file's rate against

@@ -43,6 +43,7 @@ seed note `REQ-effects-1`). What *is* reused:
 | `PianoBridge` | `SignalProcessor` | Shared per-note-set soundboard modal bank + sympathetic-resonance feedback bus (§8). One instance shared by every `PianoVoice` in a `PianoEngine`. |
 | `LongitudinalBank` | `SignalProcessor` | The string's *longitudinal* modes and the quasi-static tension response (§12), driven by the square of the transverse displacement. Bass-weighted; the source of phantom partials. |
 | `PianoVoice` | `SignalGenerator` | Owns U unison `StringPartialBank`s (§5) + one `HammerExciter` + damper state (§7) + pedal state (§9 pedals) + secondary-noise bursts (§9 noise); ties §1–§9 together; `generate(channel)` is the physical step. |
+| `PianoEngine` | — | The pool: 16 `PianoVoice`s on one `PianoBridge`, MIDI notes, the three pedals, the live voicing bank (`Tune`), the soft limiter. In the library since REQ-inst-piano-1 (it was `apps/piano_demo`'s) — the demo, the bench and `instrument/Piano` play this one. |
 
 ---
 
@@ -1231,6 +1232,29 @@ magnitude under a struck note's peak. The 50 ms release stops a note that passes
 zero from tripping the gate mid-ring.
 
 Implemented in `PianoVoice::isSilent()`; applied by `PianoEngine::renderFrame()`.
+
+### 13.1 Silence, the never-struck voice, and stealing (REQ-inst-piano-1)
+
+**Silence.** A host's seek needs a piano silent NOW and, from there, the same samples as a new one for
+the same notes. `PianoEngine::silence()` puts every voice back as made — `PianoVoice::silence()`: each
+string's partial history zeroed and its damper SEATED at once, not over its 20 ms ramp
+(`StringPartialBank::silence`), so §13's skip applies on the next sample; the hammer's contact reading
+(`displacementAtStrike`, the last sample's displacement at the strike point) zeroed; the longitudinal and
+duplex banks, the noise filters and the noise seed, the envelope back to Idle — and the bridge's modes and
+bus cleared, the pool's "used" bookkeeping reset. Allocates nothing.
+
+**The never-struck voice is a damped string.** Before this, a voice never struck had its damper LIFTED
+(a bank's damper starts at 0) — an undamped string at the constructor's pitch, rendered every sample and
+ringing sympathetically through the bridge (§8): a phantom string per unused voice. The constructor now
+ends with `silence()`. Measured: the bench's one-voice case went 12× → 41.6× real time (seven phantom
+strings no longer rendered); the 8-sounding budget is unchanged (10.7×, REQ-piano-17). The same notes
+after a `reset()` are now bit-identical to a new engine's — it found two carriers: the phantom strings
+(−27 dB of difference) and the stale `displacementAtStrike` a voice-STEAL also suffered (now zeroed by
+`StringPartialBank::reset()` too).
+
+**Stealing.** With every voice busy, the one taken is: finished; then the key released longest ago
+(damped first, then held only by a pedal); only then the oldest held key — a held bass under an
+arpeggio keeps sounding (`PianoEngine::allocateVoice`).
 
 ---
 

@@ -30,6 +30,7 @@ namespace arstro
         // Voicing — forwarded to the owned envelope.
         void noteOn(Sample velocity);
         void noteOff();
+        void resetEnvelope() { mEnvelope.reset(); } // Idle at 0, as made: the next noteOn attacks from nothing
         bool isFinished() const { return mEnvelope.isFinished(); }
 
         /** Block path: add `level * (generate*envelope)` to buf for one channel.

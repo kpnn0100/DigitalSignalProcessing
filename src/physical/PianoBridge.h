@@ -33,6 +33,8 @@ namespace arstro
         // per sample, then the engine calls tick() once to finalize the sample.
         void accumulate(Sample contribution);
         void tick();
+        /** Every mode's history and the bus cleared (a host's seek, REQ-inst-piano-1). Allocates nothing. */
+        void reset();
 
         // Previous sample's response, pre-scaled by couplingGain — add directly
         // to a voice's string excitation for sympathetic resonance (README ## 8).

@@ -143,6 +143,10 @@ package instrument {
     +setParams(mode, root, span, reverse, ADSR, level, velocity)
     -16 voices: interpolated playback, ADSREnvelope
   }
+  class Piano {
+    +setParams(tune[15], sustain, soft, volumeDb)
+    -(P1) velocity v/127 · (P2) volume after the limiter · (P3) stop = keys up, seek = silence
+  }
 }
 package generator {
   class Phasor <<value type>> {
@@ -251,7 +255,15 @@ package physical {
     + setUnisonCount / setUnisonDetuneCents
     + setUnaCorda(bool) / setDamperHeld(bool)
     + setBridge(PianoBridge*)
+    + silence()   ' a host's seek: silent now, as made
     # generate(channel) : Sample   ' hammer -> unison strings -> bridge push/pull
+  }
+  class PianoEngine {
+    + noteOnMidi(note, vel) / noteOff(note) / releaseAll() / silence()
+    + setSustainPedal / setSostenutoPedal / setUnaCorda
+    + setTuning(row, value)   ' the voicing bank (Tune)
+    + renderAdd(out, ch, frames, gain) / renderBlockFloat / renderBlockBytes
+    - 16 voices; steals: never used, finished, longest released, oldest held (REQ-inst-piano-1)
   }
 }
 note bottom of physical
@@ -303,6 +315,9 @@ Device ..> DrumMachine : DrumDevice wraps
 Device ..> Compressor : EffectDevice<Proc> wraps the effects
 DrumMachine ..|> Instrument
 Sampler ..|> Instrument
+Piano ..|> Instrument
+Piano *--> "1" PianoEngine
+Device ..> Piano : PianoDevice wraps
 Sampler *-- "16" ADSREnvelope
 BasicSynth *--> Oscillator : 2 per voice (gated)
 BasicSynth *--> StateVariableFilter : per voice
@@ -386,15 +401,12 @@ note right of WebUI
 end note
 
 package "apps/piano_demo" <<app>> {
-  class PianoEngine {
-    + noteOnMidi(note, vel) / noteOff(note)
-    + setSustainPedal / setSostenutoPedal / setUnaCorda
-    + render(buf, frames, channel)
-  }
+  class PianoDemo <<main.cpp>>
 }
-PianoEngine *--> "8" PianoVoice
+PianoEngine *--> "16" PianoVoice
 PianoEngine *--> "1" PianoBridge
-note right of PianoEngine
+PianoDemo ..> PianoEngine : plays (the library's, REQ-inst-piano-1)
+note right of PianoDemo
   Headless CLI + WAV render (same pattern as
   apps/kitchen_sink/main.cpp) — the "simple UI"
   to audition PianoVoice (REQ-piano-10).

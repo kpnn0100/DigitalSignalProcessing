@@ -351,6 +351,29 @@ namespace arstro
         mOutputEnvelope = 0.0; // a struck voice is not silent (README ## 13)
     }
 
+    void PianoVoice::silence()
+    {
+        for (int k = 0; k < kMaxUnison; ++k)
+            mStrings[k].silence();
+        mLongitudinal.reset();
+        mDuplex.reset();
+        mThumpFilter.filteredValue = 0.0;       // the noises' filters (their one state): no history
+        mDamperNoiseFilter.filteredValue = 0.0; // left from the last note
+        mThumpAmp = 0.0;
+        mDamperNoiseAmp = 0.0;
+        mOutputEnvelope = 0.0;
+        mLastSample = 0.0;
+        mDamperHeld = false;
+        mNoiseState = kNoiseSeed; // as made: the same notes from here sound the same
+        resetEnvelope();          // … and its envelope attacks from nothing, not from where the last note left it
+        // … and its register defaults are derived as a fresh voice's are: the engine re-applies its voicing at
+        // every strike, AFTER setFrequency — a flag left from the last note would make setFrequency skip a
+        // default a fresh voice computes, and the same note would not be the same samples
+        mInharmonicityOverridden = mBaseDecayOverridden = mUnisonOverridden = mStrikePositionOverridden = false;
+        mModalMassOverridden = mHammerMassOverridden = mHammerStiffnessOverridden = mTensionModOverridden = false;
+        mAftersoundOverridden = mBrightnessOverridden = false;
+    }
+
     void PianoVoice::noteOff()
     {
         SignalGenerator::noteOff(); // long backstop release (kVoiceLifetimeMs) — see README ## isFinished note

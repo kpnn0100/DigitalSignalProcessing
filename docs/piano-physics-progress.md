@@ -25,6 +25,13 @@ file first and updates it last, every session. Spec:
 | **M10** (soundboard in series) | **11.57× RT** (median 11.13×) | 12.3× | ~1944 | ✅ met (2.9× margin) |
 | **M11** (stronger aftersound) | **11.47× RT** (median 11.33×) | 12.3× | ~1944 | ✅ met (2.9× margin) |
 | **M12** (treble brightness) | **11.17× RT** (median 11.12×) | 12.1× | ~1944 | ✅ met (2.8× margin) |
+| **REQ-inst-piano-1** (library engine, 16-voice pool, never-struck voices seated) | **10.70× RT** (median 10.65×) | **41.6×** | ~1944 | ✅ met (2.7× margin) |
+
+**REQ-inst-piano-1** (2026-10-15, Solaris's piano): the engine moved into `src/physical`, the pool grew to 16
+and a never-struck voice is now a SEATED damper rather than an undamped phantom string rendered every sample —
+so one voice costs a quarter of what it did (12.1× → 41.6×) while the 8-sounding case holds (10.70×, within
+run-to-run noise of M12's 11.17×). Measured in a Release build: the umbrella's `build/` is Debug, where the
+bench reads ~1× and means nothing.
 
 M9.1–M9.4 and M10 held ~11.5–11.8× on this machine (run-to-run noise dominates; M10 adds one
 one-pole low-pass to the single shared bridge — effectively free). No resonators added since M7.

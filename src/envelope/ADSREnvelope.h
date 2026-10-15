@@ -38,6 +38,7 @@ namespace arstro
         void noteOn(Sample velocity); // velocity 0..1 scales the peak; -> Attack
         void noteOff();               // -> Release from the current level
         bool isFinished() const;      // all channels reached Idle after Release
+        void reset();                 // every channel Idle at level 0, as made (a host's seek) — allocates nothing
 
         void onChannelCountChanged() override;
         void update() override; // caches ADSR params for the hot path

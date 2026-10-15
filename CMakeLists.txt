@@ -59,7 +59,7 @@ target_link_libraries(rack_smoke PRIVATE arstro_dsp)
 add_test(NAME rack_smoke COMMAND rack_smoke)
 
 # ── Piano demo (the "simple UI" for auditioning PianoVoice — REQ-piano-10) ──
-add_executable(arstro_piano_demo apps/piano_demo/main.cpp apps/piano_demo/PianoEngine.cpp)
+add_executable(arstro_piano_demo apps/piano_demo/main.cpp)
 target_link_libraries(arstro_piano_demo PRIVATE arstro_dsp)
 
 # Convenience target: `cmake --build build --target demo` (or `make demo`) renders
@@ -81,7 +81,7 @@ endif()
 
 # ── Piano render benchmark (REQ-piano-17; docs/piano-physics-plan.md §M0) ──
 # `cmake --build build --target piano_bench && ./build/piano_bench`
-add_executable(piano_bench tools/piano_bench.cpp apps/piano_demo/PianoEngine.cpp)
+add_executable(piano_bench tools/piano_bench.cpp)
 target_link_libraries(piano_bench PRIVATE arstro_dsp)
 
 # Smoke only: proves the benchmark still builds and produces a number, so it

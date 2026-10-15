@@ -122,6 +122,10 @@ namespace arstro
 
         void noteOn(Sample velocity);
         void noteOff();
+        /** Silent NOW (a host's seek, REQ-inst-piano-1): every string's history cleared and its damper
+         *  seated at once, the thump and damper noises and the output envelope at zero — isSilent() is
+         *  true on return, and the voice stays so until it is struck. Allocates nothing. */
+        void silence();
 
         void onSampleRateChanged() override;
 
@@ -182,7 +186,8 @@ namespace arstro
         Sample mSilenceRelease = 0.0;
         Sample mThumpDecayCoeff = 0.0;
         Sample mDamperNoiseDecayCoeff = 0.0;
-        uint32_t mNoiseState = 0x9E3779B9u;
+        static constexpr uint32_t kNoiseSeed = 0x9E3779B9u;
+        uint32_t mNoiseState = kNoiseSeed;
 
         // Velocity -> signal transduction scale. NOT a physics fudge: the bank
         // outputs modal VELOCITY in the normalised unit system anchored by

@@ -5,6 +5,7 @@
 | `Instrument` | the interface: notes in, samples **added** into the host's buffers out | REQ-inst-1 |
 | `BasicSynth` | two-oscillator subtractive polysynth, 16 voices | REQ-synth2-1…5 |
 | `DrumMachine` | ten synthesized pads on the General MIDI drum notes | REQ-drum-1…5 |
+| `Piano` | the physical piano (`physical/PianoEngine`) as an instrument, 16 voices | REQ-inst-piano-1 |
 
 The first host is the Solaris DAW (`apps/solaris` in the umbrella), whose rule is that **all of its
 sound lives here** (Solaris R-DSP-1). Sample-accurate timing is the host's job: it splits a block at
@@ -168,4 +169,42 @@ sample, reversed and spanned likewise; an octave up is 880 Hz and over in half t
 showed it); a 24 kHz recording keeps its pitch at 48 kHz (`Sampler_plays_its_sound_pitched_spanned_and_reversed`);
 through the registry a 44.1 kHz 220 Hz recording plays 109 / 218 / 326 / 436 Hz at −12 / 0 / +7 / +12
 (`sampler_pitch`).
+
+## Piano — Math (REQ-inst-piano-1)
+
+**Why composition, not new math.** The sound is entirely `physical/` — `PianoVoice` (hammer, stiff
+inharmonic strings, two polarisations, longitudinal and duplex banks) on one shared `PianoBridge`, pooled
+and pedalled by `PianoEngine`; every equation is in `src/physical/README.md`. `Piano` adds only the three
+mappings a host needs (`src/instrument/Piano.cpp`):
+
+```
+(P1) v_hammer = clamp(v_midi, 1, 127) / 127               noteOn → PianoEngine::noteOnMidi
+(P2) out_c += g · limiter_c,   g = 10^(volume_dB / 20)     render → PianoEngine::renderAdd(…, g)
+     limiter_c = tanh(drive · Σ voices_c + radiated)       (the engine's soft limiter; Drive = its Tune row)
+(P3) allNotesOff = every key up (the pedals stay down);  reset = PianoEngine::silence()
+```
+
+| registry parameter | symbol | unit | maps to |
+|---|---|---|---|
+| `hammer.hardness` `hammer.curve` `hammer.hysteresis` `hammer.relax` | | x, —, —, x | the engine's Tune rows Hardness, FeltCurve, FeltHysteresis, FeltRelax |
+| `strings.decay` `.brightness` `.inharmonicity` `.detune` `.growl` `.glide` `.shimmer` `.sing` | | x, x, x, cents, —, x, —, x | Decay, Brightness, Inharmonicity, UnisonDetune, BassGrowl, AttackGlide, TrebleShimmer, Aftersound |
+| `body.mix` `body.resonance` | | — | Body, BodyResonance |
+| `pedal.sustain` `pedal.soft` | | off/on | `setSustainPedal`, `setUnaCorda` |
+| `drive` | drive | — | MasterGain (the limiter's input gain) |
+| `volume` | volume_dB | dB | (P2) |
+
+Ranges and defaults are `PianoEngine::tuneSpec`'s — the registry reads them, never restates them.
+
+**Voices.** 16 (a silent voice is skipped, `physical/README.md` ## 13, so the pool's size costs nothing
+until notes sound). A voice is taken in this order: never struck; finished; the longest-RELEASED (damped,
+then held only by a pedal); only then the oldest held key — so a held bass under an arpeggio is never
+stolen while a released note rings (`PianoEngine::allocateVoice`).
+
+**Silence and determinism.** `PianoEngine::silence()` puts every voice back as made — each string's
+history zeroed and its damper SEATED at once (`StringPartialBank::silence`), the hammer's last contact
+reading (`displacementAtStrike`) zeroed, the envelope Idle, the noise seed and the noise filters reset,
+the bridge's modes cleared — and the pool's bookkeeping too (no voice "used"). The constructor ends with
+it: a never-struck voice is a damped string, not an undamped one at the constructor's pitch ringing
+through the bridge. So the same notes from a `reset()` are the same samples as from a new piano
+(`Piano_reset_is_silent_at_once_and_starts_again_the_same`).
 

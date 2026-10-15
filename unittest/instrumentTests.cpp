@@ -144,6 +144,103 @@ TEST(BasicSynth_plays_the_note_and_each_oscillator_moves_its_pitch)
     CHECK_NEAR(s.oscFrequency(1, 60), 440.0 * std::pow(2.0, (60 - 12 - 69 + 0.5) / 12.0), 1e-9); // osc2 default: −1 octave
 }
 
+// ── the piano (REQ-inst-piano-1) ───────────────────────────────────────────────────────────
+
+namespace
+{
+    // a tone's energy, dB, by Goertzel over [from, to) of `x`
+    double toneDb(const std::vector<Sample> &x, double hz, int from, int to)
+    {
+        const double w = 2.0 * M_PI * hz / 48000.0, c = 2.0 * std::cos(w);
+        double s1 = 0.0, s2 = 0.0;
+        for (int i = from; i < to; ++i)
+        {
+            const double s0 = x[(size_t)i] + c * s1 - s2;
+            s2 = s1;
+            s1 = s0;
+        }
+        return 10.0 * std::log10(s1 * s1 + s2 * s2 - c * s1 * s2 + 1e-30);
+    }
+}
+
+TEST(Piano_plays_in_tune)
+{
+    // (P1) and the engine's tuning: A4 sounds at 440 Hz — its fundamental found within ±30 cents in 1-cent steps
+    configure();
+    Piano p;
+    p.noteOn(69, 100);
+    const auto r = render(p, 48000 * 3);
+    double best = -1e9;
+    int at = 0;
+    for (int cents = -30; cents <= 30; ++cents)
+    {
+        const double db = toneDb(r.L, 440.0 * std::pow(2.0, cents / 1200.0), 48000, 48000 * 3);
+        if (db > best) { best = db; at = cents; }
+    }
+    CHECK(std::abs(at) <= 5);
+    CHECK(peakOf(r.L, 0, 48000) > 0.05);
+}
+
+TEST(Piano_keeps_a_held_bass_under_an_arpeggio)
+{
+    // a held key is never stolen while a released one rings: forty sixteenths (more than the 16 voices) over a
+    // held C2 — the bass sounds after them as it does alone
+    configure();
+    auto bass = [](bool arpeggio) {
+        Piano p;
+        p.noteOn(36, 100);
+        const int step = 47 * 128; // a sixteenth at ~120 bpm, on a block edge
+        int last = -1;
+        const auto r = render(p, 48000 * 6, [&](int pos) {
+            if (!arpeggio) return;
+            if (pos % step == 0 && pos / step < 40)
+            {
+                last = 60 + (pos / step * 7) % 24;
+                p.noteOn(last, 90);
+            }
+            if (pos % step == 39 * 128 && last >= 0) p.noteOff(last); // let go before the next
+        });
+        return toneDb(r.L, 65.406, 48000 * 5, 48000 * 6); // C2's fundamental, in the last second
+    };
+    const double alone = bass(false), under = bass(true);
+    CHECK(alone > -40.0);
+    CHECK(std::fabs(under - alone) < 6.0);
+}
+
+TEST(Piano_reset_is_silent_at_once_and_starts_again_the_same)
+{
+    // (P3): a seek is silence now, every voice and the bridge cleared — and the same notes after it are the
+    // same samples (determinism); a stop lets the keys go and the pedal keeps them ringing
+    configure();
+    Piano p;
+    auto play = [&] {
+        p.noteOn(60, 100);
+        p.noteOn(64, 90);
+        return render(p, 9600);
+    };
+    const auto first = play();
+    p.reset();
+    CHECK(p.activeVoices() == 0);
+    const auto quiet = render(p, 1280);
+    CHECK(peakOf(quiet.L, 0, 1280) == 0.0 && peakOf(quiet.R, 0, 1280) == 0.0);
+    const auto again = play();
+    bool same = true;
+    for (int i = 0; i < 9600; ++i) same &= first.L[(size_t)i] == again.L[(size_t)i] && first.R[(size_t)i] == again.R[(size_t)i];
+    CHECK(same);
+    auto after = [](bool pedal) {
+        Piano q;
+        Piano::Params prm = q.params();
+        prm.sustain = pedal;
+        q.setParams(prm);
+        q.noteOn(60, 100);
+        render(q, 4800);
+        q.allNotesOff();
+        const auto r = render(q, 48000);
+        return rmsOf(r.L, 36000, 48000);
+    };
+    CHECK(after(true) > 4.0 * after(false)); // the pedal holds what the stop let go
+}
+
 TEST(BasicSynth_resonance_is_heard)
 {
     // REQ-inst-synth (Solaris D-4): the filter's resonance rings at the cutoff — a saw at 110 Hz through a low-pass at

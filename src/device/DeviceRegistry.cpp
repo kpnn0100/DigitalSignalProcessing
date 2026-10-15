@@ -9,6 +9,7 @@
 #include "../equalizer/ParametricEQ.h"
 #include "../equalizer/StateVariableFilter.h"
 #include "../instrument/BasicSynth.h"
+#include "../instrument/Piano.h"
 #include "../instrument/DrumMachine.h"
 #include "../reverb/Reverb.h"
 #include <algorithm>
@@ -174,6 +175,64 @@ namespace arstro
         private:
             BasicSynth mSynth;
             BasicSynth::Params mP;
+        };
+
+        // ── the piano (REQ-inst-piano-1): the engine's voicing bank, its ranges and defaults ──
+
+        const std::vector<Binding<Piano::Params>> &pianoBindings()
+        {
+            using P = Piano::Params;
+            static const std::vector<Binding<P>> b = [] {
+                std::vector<Binding<P>> v;
+                // one row per Tune enumerator the engine documents (PianoEngine::tuneSpec): name, label, unit
+                auto tune = [&v](int row, const std::string &name, const std::string &label, const std::string &unit) {
+                    const PianoEngine::TuneSpec s = PianoEngine::tuneSpec(row);
+                    v.push_back({num(name, label, unit, s.min, s.max, s.def), [row](P &p, double x) { p.tune[(size_t)row] = x; }});
+                };
+                tune(PianoEngine::TuneHardness, "hammer.hardness", "Hardness", "x");
+                tune(PianoEngine::TuneFeltCurve, "hammer.curve", "Felt Curve", "");
+                tune(PianoEngine::TuneFeltHysteresis, "hammer.hysteresis", "Hysteresis", "");
+                tune(PianoEngine::TuneFeltRelax, "hammer.relax", "Felt Relax", "x");
+                tune(PianoEngine::TuneDecay, "strings.decay", "Sustain", "x");
+                tune(PianoEngine::TuneBrightness, "strings.brightness", "Brightness", "x");
+                tune(PianoEngine::TuneInharmonicity, "strings.inharmonicity", "Stretch", "x");
+                tune(PianoEngine::TuneUnisonDetune, "strings.detune", "Unison Detune", "cents");
+                tune(PianoEngine::TuneBassGrowl, "strings.growl", "Bass Growl", "");
+                tune(PianoEngine::TuneAttackGlide, "strings.glide", "Attack Glide", "x");
+                tune(PianoEngine::TuneTrebleShimmer, "strings.shimmer", "Treble Shimmer", "");
+                tune(PianoEngine::TuneAftersound, "strings.sing", "Aftersound", "x");
+                tune(PianoEngine::TuneBody, "body.mix", "Soundboard", "");
+                tune(PianoEngine::TuneBodyResonance, "body.resonance", "Resonance", "");
+                v.push_back({choice("pedal.sustain", "Sustain Pedal", {"off", "on"}, 0), [](P &p, double x) { p.sustain = x > 0.5; }});
+                v.push_back({choice("pedal.soft", "Soft Pedal", {"off", "on"}, 0), [](P &p, double x) { p.soft = x > 0.5; }});
+                tune(PianoEngine::TuneMasterGain, "drive", "Drive", "");
+                v.push_back({num("volume", "Volume", "dB", -60, 6, 0), [](P &p, double x) { p.volumeDb = x; }});
+                return v;
+            }();
+            return b;
+        }
+
+        class PianoDevice : public Device
+        {
+        public:
+            explicit PianoDevice(const DeviceType &t) : Device(t), mP(mPiano.params()) { applyAll(); }
+            void process(Sample *const *io, int channels, int frames) override { mPiano.render(io, channels, frames); }
+            void noteOn(int n, int v) override { mPiano.noteOn(n, v); }
+            void noteOff(int n) override { mPiano.noteOff(n); }
+            void allNotesOff() override { mPiano.allNotesOff(); }
+            void reset() override { mPiano.reset(); }
+            int activeVoices() const override { return mPiano.activeVoices(); }
+
+        protected:
+            void apply(int i, double v) override
+            {
+                pianoBindings()[(size_t)i].set(mP, v);
+                mPiano.setParams(mP);
+            }
+
+        private:
+            Piano mPiano;
+            Piano::Params mP;
         };
 
         const std::vector<Binding<Sampler::Params>> &samplerBindings()
@@ -454,6 +513,15 @@ namespace arstro
                                  {"fenv", "Filter Envelope"}, {"amp", "Amplifier"}, {"", "Mix & Output"}};
             synth.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<SynthDevice>(self); };
             v.push_back(synth);
+
+            DeviceType piano;
+            piano.name = "piano"; piano.label = "Piano"; piano.kind = DeviceKind::Instrument;
+            piano.summary = "A physical piano: felt hammers on stiff, inharmonic strings through a shared bridge and soundboard; "
+                            "sustain and soft pedals; 16 voices, a held key never stolen while a released one rings.";
+            piano.params = specsOf(pianoBindings());
+            piano.groupLabels = {{"hammer", "Hammer"}, {"strings", "Strings"}, {"body", "Body"}, {"pedal", "Pedals"}, {"", "Output"}};
+            piano.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<PianoDevice>(self); };
+            v.push_back(piano);
 
             DeviceType drums;
             drums.name = "drums"; drums.label = "Drum Machine"; drums.kind = DeviceKind::Instrument;

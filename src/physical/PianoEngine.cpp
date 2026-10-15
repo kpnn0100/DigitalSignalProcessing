@@ -50,6 +50,7 @@ namespace arstro
         mKeyDown.fill(false);
         mSostenutoLatched.fill(false);
         mAge.fill(0);
+        mReleasedAge.fill(-1);
         for (auto &v : mVoices)
             v.setBridge(&mBridge);
         for (int p = 0; p < TuneCount; ++p)
@@ -63,6 +64,10 @@ namespace arstro
         mBridge.setBodyDirectGain(mTune[TuneBody] * PianoVoice::velocityToSignal());
         for (auto &v : mVoices)
             v.setBodyMix(mTune[TuneBody]);
+        // REQ-inst-piano-1: a voice never struck is a string with its damper SEATED — not an undamped
+        // string at the constructor's pitch, ringing sympathetically through the bridge and rendered
+        // every sample (README ## 13 skips only a damped one). So a fresh engine IS a silenced one.
+        silence();
     }
 
     // ─────────────────── live voicing/tuning controls ───────────────────
@@ -171,10 +176,20 @@ namespace arstro
         for (int i = 0; i < kVoiceCount; ++i)
             if (mVoices[i].isFinished())
                 return i;
-        int best = 0;
-        for (int i = 1; i < kVoiceCount; ++i)
-            if (mAge[i] > mAge[best])
+        // REQ-inst-piano-1: a held note is never stolen while a released one still
+        // rings — the key that went up longest ago first (damped, then held only by a
+        // pedal), and only then the oldest held key. An arpeggio over a held bass
+        // keeps its bass.
+        int best = -1;
+        auto rank = [&](int i) { return mKeyDown[i] ? 2 : ((mSustainPedal || mSostenutoLatched[i]) ? 1 : 0); };
+        for (int i = 0; i < kVoiceCount; ++i)
+        {
+            if (best < 0) { best = i; continue; }
+            const int ri = rank(i), rb = rank(best);
+            const long ai = ri == 2 ? mAge[i] : mReleasedAge[i], ab = rb == 2 ? mAge[best] : mReleasedAge[best];
+            if (ri < rb || (ri == rb && ai > ab))
                 best = i;
+        }
         return best;
     }
 
@@ -193,6 +208,7 @@ namespace arstro
         mKeyDown[i] = true;
         mSostenutoLatched[i] = false;
         mAge[i] = 0;
+        mReleasedAge[i] = -1;
         mVoices[i].setUnaCorda(mUnaCorda);
         mVoices[i].setDamperHeld(mSustainPedal); // sustain already down when struck
         mVoices[i].setFrequency(midiToHz(midiNote)); // register defaults first...
@@ -207,6 +223,7 @@ namespace arstro
             if (mNote[i] == midiNote && mKeyDown[i])
             {
                 mKeyDown[i] = false;
+                mReleasedAge[i] = 0;
                 refreshDamperHeld(i);
             }
         }
@@ -222,6 +239,56 @@ namespace arstro
             mKeyDown[i] = false;
             mVoices[i].setDamperHeld(false);
             mVoices[i].noteOff();
+        }
+    }
+
+    void PianoEngine::releaseAll()
+    {
+        for (int i = 0; i < kVoiceCount; ++i)
+            if (mKeyDown[i])
+            {
+                mKeyDown[i] = false;
+                mReleasedAge[i] = 0;
+                refreshDamperHeld(i);
+            }
+    }
+
+    void PianoEngine::silence()
+    {
+        // as made (the pedals and the voicing aside): the same notes from here give the same samples
+        for (int i = 0; i < kVoiceCount; ++i)
+        {
+            mNote[i] = -1;
+            mKeyDown[i] = false;
+            mSostenutoLatched[i] = false;
+            mAge[i] = 0;
+            mReleasedAge[i] = -1;
+            mVoices[i].silence();
+        }
+        mBridge.reset();
+    }
+
+    int PianoEngine::activeVoices() const
+    {
+        int n = 0;
+        for (const auto &v : mVoices)
+            n += v.isSilent() ? 0 : 1;
+        return n;
+    }
+
+    void PianoEngine::renderAdd(Sample *const *out, int channels, int frames, Sample gain)
+    {
+        for (int n = 0; n < frames; ++n)
+        {
+            Sample l, r;
+            renderFrame(l, r);
+            if (channels >= 2) { out[0][n] += gain * l; out[1][n] += gain * r; }
+            else if (channels == 1) out[0][n] += gain * 0.5 * (l + r);
+        }
+        for (int i = 0; i < kVoiceCount; ++i)
+        {
+            mAge[i] += frames;
+            if (mReleasedAge[i] >= 0) mReleasedAge[i] += frames;
         }
     }
 
@@ -301,7 +368,10 @@ namespace arstro
             out.push_back((uint8_t)((ri >> 8) & 0xFF));
         }
         for (int i = 0; i < kVoiceCount; ++i)
+        {
             mAge[i] += frames;
+            if (mReleasedAge[i] >= 0) mReleasedAge[i] += frames;
+        }
     }
 
     void PianoEngine::renderBlockFloat(float *interleaved, int frames)
@@ -314,6 +384,9 @@ namespace arstro
             interleaved[n * 2 + 1] = (float)r;
         }
         for (int i = 0; i < kVoiceCount; ++i)
+        {
             mAge[i] += frames;
+            if (mReleasedAge[i] >= 0) mReleasedAge[i] += frames;
+        }
     }
 }

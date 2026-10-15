@@ -78,6 +78,16 @@ namespace arstro
     void PianoBridge::setCouplingGain(Sample g) { setProperty(couplingGainID, g); }
     void PianoBridge::setRadiationGain(Sample g) { setProperty(radiationGainID, g); }
 
+    void PianoBridge::reset()
+    {
+        for (auto &m : mModes)
+            m.reset();
+        mBus = 0.0;
+        mLastResponse = 0.0;
+        mBodyLp = 0.0;
+        mBodyDirect = 0.0;
+    }
+
     void PianoBridge::update()
     {
         mCouplingGain = getProperty(couplingGainID);

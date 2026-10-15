@@ -99,6 +99,11 @@ namespace arstro
         // before striking a reused (voice-stolen) string.
         void reset();
 
+        // Zeroes every partial's history and SEATS the damper at once, not over its
+        // ramp: a host's seek (REQ-inst-piano-1) — nothing left to hear, nothing to
+        // re-excite through the bridge until the string is struck again.
+        void silence();
+
         // Current damper ramp position, 0 (lifted) .. 1 (fully engaged). Callers
         // driving this bank with an external signal besides the hammer (i.e.
         // PianoVoice's sympathetic-resonance feedback) must gate that input by

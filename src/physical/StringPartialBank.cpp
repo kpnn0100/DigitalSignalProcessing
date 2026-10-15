@@ -96,6 +96,9 @@ namespace arstro
         mDamperValue = 0.0;
         mDamperTarget = 0.0;
         mDamperStep = 0.0;
+        // what the hammer reads at contact (displacementAtStrike): a stolen string's last
+        // sample would otherwise meet the new strike's first (REQ-inst-piano-1)
+        mLastDisplacement = 0.0;
         // README ## 12.5: a fresh strike starts at nominal pitch. Zero the glide
         // state BEFORE recomputeEffectivePartials() below so it rebuilds a1 at
         // delta = 0; otherwise a voice-stolen bank would carry the previous note's
@@ -111,6 +114,20 @@ namespace arstro
         // briefly stale otherwise: the new note's hammer would strike a resonator
         // calibrated for a ~40x-shorter decay, a large spurious amplitude spike.
         recomputeEffectivePartials();
+    }
+
+    void StringPartialBank::silence()
+    {
+        std::fill(mY1.begin(), mY1.end(), (Sample)0);
+        std::fill(mY2.begin(), mY2.end(), (Sample)0);
+        mDamperValue = 1.0;
+        mDamperTarget = 1.0;
+        mDamperStep = 0.0;
+        mLastDisplacement = 0.0;
+        mEnergyLP = 0.0;
+        mPitchDelta = 0.0;
+        mBendCounter = 0;
+        recomputeEffectivePartials(); // the pole radii of a seated damper
     }
 
     void StringPartialBank::update()

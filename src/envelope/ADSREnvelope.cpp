@@ -47,6 +47,13 @@ namespace arstro
         setProperty(releaseID, ms * 0.001 * AudioConfig::instance().sampleRate());
     }
 
+    void ADSREnvelope::reset()
+    {
+        for (auto &s : mState)
+            s = ChannelState{};
+        mPeak = 1.0;
+    }
+
     void ADSREnvelope::noteOn(Sample velocity)
     {
         ensureChannels();

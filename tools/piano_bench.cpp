@@ -21,7 +21,7 @@
  *  Output is machine-parseable ("KEY=VALUE" lines) so the ledger figure can be
  *  lifted without hand-transcription.
  */
-#include "../apps/piano_demo/PianoEngine.h"
+#include "../src/physical/PianoEngine.h"
 
 #include <algorithm>
 #include <chrono>
