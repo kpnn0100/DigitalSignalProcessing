@@ -89,6 +89,8 @@ namespace arstro
         void applyTo(Voice &v);
         std::vector<std::unique_ptr<Voice>> mVoices;
         std::vector<Sample> mScratch;
+        std::vector<Sample> mRamp;     // REQ-synth2-4 amended: the volume across a block, ramped
+        Sample mVolGain = -1.0;        // the volume the last block ended at (−1: none yet — the next block starts there)
         Params mParams;
         long mClock = 0; // note-on counter: the oldest voice is stolen first
     };

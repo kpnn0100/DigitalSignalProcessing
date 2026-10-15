@@ -8,6 +8,7 @@
 #include "MiniTest.h"
 #include "../src/synth_dsp.h"
 #include <atomic>
+#include <functional>
 #include <cmath>
 #include <cstdlib>
 #include <new>
@@ -331,6 +332,54 @@ TEST(DrumMachine_crash_and_ride_ring_as_cymbals)
     CHECK(t60(crash) > t60(ride));
     CHECK(band(crash, 3000.0, 16000.0) > 0.6 && band(crash, 250.0, 1000.0) < 0.08); // bright, no low mud
     CHECK(band(ride, 2500.0, 3600.0) > 0.2 && band(ride, 8000.0, 16000.0) > 0.1);   // the bell stands out over its wash
+}
+
+TEST(Volume_and_level_move_a_sounding_note)
+{
+    // D-8 (REQ-synth2-4, REQ-inst-sampler-1 amended): the synth's volume and the sampler's level, set while a note
+    // sounds, move THAT note — by exactly their dB — and without a step (a ramp across the block)
+    configure();
+    auto drop = [](Instrument &inst, const std::function<void()> &lower, double &db, double &step, double &own) {
+        const int n = 24000;
+        std::vector<Sample> L(2 * n, 0.0), R(2 * n, 0.0);
+        for (int i = 0; i < 2 * n; i += 128)
+        {
+            if (i <= n && i + 128 > n) lower(); // the block holding the change (blocks start at multiples of 128)
+            Sample *o[2] = {L.data() + i, R.data() + i};
+            inst.render(o, 2, 128);
+        }
+        db = 20.0 * std::log10(rmsOf(L, n + 4800, 2 * n) / rmsOf(L, 4800, n));
+        step = 0.0;
+        own = 0.0;
+        for (int i = n - 256; i < n + 256; ++i) step = std::max(step, (double)std::fabs(L[(size_t)i + 1] - L[(size_t)i]));
+        for (int i = 4800; i < n - 512; ++i) own = std::max(own, (double)std::fabs(L[(size_t)i + 1] - L[(size_t)i])); // before the change
+    };
+    double db = 0, step = 0, own = 0;
+    BasicSynth s;
+    BasicSynth::Params p;
+    p.osc1.wave = BasicSynth::Sine;
+    p.osc2.level = 0.0;
+    p.cutoff = 20000.0;
+    p.envAmount = 0.0;
+    p.ampEnv = {0.0, 10.0, 1.0, 50.0};
+    p.volumeDb = 0.0;
+    s.setParams(p);
+    s.noteOn(69, 127);
+    drop(s, [&] { p.volumeDb = -20.0; s.setParams(p); }, db, step, own);
+    CHECK(std::fabs(db + 20.0) < 0.3);   // the sounding note, 20 dB down
+    CHECK(step <= own * 1.05);           // no step where it changed: no faster than the sine itself moves
+    // the sampler: a recorded 440 Hz sine, its level lowered mid-note
+    std::vector<float> rec(48000 * 2);
+    for (int i = 0; i < 48000; ++i) rec[(size_t)i * 2] = rec[(size_t)i * 2 + 1] = (float)(0.5 * std::sin(2.0 * M_PI * 440.0 * i / 48000.0));
+    Sampler sm;
+    sm.setSample(rec.data(), 48000, 2, 48000.0);
+    Sampler::Params sp = sm.params();
+    sp.levelDb = 0.0;
+    sm.setParams(sp);
+    sm.noteOn(sp.root, 127);
+    drop(sm, [&] { sp.levelDb = -20.0; sm.setParams(sp); }, db, step, own);
+    CHECK(std::fabs(db + 20.0) < 0.3);
+    CHECK(step <= own * 1.05);
 }
 
 TEST(BasicSynth_resonance_is_heard)

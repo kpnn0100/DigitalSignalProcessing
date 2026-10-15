@@ -52,6 +52,8 @@ namespace arstro
         int activeVoices() const override;
 
     private:
+        std::vector<double> mRamp;      // REQ-inst-sampler-1 amended: the level across a block, ramped (D-8)
+        double mLevelGain = -1.0;       // the level the last block ended at (−1: none yet)
         struct Voice
         {
             bool active = false, held = false;

@@ -41,6 +41,7 @@ namespace arstro
     BasicSynth::BasicSynth()
     {
         mScratch.assign(4096, 0.0); // a host's blocks up to 4096 frames never allocate in render()
+        mRamp.assign(4096, 0.0);
         for (int i = 0; i < kVoices; ++i)
         {
             auto v = std::make_unique<Voice>();
@@ -123,9 +124,10 @@ namespace arstro
         v.note = note;
         v.active = v.held = true;
         v.age = ++mClock;
-        // (Y4) level: volume × velocity scaled by the sensitivity.
+        // (Y4) level: velocity scaled by the sensitivity, here — the VOLUME is applied as the block renders (D-8:
+        // set or automated while a note sounds, it moves that note, as the kit's and the piano's do)
         const Sample vel = std::clamp(velocity, 1, 127) / 127.0;
-        v.gain = std::pow(10.0, mParams.volumeDb / 20.0) * (1.0 - mParams.velocity + mParams.velocity * vel);
+        v.gain = 1.0 - mParams.velocity + mParams.velocity * vel;
         for (int k = 0; k < 2; ++k)
         {
             v.osc[k].setFrequency(oscFrequency(k, note));
@@ -166,6 +168,7 @@ namespace arstro
             v->filter.reset();
             for (auto &o : v->osc) o.noteOff();
         }
+        mVolGain = -1.0; // a reset starts at the volume as it stands
     }
 
     int BasicSynth::activeVoices() const
@@ -181,6 +184,12 @@ namespace arstro
         // state and a voice ends only when all of them are idle); only `channels` are written.
         const int chans = AudioConfig::instance().channelCount();
         if ((int)mScratch.size() < frames) mScratch.assign(frames, 0.0); // grows once, to the host's largest block
+        if ((int)mRamp.size() < frames) mRamp.assign(frames, 0.0);
+        // (Y4) the volume, linear across the block from where the last one ended — a change never steps
+        const Sample vol = std::pow(10.0, mParams.volumeDb / 20.0);
+        if (mVolGain < 0.0) mVolGain = vol;
+        for (int i = 0; i < frames; ++i) mRamp[(size_t)i] = mVolGain + (vol - mVolGain) * (Sample)(i + 1) / (Sample)frames;
+        mVolGain = vol;
         const Sample l1 = mParams.osc1.level, l2 = mParams.osc2.level, nz = mParams.noise;
         for (auto &vp : mVoices)
         {
@@ -198,7 +207,7 @@ namespace arstro
                 {
                     const Sample x = buf[i] + (nz > 0 ? nz * v.noise[c].next() : 0.0);
                     const Sample y = v.filter.tick(x, c, cutoffFor(v.note, v.fenv.nextValue(c)));
-                    const Sample s = y * v.amp.nextValue(c) * v.gain;
+                    const Sample s = y * v.amp.nextValue(c) * v.gain * mRamp[(size_t)i];
                     if (dst) dst[i] += s;
                 }
             }

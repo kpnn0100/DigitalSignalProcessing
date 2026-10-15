@@ -332,6 +332,11 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   octaves (Y3), clamped to 20 Hz…20 kHz.
 - `REQ-synth2-4` — Level = volume × velocity scaled by a sensitivity (Y4); the release tail is never
   cut (the oscillators' own envelopes are gates closed only when the amp envelope ends).
+  (**AMENDED (Solaris D-8, 2026-10-15):** the velocity is the note's, set at its start; the VOLUME is applied as
+  each block renders, ramped linearly across the block from where the last ended — set or automated while a note
+  sounds, it moves that note, without a step (it was baked into the note at its start: a riser's swell, one long
+  note, was silently ignored). The Sampler's level likewise (REQ-inst-sampler-1). Guarded by
+  `Volume_and_level_move_a_sounding_note` — a stepped volume seen red.)
 - `REQ-synth2-5` — Voice allocation: same note retriggers its voice, else an idle voice, else the
   oldest note is stolen (Y5).
 - `REQ-synth2-6` — **Stereo unison** (source: Solaris R-INST-1 amended, user request 2026-10-15: *"make an edm

@@ -34,7 +34,8 @@ out[n] = y[n] · amp[n] · G                                            ; amp = 
 (Y1)  hz(m)      = 440 · 2^((m − 69)/12)                              ; m = MIDI note (fractional allowed)
 (Y2)  f_osc,k    = hz(note + 12·octave_k + semi_k + fine_k/100)
 (Y3)  fc[n]      = clamp( cutoff · 2^(envAmount·fenv[n] + keytrack·(note − 60)/12), 20, 20000 )
-(Y4)  G          = 10^(volumeDb/20) · (1 − velocity + velocity·vel/127)
+(Y4)  G          = 10^(volumeDb/20) · (1 − velocity + velocity·vel/127)   ; the velocity term at note-on, the volume per
+                   ; block: g[i] = g_prev + (g − g_prev)·(i+1)/N across a block of N (D-8 — a live volume moves a held note)
 (Y5)  allocation: the same note retriggers its voice; else the first idle voice; else the voice
                   with the oldest note-on (smallest age) is stolen
 (Y6)  noise seed  = 0x5EED0000 + 16·voice + channel                  ; one generator per voice PER CHANNEL
@@ -153,7 +154,7 @@ A recorded sound s[k] (N frames, recorded at fr Hz, mono or stereo) played by no
       forward:  p₀ = a,     Δp = +ratio
       reverse:  p₀ = b − 1, Δp = −ratio
 (S3)  x(p) = (1 − f)·s[k] + f·s[min(k+1, b−1)],  k = ⌊p⌋, f = p − k   ; linear interpolation  (`render`)
-(S4)  y = x(p) · env · 10^(level/20) · (1 − σ + σ·vel/127)            ; σ = velocity sensitivity
+(S4)  y = x(p) · env · 10^(level/20) · (1 − σ + σ·vel/127)            ; σ = velocity sensitivity   ; the level applied per block, ramped as (Y4)'s volume (D-8)
 (S5)  the voice ends when p leaves [a, b − 1] — or, chromatic, when its release has finished
 ```
 

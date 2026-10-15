@@ -8,6 +8,7 @@ namespace arstro
     Sampler::Sampler()
     {
         for (int i = 0; i < kVoices; ++i) mVoices.push_back(std::make_unique<Voice>());
+        mRamp.assign(4096, 0.0); // a host's blocks up to 4096 frames never allocate in render()
         setParams(mP);
     }
 
@@ -79,9 +80,9 @@ namespace arstro
         v->age = ++mAge;
         v->pos = mP.reverse ? (double)(b - 1) : (double)a;
         v->inc = mP.reverse ? -ratio : ratio;
-        // (S4) velocity → level
+        // (S4) velocity here; the level as the block renders (D-8: set or automated, it moves a sounding note)
         const double vel = std::clamp(velocity, 1, 127) / 127.0;
-        v->gain = std::pow(10.0, mP.levelDb / 20.0) * (1.0 - mP.velocity + mP.velocity * vel);
+        v->gain = 1.0 - mP.velocity + mP.velocity * vel;
         v->env.noteOn(1.0); // from the attack's start (ADSREnvelope restarts on every note-on)
     }
 
@@ -113,6 +114,7 @@ namespace arstro
             v->active = v->held = false;
             v->note = -1; // its envelope restarts with the next note-on
         }
+        mLevelGain = -1.0;
     }
 
     void Sampler::render(Sample *const *out, int channels, int frames)
@@ -120,6 +122,12 @@ namespace arstro
         if (mFrames <= 0) return;
         long long a, b;
         spanOf(a, b);
+        // (S4) the level, linear across the block from where the last one ended
+        if ((int)mRamp.size() < frames) mRamp.assign(frames, 0.0);
+        const double lv = std::pow(10.0, mP.levelDb / 20.0);
+        if (mLevelGain < 0.0) mLevelGain = lv;
+        for (int i = 0; i < frames; ++i) mRamp[(size_t)i] = mLevelGain + (lv - mLevelGain) * (double)(i + 1) / (double)frames;
+        mLevelGain = lv;
         for (auto &vp : mVoices)
         {
             Voice &v = *vp;
@@ -138,7 +146,7 @@ namespace arstro
                 const long long k1 = std::min(k + 1, b - 1);
                 const double l = (1.0 - f) * mL[(size_t)k] + f * mL[(size_t)k1];
                 const double r = (1.0 - f) * mR[(size_t)k] + f * mR[(size_t)k1];
-                const double g = v.gain * v.env.nextValue(0);
+                const double g = v.gain * v.env.nextValue(0) * mRamp[(size_t)i];
                 out[0][i] += l * g;
                 if (channels > 1) out[1][i] += r * g;
                 v.pos += v.inc;
