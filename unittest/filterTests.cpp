@@ -196,6 +196,26 @@ TEST(SVF_resonance_peaks_and_stays_stable_at_full)
     CHECK(r.mode() == StateVariableFilter::HighPass);
 }
 
+TEST(SVF_tick_follows_a_resonance_set_after_it_was_made)
+{
+    // REQ-svf-2 (Solaris D-4: the Basic Synth's Resonance did nothing): `tick` takes no property smoothing, so a
+    // resonance written after the filter was made — as the synth writes it — is the one it rings with, at once
+    configure();
+    const double fs = AudioConfig::instance().sampleRate();
+    for (double r : {0.0, 0.5, 0.9})
+    {
+        StateVariableFilter f(StateVariableFilter::LowPass, 1000.0, 0.0);
+        f.setResonance(r);
+        double peak = 0.0;
+        for (int i = 0; i < 48000; ++i)
+        {
+            const double y = f.tick(std::sin(2.0 * M_PI * 1000.0 * i / fs), 0, 1000.0);
+            if (i > 24000) peak = std::max(peak, std::fabs(y));
+        }
+        CHECK_NEAR(20.0 * std::log10(peak), 20.0 * std::log10(StateVariableFilter::qFor(r)), 0.1); // the peak at fc IS Q
+    }
+}
+
 TEST(SVF_tick_sweeps_every_sample)
 {
     configure();

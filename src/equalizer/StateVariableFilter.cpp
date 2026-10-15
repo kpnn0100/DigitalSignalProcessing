@@ -94,6 +94,15 @@ namespace arstro
     {
         if (channel < 0 || channel >= (int)mIc1.size())
             return in;
+        // REQ-svf-2: no property smoothing on this path — the resonance written LAST is the one it rings with,
+        // at once (it read the smoothed value, which only the block path advances: a resonance set after the
+        // filter was made never arrived — Solaris D-4, the Basic Synth's Resonance did nothing)
+        const Sample r = getPropertyTargetValue(resonanceID);
+        if (r != mTickRes)
+        {
+            mTickRes = r;
+            mK = 1.0 / qFor(r);
+        }
         return run(in, channel, gainFor(cutoffHz));
     }
 }

@@ -55,6 +55,7 @@ namespace arstro
         Mode mMode = LowPass;
         Sample mG = 0.0; // tan(π·fc/fs) for the stored cutoff
         Sample mK = 1.4142; // 1/Q
+        Sample mTickRes = -1.0; // the resonance `tick` last derived mK from (REQ-svf-2: the target, unsmoothed)
         std::vector<Sample> mIc1, mIc2; // per-channel integrator states
     };
 }

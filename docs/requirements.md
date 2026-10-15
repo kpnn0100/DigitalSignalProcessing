@@ -304,6 +304,11 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   bilinear-prewarped analog prototype. Math: (S1)–(S6).
 - `REQ-svf-2` — The SVF can be swept every sample with a caller-supplied cutoff (`tick`), with no
   property smoothing in the way — the synth's filter envelope and the drum voices need it.
+  (**AMENDED (Solaris D-4, 2026-10-15):** "no smoothing" holds for the resonance too — `tick` rings with the
+  resonance written LAST, at once. It read the smoothed value, which only the block path advances, so a
+  resonance set after the filter was made never arrived: the Basic Synth's Resonance did nothing (two renders
+  at 0 and 0.9 were identical). Guarded by `SVF_tick_follows_a_resonance_set_after_it_was_made` and
+  `BasicSynth_resonance_is_heard`.)
 - `REQ-noise-1` — `Noise` is seeded, deterministic (same seed → same samples everywhere), uniform
   on [−1, 1); no clock, no global state.
 - `REQ-decay-1` — `DecayEnvelope`: an optional linear attack from the current level, then an

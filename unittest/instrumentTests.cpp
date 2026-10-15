@@ -144,6 +144,40 @@ TEST(BasicSynth_plays_the_note_and_each_oscillator_moves_its_pitch)
     CHECK_NEAR(s.oscFrequency(1, 60), 440.0 * std::pow(2.0, (60 - 12 - 69 + 0.5) / 12.0), 1e-9); // osc2 default: −1 octave
 }
 
+TEST(BasicSynth_resonance_is_heard)
+{
+    // REQ-inst-synth (Solaris D-4): the filter's resonance rings at the cutoff — a saw at 110 Hz through a low-pass at
+    // its 8th harmonic, 880 Hz: at resonance 0.9 that harmonic stands far above its neighbours, at 0 it does not
+    configure();
+    auto ring = [](double res) {
+        BasicSynth s;
+        BasicSynth::Params p;
+        p.cutoff = 880.0;
+        p.envAmount = 0.0;
+        p.keytrack = 0.0;
+        p.resonance = res;
+        p.osc2.level = 0.0;
+        s.setParams(p);
+        s.noteOn(45, 127);
+        auto r = render(s, 48000);
+        // the 8th harmonic against the 4th, by Goertzel over the sustained half second
+        auto tone = [&](double hz) {
+            const double w = 2.0 * M_PI * hz / 48000.0, c = 2.0 * std::cos(w);
+            double s1 = 0.0, s2 = 0.0;
+            for (int i = 24000; i < 48000; ++i)
+            {
+                const double s0 = r.L[(size_t)i] + c * s1 - s2;
+                s2 = s1;
+                s1 = s0;
+            }
+            return 10.0 * std::log10(s1 * s1 + s2 * s2 - c * s1 * s2 + 1e-30);
+        };
+        return tone(880.0) - tone(440.0);
+    };
+    const double flat = ring(0.0), resonant = ring(0.9);
+    CHECK(resonant - flat > 15.0); // Q(0.9) ≈ 21: ~26 dB more at the cutoff than a Butterworth's −3 dB
+}
+
 TEST(BasicSynth_filter_cutoff_and_envelope_shape_the_brightness)
 {
     configure();

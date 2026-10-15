@@ -79,7 +79,9 @@ user who wants a constant-peak band-pass multiplies by `k`. (S5) is exponential 
 is an equal ratio of Q; the top (Q = 32) rings but is stable for any `k > 0` — a full-scale impulse
 at r = 1 decays below 1e-6 within two seconds (`SVF_resonance_peaks_and_stays_stable_at_full`).
 `tick(x, ch, fc)` runs (S1)–(S4) with a caller-supplied cutoff and no property smoothing: the
-modulator (an envelope, an LFO) is the smoothing.
+modulator (an envelope, an LFO) is the smoothing. Its `k` comes from the resonance's TARGET (the value written
+last), re-derived only when that changes — the smoothed value only moves on the block path, so reading it left a
+resonance set after construction unheard (REQ-svf-2 amended, Solaris D-4).
 
 **Verified against the formulas, not against itself:** `tests/run_integration.py`
 `parametric_eq_matches_rbj` recomputes (B1)–(B9) in Python and matches the rendered gain at five
