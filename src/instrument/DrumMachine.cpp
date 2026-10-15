@@ -8,14 +8,14 @@ namespace arstro
     namespace
     {
         constexpr Sample kTwoPi = 6.283185307179586;
-        const int kNotes[DrumMachine::PadCount] = {36, 37, 38, 39, 41, 42, 45, 46, 48, 56};
+        const int kNotes[DrumMachine::PadCount] = {36, 37, 38, 39, 41, 42, 45, 46, 48, 56, 49, 51};
         const char *kNames[DrumMachine::PadCount] = {"kick", "rim", "snare", "clap", "ltom",
-                                                      "chat", "mtom", "ohat", "htom", "cowbell"};
+                                                      "chat", "mtom", "ohat", "htom", "cowbell", "crash", "ride"};
         // (K0) default decay (ms to −60 dB) per pad.
-        const Sample kDecay[DrumMachine::PadCount] = {450, 45, 220, 300, 500, 60, 420, 450, 360, 350};
+        const Sample kDecay[DrumMachine::PadCount] = {450, 45, 220, 300, 500, 60, 420, 450, 360, 350, 1800, 1200};
         // (K9) voicing constants: each pad's output trim so the defaults sit at comparable loudness
         // (measured peaks at velocity 127, level 0 dB, volume 0 dB — README ## DrumMachine).
-        const Sample kTrim[DrumMachine::PadCount] = {0.8, 0.9, 0.9, 3.4, 0.85, 2.0, 0.85, 1.75, 0.85, 1.3};
+        const Sample kTrim[DrumMachine::PadCount] = {0.8, 0.9, 0.9, 3.4, 0.85, 2.0, 0.85, 1.75, 0.85, 1.3, 0.93, 1.1};
         // (K5) the TR-808's six hat/cymbal square-wave frequencies, Hz.
         const Sample kMetal[6] = {205.3, 304.4, 369.6, 522.7, 540.0, 800.0};
         const Sample kTomEnd[3] = {80.0, 120.0, 170.0}; // low, mid, high tom fundamentals, Hz
@@ -202,6 +202,32 @@ namespace arstro
             v.f1.setCutoff(2640.0 * tr * std::pow(2.0, pp.tone - 0.5));
             v.f1.setResonance(0.3);
             break;
+        case Crash:
+            // (K12) a burst over a long wash; a band at 3.5 kHz and a sheen above 5 kHz, in parallel
+            v.env.setDecayMs(pp.decay / 8.0);
+            v.env.trigger(0.3);
+            v.env2.setDecayMs(pp.decay);
+            v.env2.trigger(0.7);
+            v.f1.setMode(StateVariableFilter::BandPass);
+            v.f1.setCutoff(3500.0 * tr * std::pow(2.0, pp.tone - 0.5));
+            v.f1.setResonance(0.2);
+            v.f2.setMode(StateVariableFilter::HighPass);
+            v.f2.setCutoff(5000.0 * tr);
+            v.f2.setResonance(0.0);
+            break;
+        case Ride:
+            // (K13) a pinging bell (two squares through a 3 kHz band) over a quieter metal wash above 8 kHz
+            v.env.setDecayMs(pp.decay / 3.0);
+            v.env.trigger(1.0);
+            v.env2.setDecayMs(pp.decay);
+            v.env2.trigger(1.0);
+            v.f1.setMode(StateVariableFilter::BandPass);
+            v.f1.setCutoff(3000.0 * tr * std::pow(2.0, pp.tone - 0.5));
+            v.f1.setResonance(0.45);
+            v.f2.setMode(StateVariableFilter::HighPass);
+            v.f2.setCutoff(8000.0 * tr);
+            v.f2.setResonance(0.0);
+            break;
         default:
             break;
         }
@@ -294,6 +320,35 @@ namespace arstro
             const Sample src = 0.5 * (v.ph[0].square(540.0 * tr * invFs) + v.ph[1].square(800.0 * tr * invFs));
             const Sample k = 1.0 / StateVariableFilter::qFor(0.3);
             y = k * v.f1.out(src, 0) * (v.env.next() + v.env2.next());
+            v.active = !(v.env.isFinished() && v.env2.isFinished());
+            break;
+        }
+        case Crash:
+        {
+            // (K12) the six 808 squares and more noise (m = 0.45 + 0.4·tone), a 3.5 kHz band and a 5 kHz sheen
+            Sample metal = 0.0;
+            for (int i = 0; i < 6; ++i) metal += v.ph[i].square(kMetal[i] * tr * invFs);
+            metal /= 6.0;
+            const Sample ns = 0.45 + 0.4 * pp.tone;
+            const Sample src = (1.0 - ns) * metal + ns * v.noise.next();
+            const Sample k = 1.0 / StateVariableFilter::qFor(0.2);
+            y = (0.6 * k * v.f1.out(src, 0) + 0.8 * v.f2.out(src, 0)) * (v.env.next() + v.env2.next());
+            v.active = !(v.env.isFinished() && v.env2.isFinished());
+            break;
+        }
+        case Ride:
+        {
+            // (K13) bell: two squares at 598/1002 Hz — their 5th and 3rd harmonics meet at ~3 kHz, a square having
+            // odd ones only — through a 3 kHz band, decay/3; wash: four 808 squares and noise above 8 kHz, the
+            // whole decay; tone leans from the bell to the wash
+            const Sample bellSrc = 0.5 * (v.ph[0].square(598.0 * tr * invFs) + v.ph[1].square(1002.0 * tr * invFs));
+            Sample metal = 0.0;
+            for (int i = 2; i < 6; ++i) metal += v.ph[i].square(kMetal[i] * tr * invFs);
+            const Sample washSrc = 0.5 * (metal / 4.0) + 0.5 * v.noise.next();
+            const Sample k = 1.0 / StateVariableFilter::qFor(0.45);
+            const Sample bell = k * v.f1.out(bellSrc, 0) * v.env.next();
+            const Sample wash = v.f2.out(washSrc, 0) * v.env2.next();
+            y = (0.45 - 0.2 * pp.tone) * bell + (0.55 + 0.2 * pp.tone) * wash;
             v.active = !(v.env.isFinished() && v.env2.isFinished());
             break;
         }

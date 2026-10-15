@@ -92,6 +92,7 @@ is 0 dB; `sin(f)` / `sq(f)` = a `Phasor` read as a sine / naive square at freque
 (K0)  pads and defaults (decay = T60, ms):
         kick 36 (450) · rim 37 (45) · snare 38 (220) · clap 39 (300) · low tom 41 (500)
         closed hat 42 (60) · mid tom 45 (420) · open hat 46 (450) · high tom 48 (360) · cowbell 56 (350)
+        crash 49 (1800) · ride 51 (1200)                                         ; REQ-drum-6, last in the pad order
 
 (K1)  kick:   f(t) = 48·tr · 2^(S·e^(−t/0.035)),  S = 1.5 + 3·tone  octaves
               y = sin(f(t))·E(decay) + (0.15 + 0.35·tone) · HP_3k(noise)·E(6 ms)
@@ -109,6 +110,11 @@ is 0 dB; `sin(f)` / `sq(f)` = a `Phasor` read as a sine / naive square at freque
 (K7)  rim:    y = (0.4 + 0.6·tone)·BP(2.2k·tr, res 0.6)(noise)·E(decay) + (1 − 0.5·tone)·sin(480·tr)·E(decay/2)
 (K8)  cowbell: s = ½(sq(540·tr) + sq(800·tr))
               y = BP(2640·tr·2^(tone−0.5), res 0.3)(s) · (0.6·E(decay/6) + 0.4·E(decay))
+(K12) crash:  s = (1 − m)·metal + m·noise,  m = 0.45 + 0.4·tone            ; the hats' six squares, noisier
+              y = (0.6·BP(3.5k·tr·2^(tone−0.5), res 0.2)(s) + 0.8·HP_5k·tr(s)) · (0.3·E(decay/8) + 0.7·E(decay))
+(K13) ride:   bell = BP(3k·tr·2^(tone−0.5), res 0.45)(½(sq(598·tr) + sq(1002·tr))) · E(decay/3)
+              wash = HP_8k·tr(½·(¼Σ_{i=2..5} sq(r_i·tr)) + ½·noise) · E(decay)
+              y = (0.45 − 0.2·tone)·bell + (0.55 + 0.2·tone)·wash
 (K9)  output:  out = volume · trim_pad · (vel/127) · 10^(level/20) · y
 (K10) pan:     balance, unity at centre:  gL = (pan > 0 ? cos(pan·π/2) : 1),  gR = (pan < 0 ? cos(−pan·π/2) : 1)
 (K11) noise seed per pad = 0xD7500000 + pad index; reset() reseeds — a reset replays the same noise
@@ -116,7 +122,10 @@ is 0 dB; `sin(f)` / `sq(f)` = a `Phasor` read as a sine / naive square at freque
 
 **Constants that are voicing, not derivation** (stated, per this repo's rule): the sweep depths and
 time constants in (K1)–(K3), the filter corners in (K3)–(K8), and the **trims** of (K9) —
-`kick 0.8, rim 0.9, snare 0.9, clap 3.4, toms 0.85, closed hat 2.0, open hat 1.75, cowbell 1.3`.
+`kick 0.8, rim 0.9, snare 0.9, clap 3.4, toms 0.85, closed hat 2.0, open hat 1.75, cowbell 1.3, crash 0.93,
+ride 1.1` (crash and ride measured at 0.55 peaks, beside the open hat). The ride's bell squares, 598 and 1002 Hz,
+are chosen so their 5th and 3rd harmonics (a square has odd ones only) meet in its 3 kHz band — at 511/762 Hz,
+the first try, none landed there and the bell carried 2 % of the sound.
 The trims were set by measurement so the default pads sit at comparable peaks at velocity 127,
 volume 0 dB (kick 0.91, toms 0.87–0.89, snare 0.82, rim 0.65, clap 0.65, cowbell 0.64, open hat
 0.55, closed hat 0.50). The 808 hat frequencies of (K5) are the documented circuit values.

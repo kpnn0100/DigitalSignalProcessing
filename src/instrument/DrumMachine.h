@@ -30,7 +30,8 @@ namespace arstro
     class DrumMachine : public Instrument
     {
     public:
-        enum Pad { Kick = 0, Rim, Snare, Clap, LowTom, ClosedHat, MidTom, OpenHat, HighTom, Cowbell, PadCount };
+        // Crash and Ride (REQ-drum-6) come last, so the older pads keep their indices
+        enum Pad { Kick = 0, Rim, Snare, Clap, LowTom, ClosedHat, MidTom, OpenHat, HighTom, Cowbell, Crash, Ride, PadCount };
 
         struct PadParams
         {

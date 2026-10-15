@@ -526,13 +526,13 @@ namespace arstro
 
             DeviceType drums;
             drums.name = "drums"; drums.label = "Drum Machine"; drums.kind = DeviceKind::Instrument;
-            drums.summary = "Ten synthesized pads on the GM drum notes (36 kick … 56 cowbell); the closed hat chokes the open hat.";
+            drums.summary = "Twelve synthesized pads on the GM drum notes (36 kick … 56 cowbell, a crash 49 and a ride 51); the closed hat chokes the open hat.";
             drums.params = specsOf(drumBindings());
             drums.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<DrumDevice>(self); };
             {
                 // the pads' keys, named for a person (the prefixes are the parameters' names)
                 static const char *kLabels[DrumMachine::PadCount] = {"Kick", "Rim", "Snare", "Clap", "Low Tom",
-                                                                     "Closed Hat", "Mid Tom", "Open Hat", "High Tom", "Cowbell"};
+                                                                     "Closed Hat", "Mid Tom", "Open Hat", "High Tom", "Cowbell", "Crash", "Ride"};
                 for (int p = 0; p < DrumMachine::PadCount; ++p)
                 {
                     drums.noteNames.emplace_back(DrumMachine::noteFor((DrumMachine::Pad)p), kLabels[p]);

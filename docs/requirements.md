@@ -341,6 +341,13 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   not all at zero (aligned detuned saws spike at the attack: 7.8× the sustained level, measured; spread 0.9×).
   No width is mono-identical; one voice starts at 0 as before. Guarded by
   `BasicSynth_unison_is_wide_and_does_not_flam` (the aligned start seen red).
+- `REQ-drum-6` — **Crash 49 and ride 51** (source: Solaris R-INST-2 amended, user request 2026-10-15, the EDM
+  song: the kit had no cymbal for a drop). Each with tune, decay, tone, level and pan; (K12) the crash, the hats'
+  six squares and more noise through a 3.5 kHz band and a 5 kHz sheen, a burst over a long wash (1800 ms); (K13)
+  the ride, a two-square bell in a 3 kHz band (decay/3) over a metal-and-noise wash above 8 kHz (1200 ms). Last in
+  the pad order, so every older pad keeps its index and its keys. Guarded by
+  `DrumMachine_crash_and_ride_ring_as_cymbals` (level, T60 within 15 %, the crash bright, the ride's bell) and the
+  every-pad test.
 - `REQ-drum-1` — `DrumMachine`: ten pads on the GM drum notes (kick 36, rim 37, snare 38, clap 39,
   low tom 41, closed hat 42, mid tom 45, open hat 46, high tom 48, cowbell 56), each synthesized
   from `Phasor`, `Noise`, `StateVariableFilter`, `DecayEnvelope` — no sample files. A `Phasor`

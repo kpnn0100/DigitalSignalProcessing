@@ -282,6 +282,57 @@ TEST(BasicSynth_unison_is_wide_and_does_not_flam)
     CHECK(rmsOf(L, 12000, 36000) > 0.05 && rmsOf(R, 12000, 36000) > 0.05);
 }
 
+TEST(DrumMachine_crash_and_ride_ring_as_cymbals)
+{
+    // REQ-drum-6: crash 49 and ride 51 — at the kit's level, ringing for their decay, the crash bright and long,
+    // the ride's bell standing out around 3 kHz and shorter
+    configure();
+    auto hit = [](int note, std::vector<Sample> &L) {
+        DrumMachine d;
+        d.setVolumeDb(0.0);
+        d.noteOn(note, 127);
+        const int n = 48000 * 3;
+        L.assign(n, 0.0);
+        std::vector<Sample> R(n, 0.0);
+        for (int i = 0; i < n; i += 128)
+        {
+            Sample *o[2] = {L.data() + i, R.data() + i};
+            d.render(o, 2, 128);
+        }
+    };
+    auto t60 = [](const std::vector<Sample> &x) { // ms until the 50 ms RMS is 60 dB under its loudest
+        std::vector<double> r;
+        double best = 0;
+        for (size_t i = 0; i + 2400 <= x.size(); i += 2400) { r.push_back(rmsOf(x, (int)i, (int)i + 2400)); best = std::max(best, r.back()); }
+        for (size_t i = 0; i < r.size(); ++i)
+            if (r[i] < best * 1e-3) return (double)i * 50.0;
+        return 1e9;
+    };
+    auto band = [](const std::vector<Sample> &x, double lo, double hi) { // energy share between lo and hi Hz, 50–250 ms
+        double in = 0, all = 0;
+        for (double f = 250.0; f < 16000.0; f *= 1.05)
+        {
+            const double w = 2.0 * M_PI * f / 48000.0, c = 2.0 * std::cos(w);
+            double s1 = 0, s2 = 0;
+            for (int i = 2400; i < 12000; ++i) { const double s0 = x[(size_t)i] + c * s1 - s2; s2 = s1; s1 = s0; }
+            const double e = s1 * s1 + s2 * s2 - c * s1 * s2;
+            all += e;
+            if (f >= lo && f < hi) in += e;
+        }
+        return in / all;
+    };
+    std::vector<Sample> crash, ride;
+    hit(49, crash);
+    hit(51, ride);
+    CHECK(peakOf(crash, 0, 48000) > 0.45 && peakOf(crash, 0, 48000) < 0.7);
+    CHECK(peakOf(ride, 0, 48000) > 0.45 && peakOf(ride, 0, 48000) < 0.7);
+    CHECK(std::fabs(t60(crash) - 1800.0) <= 270.0);              // its decay, within 15 %
+    CHECK(std::fabs(t60(ride) - 1200.0) <= 180.0);
+    CHECK(t60(crash) > t60(ride));
+    CHECK(band(crash, 3000.0, 16000.0) > 0.6 && band(crash, 250.0, 1000.0) < 0.08); // bright, no low mud
+    CHECK(band(ride, 2500.0, 3600.0) > 0.2 && band(ride, 8000.0, 16000.0) > 0.1);   // the bell stands out over its wash
+}
+
 TEST(BasicSynth_resonance_is_heard)
 {
     // REQ-inst-synth (Solaris D-4): the filter's resonance rings at the cutoff — a saw at 110 Hz through a low-pass at
@@ -435,7 +486,7 @@ TEST(BasicSynth_is_deterministic_and_stereo_identical_without_spread)
 TEST(DrumMachine_every_pad_sounds_on_its_GM_note_and_ends)
 {
     configure();
-    const int notes[] = {36, 37, 38, 39, 41, 42, 45, 46, 48, 56};
+    const int notes[] = {36, 37, 38, 39, 41, 42, 45, 46, 48, 56, 49, 51}; // crash and ride last (REQ-drum-6)
     for (int p = 0; p < DrumMachine::PadCount; ++p)
     {
         CHECK(DrumMachine::noteFor((DrumMachine::Pad)p) == notes[p]);
