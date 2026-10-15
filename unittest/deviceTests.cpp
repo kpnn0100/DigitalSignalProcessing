@@ -114,6 +114,40 @@ TEST(DeviceRegistry_names_the_drum_kits_keys)
     CHECK(DeviceRegistry::find("eq")->noteNames.empty());
 }
 
+TEST(DeviceRegistry_titles_every_instruments_parameter_groups)
+{
+    // REQ-device-10: a group is the prefix before a parameter's dot ("" for none); every group an instrument
+    // has is titled, so a panel can draw it as a section named for a person
+    for (const auto &t : DeviceRegistry::types())
+    {
+        if (t.kind != DeviceKind::Instrument) continue;
+        for (const auto &p : t.params)
+        {
+            const auto dot = p.name.find('.');
+            const std::string g = dot == std::string::npos ? std::string() : p.name.substr(0, dot);
+            bool titled = false;
+            for (const auto &gl : t.groupLabels) titled |= gl.first == g && !gl.second.empty();
+            CHECK(titled);
+        }
+    }
+    const DeviceType *synth = DeviceRegistry::find("synth");
+    bool osc = false, fenv = false;
+    for (const auto &gl : synth->groupLabels)
+    {
+        osc |= gl.first == "osc1" && gl.second == "Oscillator 1";
+        fenv |= gl.first == "fenv" && gl.second == "Filter Envelope";
+    }
+    CHECK(osc && fenv);
+    // a kit's pad groups are titled by the pads' names (the same join as REQ-device-9)
+    const DeviceType *drums = DeviceRegistry::find("drums");
+    for (size_t i = 0; i < drums->notePrefixes.size(); ++i)
+    {
+        bool same = false;
+        for (const auto &gl : drums->groupLabels) same |= gl.first == drums->notePrefixes[i].second && gl.second == drums->noteNames[i].second;
+        CHECK(same);
+    }
+}
+
 TEST(DeviceRegistry_joins_a_kits_keys_to_their_parameters)
 {
     // REQ-device-9: the same keys, each with the prefix of the parameters that shape it — a name is for a

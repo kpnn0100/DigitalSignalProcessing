@@ -82,6 +82,7 @@ package device {
   class DeviceType {
     name, label, kind, params
     noteNames / notePrefixes : a kit's keys, named and joined to their parameters (REQ-device-6/9)
+    groupLabels : a title per parameter group (REQ-device-10)
     +create()
   }
   abstract class Device {

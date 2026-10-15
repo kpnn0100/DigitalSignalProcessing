@@ -76,6 +76,10 @@ namespace arstro
          *  "chat", so `chat.tune`, `chat.decay`…), ascending. Empty for a melodic instrument. A key's NAME is
          *  for a person and its prefix for an address; this joins them (REQ-device-9). */
         std::vector<std::pair<int, std::string>> notePrefixes;
+        /** A title per parameter group — a group is the prefix before a parameter's dot (`osc1` → "Oscillator
+         *  1"), "" the parameters with none — for a host that draws a group as a section of a panel
+         *  (REQ-device-10). Every group of an instrument is titled; a group with no entry is shown by its prefix. */
+        std::vector<std::pair<std::string, std::string>> groupLabels;
         /** It has a key input (a compressor's sidechain): a host hands it another track's audio
          *  through `Device::setKey` before each block (REQ-fx-sidechain-1). */
         bool takesKey = false;

@@ -388,6 +388,13 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   pad table (`DrumMachine::padName`); empty for a melodic instrument. A name is for a person, a prefix for
   an address — this joins them. Guarded by `DeviceRegistry_joins_a_kits_keys_to_their_parameters`.
 
+- `REQ-device-10` — **An instrument's parameter groups are titled** (source: Solaris R-UI-12, user request
+  2026-10-15: an analog face with sections). A group is the prefix before a parameter's dot, "" the
+  parameters with none; `DeviceType::groupLabels` titles each (Basic Synth: Oscillator 1, Oscillator 2,
+  Filter, Filter Envelope, Amplifier, Mix & Output; Drum Machine: each pad's name — the same join as
+  REQ-device-9 — and Output; Sampler: Sampler). Every group of every instrument is titled. Guarded by
+  `DeviceRegistry_titles_every_instruments_parameter_groups`.
+
 ## Solaris instruments & effects — D4: VST3 (Solaris R-VST, 2026-10-09)
 
 - `REQ-vst-1` — **The SDK is outside the repo.** Steinberg's `vst3sdk` v3.8.1_build_84 (MIT licence,

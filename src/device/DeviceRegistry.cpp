@@ -450,6 +450,8 @@ namespace arstro
             synth.name = "synth"; synth.label = "Basic Synth"; synth.kind = DeviceKind::Instrument;
             synth.summary = "Two oscillators and noise through a resonant filter and an amplitude envelope; 16 voices.";
             synth.params = specsOf(synthBindings());
+            synth.groupLabels = {{"osc1", "Oscillator 1"}, {"osc2", "Oscillator 2"}, {"filter", "Filter"},
+                                 {"fenv", "Filter Envelope"}, {"amp", "Amplifier"}, {"", "Mix & Output"}};
             synth.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<SynthDevice>(self); };
             v.push_back(synth);
 
@@ -466,7 +468,9 @@ namespace arstro
                 {
                     drums.noteNames.emplace_back(DrumMachine::noteFor((DrumMachine::Pad)p), kLabels[p]);
                     drums.notePrefixes.emplace_back(DrumMachine::noteFor((DrumMachine::Pad)p), DrumMachine::padName((DrumMachine::Pad)p));
+                    drums.groupLabels.emplace_back(DrumMachine::padName((DrumMachine::Pad)p), kLabels[p]); // a pad's group: its name
                 }
+                drums.groupLabels.emplace_back("", "Output");
                 std::sort(drums.noteNames.begin(), drums.noteNames.end());
                 std::sort(drums.notePrefixes.begin(), drums.notePrefixes.end());
             }
@@ -477,6 +481,7 @@ namespace arstro
             sampler.summary = "Plays a recorded sound: pitched by the note (chromatic) or as recorded (one-shot); a span, reverse, an ADSR.";
             sampler.params = specsOf(samplerBindings());
             sampler.takesSample = true;
+            sampler.groupLabels = {{"", "Sampler"}};
             sampler.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<SamplerDevice>(self); };
             v.push_back(sampler);
 

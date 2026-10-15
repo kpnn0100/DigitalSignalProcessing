@@ -44,6 +44,8 @@ modules unchanged: `Compressor`, `ParametricEQ`, `Reverb`, `Repeater` (= delay),
 - **A kit's keys** (REQ-device-6, REQ-device-9): `noteNames` says what each key is for a person
   ("Closed Hat"), `notePrefixes` which parameters shape it for an address (`chat.*`) — the same keys,
   the same order, both from the kit's own pad table.
+- **Groups are titled** (REQ-device-10): `groupLabels` names each prefix ("osc1" → "Oscillator 1", "" for the
+  parameters with none) — what a host shows a group as a section by. Every instrument's groups are titled.
 - `reset()` clears what the module can clear (instrument voices, the EQ's and the filter's
   memory). `Reverb`, `Repeater` and `Chorus` have no reset, so their tails survive a seek; a host
   that needs silence after a seek builds a fresh device.
