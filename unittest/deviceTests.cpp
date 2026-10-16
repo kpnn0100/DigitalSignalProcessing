@@ -476,6 +476,96 @@ TEST(Limiter_never_exceeds_its_ceiling_and_glides)
     CHECK(rel.lastGain() > 0.99);
 }
 
+TEST(Limiter_true_peak_mode_holds_the_ceiling_between_samples)
+{
+    configure();
+    // REQ-fx-limiter-2: (L6) — the need read through the meter's own interpolator, each frame answering ±8 frames'
+    // needs — so the output's true peak, MEASURED by the TruePeakMeter, stays under the ceiling. Signals whose peaks
+    // fall between samples: a quarter-rate sine 45° out (every sample 3 dB under its peak), a sweep to 20 kHz,
+    // bursts of a band-limited square, seeded noise.
+    const double ceilDb = -1.0;
+    auto signal = [](int which, size_t n) -> double {
+        const double t = n / 48000.0;
+        switch (which)
+        {
+        case 0: return std::sin(2 * M_PI * 12000.0 * t + M_PI / 4.0);
+        case 1: return 0.9 * std::sin(2 * M_PI * 1000.0 * 0.5 * (std::pow(20.0, t / 0.5) - 1.0) / std::log(20.0)); // 1 → 20 kHz in 0.5 s
+        case 2:
+        {
+            if ((n / 4800) % 2) return 0.0; // on and off every 0.1 s
+            double v = 0.0;
+            for (int k = 1; 3000.0 * k < 20000.0; k += 2) v += std::sin(2 * M_PI * 3000.0 * k * t) / k;
+            return 0.8 * v;
+        }
+        default:
+        {
+            unsigned long long x = 0x9E3779B97F4A7C15ULL * (n + 1);
+            x ^= x >> 29; x *= 0xBF58476D1CE4E5B9ULL; x ^= x >> 32;
+            return 0.5 * ((double)(x % 20001) / 10000.0 - 1.0);
+        }
+        }
+    };
+    double worstOver = -1e9;
+    for (int which = 0; which < 4; ++which)
+        for (int block : {1, 64, 256})
+            for (bool tp : {false, true})
+            {
+                Limiter lim;
+                lim.setGainDb(which == 0 ? 6.0 : 12.0);
+                lim.setCeilingDb(ceilDb);
+                lim.setLookaheadMs(2.0);
+                lim.setTruePeak(tp);
+                std::vector<Sample> L(24000), R(24000);
+                for (size_t n = 0; n < L.size(); ++n) L[n] = R[n] = signal(which, n);
+                if (which == 3) for (size_t n = 0; n < R.size(); ++n) R[n] = signal(which, n + 7919);
+                TruePeakMeter meter;
+                std::vector<float> fl((size_t)block), fr((size_t)block);
+                Sample samplePeak = 0.0;
+                for (size_t pos = 0; pos < L.size(); pos += (size_t)block)
+                {
+                    const int n = (int)std::min<size_t>((size_t)block, L.size() - pos);
+                    Sample *io[2] = {L.data() + pos, R.data() + pos};
+                    lim.process(io, 2, n);
+                    for (int i = 0; i < n; ++i)
+                    {
+                        fl[(size_t)i] = (float)io[0][i];
+                        fr[(size_t)i] = (float)io[1][i];
+                        samplePeak = std::max({samplePeak, std::fabs(io[0][i]), std::fabs(io[1][i])});
+                    }
+                    meter.process(fl.data(), fr.data(), n);
+                }
+                CHECK(lim.clamped() == 0 && samplePeak <= std::pow(10.0, ceilDb / 20.0)); // the sample guarantee holds either way
+                if (tp)
+                {
+                    worstOver = std::max(worstOver, meter.peakDb() - ceilDb);
+                    CHECK(meter.peakDb() <= ceilDb + 1e-5); // to the float precision the meter reads at
+                    CHECK(meter.peakDb() > ceilDb - 1.5); // limiting, not muting
+                }
+                else if (which == 0)
+                    CHECK(meter.peakDb() > ceilDb + 2.5); // sample-peak limiting lets the 3 dB between samples through
+            }
+    std::printf("    true-peak mode: the worst output %.7f dB from the ceiling\n", worstOver);
+    // its latency is the lookahead and 16; under the ceiling it is still the input, exactly that late
+    Limiter quiet;
+    quiet.setLookaheadMs(1.0);
+    quiet.setTruePeak(true);
+    CHECK(quiet.latency() == 48 + Limiter::kTruePeakLatency);
+    std::vector<Sample> L(2000), R(2000), in(2000);
+    for (size_t n = 0; n < L.size(); ++n) in[n] = L[n] = R[n] = 0.5 * std::sin(0.01 * n);
+    Sample *io[2] = {L.data(), R.data()};
+    quiet.process(io, 2, 2000);
+    bool exact = true;
+    for (int n = quiet.latency(); n < 2000; ++n) exact &= L[(size_t)n] == in[(size_t)(n - quiet.latency())];
+    CHECK(exact);
+    // through the registry: a parameter, off by default; on, the device's latency says so
+    auto d = DeviceRegistry::create("limiter");
+    CHECK(d && d->latency() == 96);
+    const int k = d->type().paramIndex("truePeak");
+    CHECK(k >= 0 && d->type().params[(size_t)k].def == 0.0);
+    d->setParam(k, 1.0);
+    CHECK(d->latency() == 96 + 16);
+}
+
 TEST(Device_reports_its_latency_and_lags_by_exactly_it)
 {
     configure();

@@ -42,12 +42,16 @@ interpolator is an FIR, which the library had none of.
      Γr = L(mean z of the kept blocks) − 10 LU                    (the RELATIVE gate)
      integrated = L(mean z of the kept blocks whose bin lies at or above Γr)
      (exact but for the 0.01 LU bin Γr falls in)
-(T1) The interpolator — TruePeakMeter::TruePeakMeter
-     h[m] = sinc((m − c)/4) · w[m],  m = 0 … 63,  c = 31.5
-     w[m] = I0(β √(1 − u²)) / I0(β),  u = 2m/63 − 1,  β = 6          (Kaiser)
-(T2) Four phases of 16 taps, h_p[k] = h[4k + p], each normalised so Σ_k h_p[k] = 1 (a slow signal reads its level)
-     I0 by its series Σ (x/2)^(2k) / (k!)²  — besselI0
-(T3) True peak — TruePeakMeter::process
+(T1) The interpolator — TruePeakInterpolator::TruePeakInterpolator (factor F, the meter's F = 4)
+     h[m] = sinc((m − c)/F) · w[m],  m = 0 … N−1,  c = (N − 1)/2,  N = 16F   (the meter: N = 64, c = 31.5)
+     w[m] = I0(β √(1 − u²)) / I0(β),  u = 2m/(N−1) − 1,  β = 6          (Kaiser)
+     `onSamples` (the Limiter's, README effects (L6)): N = 16F − 1, so c is an upsampled point ON a sample
+(T2) F phases of 16 taps, h_p[k] = h[Fk + p], each normalised so Σ_k h_p[k] = 1 (a slow signal reads its level)
+     I0 by its series Σ (x/2)^(2k) / (k!)²  — besselI0. Phase p's point lies (c − p)/F input samples back: for
+     either design 7.875 − p/F … — between x[n−8] and x[n−7] (`kDelay` = 8). The meter's points fall at ⅛, ⅜, ⅝, ⅞
+     of the way (BS.1770-4's own 48-tap reference is centred between points too); `onSamples` at F = 8 puts them
+     every ⅛, the sample included — both grids a 4× meter may use. Flat to ±0.003 dB up to 16 kHz at 48 kHz.
+(T3) True peak — TruePeakInterpolator::push, TruePeakMeter::process
      y_p[n] = Σ_k h_p[k] · x[n − k],  peak = max over n, p of |y_p[n]| and |x[n]|;  dBTP = 20·log10(peak)
 (C1) Correlation — CorrelationMeter::process / correlation
      α = 1 − e^(−1/(0.3 fs));  E[·] ← E[·] + α(· − E[·])  for  LR, LL, RR

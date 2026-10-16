@@ -123,28 +123,46 @@ namespace arstro
 
     // ── true peak (README (T1) … (T3)) ───────────────────────────────────────────────────────────
 
-    TruePeakMeter::TruePeakMeter(int channels) : mChannels(std::clamp(channels, 1, 2))
+    TruePeakInterpolator::TruePeakInterpolator(int f, bool onSamples) : factor(std::clamp(f, 1, kMaxFactor))
     {
-        // a 64-tap windowed-sinc interpolator at 4× (cut at the original Nyquist), split into 4 phases of 16 taps,
-        // each phase normalised to unit gain at DC so a slow signal reads its own level
-        constexpr int N = kFactor * kTapsPerPhase;
+        // a windowed-sinc interpolator at `factor`× (cut at the original Nyquist), split into `factor` phases of
+        // 16 taps, each phase normalised to unit gain at DC so a slow signal reads its own level. N = 16·factor
+        // taps centres the kernel between upsampled points (BS.1770's: the points fall between samples); one fewer
+        // centres it ON one, so one phase is the sample itself and the rest every 1/factor between (README (L6))
+        const int N = factor * kTapsPerPhase - (onSamples ? 1 : 0);
         const double c = (N - 1) / 2.0, beta = 6.0, i0b = besselI0(beta);
         for (int m = 0; m < N; ++m)
         {
-            const double t = (m - c) / kFactor;
+            const double t = (m - c) / factor;
             const double sinc = std::fabs(t) < 1e-12 ? 1.0 : std::sin(kPi * t) / (kPi * t);
             const double u = 2.0 * m / (N - 1) - 1.0;
             const double w = besselI0(beta * std::sqrt(std::max(0.0, 1.0 - u * u))) / i0b;
-            mH[(size_t)(m % kFactor)][(size_t)(m / kFactor)] = sinc * w;
+            taps[(size_t)(m % factor)][(size_t)(m / factor)] = sinc * w;
         }
-        for (auto &phase : mH)
+        for (int p = 0; p < factor; ++p)
         {
             double sum = 0.0;
-            for (double h : phase) sum += h;
-            for (double &h : phase) h /= sum;
+            for (double h : taps[(size_t)p]) sum += h;
+            for (double &h : taps[(size_t)p]) h /= sum;
         }
-        reset();
     }
+
+    double TruePeakInterpolator::push(History &hist, double x) const
+    {
+        std::copy_backward(hist.begin(), hist.end() - 1, hist.end());
+        hist[0] = x;
+        double most = 0.0;
+        for (int p = 0; p < factor; ++p)
+        {
+            const auto &phase = taps[(size_t)p];
+            double y = 0.0;
+            for (int k = 0; k < kTapsPerPhase; ++k) y += phase[(size_t)k] * hist[(size_t)k];
+            most = std::max(most, std::fabs(y));
+        }
+        return most;
+    }
+
+    TruePeakMeter::TruePeakMeter(int channels) : mChannels(std::clamp(channels, 1, 2)) { reset(); }
 
     void TruePeakMeter::reset()
     {
@@ -162,14 +180,7 @@ namespace arstro
             auto &hist = mHist[(size_t)ch];
             for (int i = 0; i < frames; ++i)
             {
-                std::copy_backward(hist.begin(), hist.end() - 1, hist.end());
-                hist[0] = x[i];
-                for (const auto &phase : mH)
-                {
-                    double y = 0.0;
-                    for (int k = 0; k < kTapsPerPhase; ++k) y += phase[(size_t)k] * hist[(size_t)k];
-                    mBlockPeak = std::max(mBlockPeak, std::fabs(y));
-                }
+                mBlockPeak = std::max(mBlockPeak, mI.push(hist, x[i]));
                 mBlockPeak = std::max(mBlockPeak, (double)std::fabs(x[i])); // never under the sample peak
             }
         }

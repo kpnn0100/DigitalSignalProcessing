@@ -670,6 +670,35 @@ static std::vector<double> renderLimiter(double drive)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-fx-limiter-2: peaks BETWEEN samples through the registry's limiter, 6 dB into a −1 dB ceiling, True Peak
+// off (arg 0) or on (arg 1) — a 12 kHz sine 45° out (every sample 3 dB under its peak), then 11 + 7 kHz; faded in
+// over 5 ms and cross-faded over 10, so every change is band-limited too
+static std::vector<double> renderLimiterTruePeak(double on)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("limiter");
+    d->setParam("gain", 6.0);
+    d->setParam("ceiling", -1.0);
+    d->setParam("truePeak", on);
+    std::vector<Sample> L(9600), R(9600);
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        const double t = (double)n / kSampleRate;
+        const double fade = t < 0.005 ? 0.5 - 0.5 * std::cos(M_PI * t / 0.005) : 1.0;
+        // the two halves cross-faded over 10 ms: a switch in one sample is no band-limited signal, and its ringing
+        // between samples is whatever a meter's kernel length makes of it
+        const double k = std::clamp((t - 0.095) / 0.01, 0.0, 1.0), x = 0.5 - 0.5 * std::cos(M_PI * k);
+        L[n] = R[n] = fade * ((1.0 - x) * std::sin(2 * M_PI * 12000 * t + M_PI / 4) + x * (0.55 * std::sin(2 * M_PI * 11000 * t) + 0.45 * std::sin(2 * M_PI * 7000 * t + 1.0)));
+    }
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // D4: a 55 Hz bass through the registry's compressor with Sidechain on, keyed (arg 1) by a kick every
 // half second, or with no key (arg 0) — the pump (REQ-fx-sidechain-1)
 static std::vector<double> renderSidechain(double keyed)
@@ -808,6 +837,7 @@ int main(int argc, char **argv)
     else if (scenario == "kick") samples = renderKick(arg);
     else if (scenario == "deviceeq") samples = renderDeviceEq(arg);
     else if (scenario == "limiter") samples = renderLimiter(arg);
+    else if (scenario == "limiter_tp") samples = renderLimiterTruePeak(arg);
     else if (scenario == "sidechain") samples = renderSidechain(arg);
     else if (scenario == "sampler") samples = renderSampler(arg);
     else if (scenario == "meters") samples = renderMeters();

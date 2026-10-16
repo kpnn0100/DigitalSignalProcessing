@@ -212,6 +212,7 @@ package effects {
   }
   class Limiter {
     +setGainDb / setCeilingDb / setReleaseMs / setLookaheadMs
+    +setTruePeak(on) : (L6) between samples, latency L+16
     +process(io**, ch, frames) : linked, lookahead
     +latency() / clamped()
   }
@@ -226,6 +227,10 @@ package meter {
   class LoudnessMeter {
     +process(left*, right*, frames)
     +momentary() / shortTerm() / integrated() : LUFS
+  }
+  class TruePeakInterpolator {
+    +push(history, x) : the most of its points
+    factor 4 (BS.1770) | 8 onSamples (the limiter)
   }
   class TruePeakMeter {
     +process(left*, right*, frames)
@@ -325,6 +330,8 @@ DeviceType o--> "*" ParamSpec
 DeviceType ..> Device : creates
 ParamMapping ..> ParamSpec : reads
 Device ..> Limiter : EffectDevice wraps
+TruePeakMeter *-- TruePeakInterpolator
+Limiter *-- TruePeakInterpolator : (L6)
 Device ..> Sampler : SamplerDevice wraps
 Processor --> Device : DeviceRegistry::create
 Controller o--> RegistryParameter

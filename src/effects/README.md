@@ -191,6 +191,34 @@ exactly, and the output is the input L samples late, bit for bit. Latency = L.
 | `setReleaseMs` | ms | ρ |
 | `setLookaheadMs` | ms | L = round(ms · fs / 1000) |
 
+**(L6) True peak** (`setTruePeak`, REQ-fx-limiter-2). The need is read BETWEEN samples and spread to the
+neighbours:
+
+```
+(L6)  p[n] = max_ch max( |y_p[n]| for p = 0 … 7,  |d·x_ch[n−7]|,  |d·x_ch[n−8]| )   ; meter README (T1)–(T3), F = 8,
+                                                                                     ; onSamples: points every ⅛ in (n−8, n−7]
+      r[n] = min(1, c / p[n])                                                        ; replaces (L1)
+      W = L + 16:  (L2) takes the minimum over [n − W, n];  (L5) reads x[n − W]       ; latency L + 16
+```
+
+**Why it holds between samples.** r[n] is the need of the interval (n−8, n−7]. By (L2)–(L4) as before, the gain
+applied at n is ≤ every r[k] with n − W ≤ k ≤ n − L — 17 values, the needs of the intervals from 8 before the frame
+being output (x[n − W]) to 8 after it. A point between two output samples is reconstructed from the 16 samples
+around it, each of whose gains is then ≤ the need of that point's own interval: the whole kernel is turned down
+for it. What remains is second order — the gain's slope (≤ 1/(L+1) a frame) across the kernel's negative lobes —
+and measures under 10⁻⁵ dB. Detecting at 8× rather than BS.1770's 4× is deliberate: 4× meters disagree on where
+their points fall (on the quarters, or between them), and a 12 kHz sine 45° out reads 0.17 dB apart on the two;
+every ⅛ sample covers both. **Verified:** a quarter-rate sine 45° out, a sweep to 20 kHz, square bursts, noise;
+1/64/256 blocks; the output through the TruePeakMeter never more than 10⁻⁵ dB over the ceiling, the sample-peak
+mode ≈ 3 dB over it on the sine (`Limiter_true_peak_mode_holds_the_ceiling_between_samples`); an interpolator of
+the integration test's own (Blackman, 64 taps a phase) at 4× and 8× reads −1.001 dBTP for a −1 ceiling
+(`limiter_true_peak`). A test signal must be band-limited: a switch in one sample rings between samples by what
+each kernel's length makes of it.
+
+| setter | unit | symbol |
+|---|---|---|
+| `setTruePeak` | on/off | (L6) in place of (L1); W = L + 16 |
+
 Not composed from the library's `Delay` (fractional, modulated) — this needs an integer delay, a
 window minimum and a box average, none of which existed. Verified: every lookahead 0…10 ms and block
 size 1/37/128, a mix with 3.0 spikes driven 12 dB into −1 dBFS: never above, clamp idle, step ≤ 1/(L+1)

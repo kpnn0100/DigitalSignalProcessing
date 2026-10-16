@@ -11,9 +11,16 @@
  *  channel's block at a time. Not a composition: the library's Delay is fractional and modulated;
  *  this needs an integer delay, a sliding-window minimum and a running box average — none exists.
  *  Allocates only in the constructor and `prepare` (sized for the longest lookahead).
+ *
+ *  True-peak mode (REQ-fx-limiter-2): the need (L1) is read off the peaks BETWEEN samples, through the meter's
+ *  interpolator design (meter/Meters.h — a composition, no new filter) at 8×, every ⅛ sample, so it holds under
+ *  any 4× meter's grid; and every frame's gain also answers its neighbours' needs, ±8 frames, so all 16 samples
+ *  that reconstruct a point are turned down for it (README (L6)). It costs 16 samples of latency: 8 for the
+ *  interpolator's centre, 8 for the neighbourhood.
  */
 #pragma once
 #include "../base/Sample.h"
+#include "../meter/Meters.h"
 #include <vector>
 
 namespace arstro
@@ -22,6 +29,7 @@ namespace arstro
     {
     public:
         static constexpr double kMaxLookaheadMs = 10.0;
+        static constexpr int kTruePeakLatency = 2 * TruePeakInterpolator::kDelay; // (L6): 16 samples
 
         Limiter();                       // sized for AudioConfig's sample rate and channel count
         void prepare();                  // re-size after a sample-rate or channel change (allocates)
@@ -30,8 +38,10 @@ namespace arstro
         void setCeilingDb(Sample db);    // dBFS, ≤ 0
         void setReleaseMs(Sample ms);
         void setLookaheadMs(Sample ms);  // 0 … kMaxLookaheadMs; a change clears its memory
+        void setTruePeak(bool on);       // (L6): the ceiling in dBTP, 4× oversampled; a change clears its memory
+        bool truePeak() const { return mTruePeak; }
 
-        int latency() const { return mL; }        // samples
+        int latency() const { return mL + (mTruePeak ? kTruePeakLatency : 0); } // samples
         Sample lastGain() const { return mLast; } // the gain applied to the last frame (linear)
         /** Frames where the final clamp did more than round — (L1)–(L4) failing. Zero, always. */
         long long clamped() const { return mClamped; }
@@ -46,6 +56,9 @@ namespace arstro
         int mCap = 1, mL = 0, mPos = 0, mBoxPos = 0;
         long long mN = 0, mClamped = 0;
         std::vector<std::vector<Sample>> mDelay;  // per channel, a ring of mCap
+        bool mTruePeak = false;
+        TruePeakInterpolator mTp{8, true};        // (L6): the meter's design at 8×, on the samples
+        std::vector<TruePeakInterpolator::History> mTpHist; // per channel
         std::vector<Sample> mDqVal;               // the window minimum's deque, a ring of mCap
         std::vector<long long> mDqIdx;
         int mDqHead = 0, mDqSize = 0;

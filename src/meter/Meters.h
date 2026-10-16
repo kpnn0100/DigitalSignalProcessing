@@ -76,10 +76,28 @@ namespace arstro
         std::vector<double> mBinSum;
     };
 
+    /** The windowed-sinc interpolator of README (T1), (T2): one design, two uses. The meter's is BS.1770-4's —
+     *  4×, 64 taps, its points between samples (at ⅛, ⅜, ⅝, ⅞). The Limiter's true-peak mode (REQ-fx-limiter-2,
+     *  README (L6)) takes 8× with one tap fewer, `onSamples`, so its points fall every ⅛ sample — both 4× grids a
+     *  meter may use (between samples, or on the quarters) — and a limit held there holds under either. */
+    struct TruePeakInterpolator
+    {
+        static constexpr int kMaxFactor = 8, kTapsPerPhase = 16;
+        /** The points come out kDelay samples late: those of `push(x[n])` lie between x[n−8] and x[n−7] (the
+         *  kernel's centre is 7.875 input samples back, either design). */
+        static constexpr int kDelay = 8;
+        using History = std::array<double, kTapsPerPhase>;   // one channel's last inputs, newest first
+        explicit TruePeakInterpolator(int factor = 4, bool onSamples = false);
+        /** x into `h`; the largest magnitude of the points it makes (README (T3) without the sample itself). */
+        double push(History &h, double x) const;
+        int factor = 4;
+        std::array<std::array<double, kTapsPerPhase>, kMaxFactor> taps{}; // one row a phase
+    };
+
     class TruePeakMeter
     {
     public:
-        static constexpr int kFactor = 4, kTapsPerPhase = 16;
+        static constexpr int kFactor = 4, kTapsPerPhase = TruePeakInterpolator::kTapsPerPhase; // BS.1770-4's
         explicit TruePeakMeter(int channels = 2);
         void reset();
         void process(const float *left, const float *right, int frames);
@@ -89,8 +107,8 @@ namespace arstro
 
     private:
         int mChannels;
-        std::array<std::array<double, kTapsPerPhase>, kFactor> mH{}; // the interpolator, one row a phase
-        std::array<std::array<double, kTapsPerPhase>, 2> mHist{};    // each channel's last inputs, newest first
+        TruePeakInterpolator mI;
+        std::array<TruePeakInterpolator::History, 2> mHist{};
         double mPeak = 0.0, mBlockPeak = 0.0;
     };
 

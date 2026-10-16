@@ -17,8 +17,9 @@ namespace arstro
     {
         const AudioConfig &cfg = AudioConfig::instance();
         mSampleRate = cfg.sampleRate();
-        mCap = (int)std::ceil(kMaxLookaheadMs * 0.001 * mSampleRate) + 1;
+        mCap = (int)std::ceil(kMaxLookaheadMs * 0.001 * mSampleRate) + 1 + kTruePeakLatency; // (L6)'s frames too
         mDelay.assign((size_t)std::max(1, cfg.channelCount()), std::vector<Sample>((size_t)mCap, 0.0));
+        mTpHist.assign(mDelay.size(), TruePeakInterpolator::History{});
         mDqVal.assign((size_t)mCap, 1.0);
         mDqIdx.assign((size_t)mCap, 0);
         mBox.assign((size_t)mCap, 1.0);
@@ -40,15 +41,23 @@ namespace arstro
     void Limiter::setLookaheadMs(Sample ms)
     {
         mLookMs = std::clamp<double>(ms, 0.0, kMaxLookaheadMs);
-        const int L = std::min(mCap - 1, (int)std::lround(mLookMs * 0.001 * mSampleRate));
+        const int L = std::min(mCap - 1 - kTruePeakLatency, (int)std::lround(mLookMs * 0.001 * mSampleRate));
         if (L == mL) return;
         mL = L;
         reset(); // a new window: start clean rather than average two lengths
     }
 
+    void Limiter::setTruePeak(bool on)
+    {
+        if (on == mTruePeak) return;
+        mTruePeak = on;
+        reset(); // the latency moved: start clean
+    }
+
     void Limiter::reset()
     {
         for (auto &d : mDelay) std::fill(d.begin(), d.end(), 0.0);
+        for (auto &h : mTpHist) h.fill(0.0);
         std::fill(mBox.begin(), mBox.end(), 1.0);
         mBoxSum = (Sample)(mL + 1);
         mBoxPos = mPos = mDqHead = mDqSize = 0;
@@ -60,19 +69,29 @@ namespace arstro
     {
         const int nc = std::min(channels, (int)mDelay.size());
         const int span = mL + 1;
+        const int W = latency(); // (L2)'s window reaches W back; (L5) reads W back — (L6) widens both by 16
         for (int i = 0; i < frames; ++i, ++mN)
         {
-            // (L1) the gain this frame needs, all channels linked
+            // (L1) the gain this frame needs, all channels linked — (L6) in true-peak mode: the points between
+            // x[n−8] and x[n−7] and those two samples, so the need is 8 frames late
             Sample peak = 0.0;
-            for (int c = 0; c < nc; ++c) peak = std::max(peak, std::fabs(io[c][i] * mDrive));
+            if (mTruePeak)
+                for (int c = 0; c < nc; ++c)
+                {
+                    auto &h = mTpHist[(size_t)c];
+                    const double between = mTp.push(h, io[c][i] * mDrive);
+                    peak = std::max({peak, (Sample)between, (Sample)std::fabs(h[7]), (Sample)std::fabs(h[8])});
+                }
+            else
+                for (int c = 0; c < nc; ++c) peak = std::max(peak, std::fabs(io[c][i] * mDrive));
             const Sample r = peak > mCeiling ? mCeiling / peak : 1.0;
-            // (L2) the minimum over the last L + 1 frames — a monotonic deque in a ring
+            // (L2) the minimum over the last W + 1 frames — a monotonic deque in a ring
             while (mDqSize > 0 && mDqVal[(size_t)((mDqHead + mDqSize - 1) % mCap)] >= r) --mDqSize;
             const int tail = (mDqHead + mDqSize) % mCap;
             mDqVal[(size_t)tail] = r;
             mDqIdx[(size_t)tail] = mN;
             ++mDqSize;
-            while (mDqIdx[(size_t)mDqHead] < mN - mL) { mDqHead = (mDqHead + 1) % mCap; --mDqSize; }
+            while (mDqIdx[(size_t)mDqHead] < mN - W) { mDqHead = (mDqHead + 1) % mCap; --mDqSize; }
             const Sample m = mDqVal[(size_t)mDqHead];
             // (L3) released: never above the minimum, rising back toward 1
             mRel = std::min(m, 1.0 - (1.0 - mRel) * mRelCoeff);
@@ -87,8 +106,8 @@ namespace arstro
             }
             const Sample g = mBoxSum / span;
             mLast = g;
-            // (L5) the frame from L ago, at that gain; the clamp only ever meets rounding error
-            const int read = (mPos - mL + mCap) % mCap;
+            // (L5) the frame from W ago, at that gain; the clamp only ever meets rounding error
+            const int read = (mPos - W + mCap) % mCap;
             bool over = false;
             for (int c = 0; c < nc; ++c)
             {

@@ -470,6 +470,12 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   lookahead (0…10 ms, its latency); channels linked; the output never above the ceiling BY
   CONSTRUCTION ((L1)–(L5)); a glide of at most 1/(L+1) a frame; transparent under the ceiling. Registry
   type `limiter`. Guarded by `Limiter_never_exceeds_its_ceiling_and_glides` and `limiter_ceiling`.
+- `REQ-fx-limiter-2` — **True-peak mode** (source: Solaris R-EDM-4a, 2026-10-16): `truePeak` off|on (off by
+  default: a song's sound does not change). On, the ceiling holds BETWEEN samples: detected through the meter's
+  interpolator at 8× (every ⅛ sample — both grids a 4× BS.1770 meter may use), each frame's gain also meeting
+  its ±8 neighbours' needs; latency L + 16. Measured: the TruePeakMeter never more than 10⁻⁵ dB over, an
+  independent 8× interpolator −1.001 dBTP for a −1 ceiling. (L6). Guarded by
+  `Limiter_true_peak_mode_holds_the_ceiling_between_samples` and `limiter_true_peak`.
 - `REQ-inst-piano-1` — **The piano, a library instrument** (source: Solaris R-INST-5, user request 2026-10-15:
   *"if the instrument is not enough, make that instrument"* — a song for the piano). `PianoEngine` — the
   `PianoVoice` pool sharing one `PianoBridge` (REQ-piano-8/12) — moves from `apps/piano_demo` into
@@ -495,7 +501,8 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   over 400 ms blocks at 75 % overlap; a 0 dBFS 1 kHz sine in one channel reads −3.01 LUFS. Allocation-free after
   construction. (L1)–(L6) in `src/meter/README.md`.
 - `REQ-meter-2` — **True peak**: 4× oversampled through a 64-tap Kaiser-windowed sinc interpolator in four
-  normalised phases; never under the sample peak. (T1)–(T3).
+  normalised phases; never under the sample peak. (T1)–(T3). The interpolator is its own type
+  (`TruePeakInterpolator`), shared with the Limiter's true-peak mode at 8× (REQ-fx-limiter-2).
 - `REQ-meter-3` — **Stereo correlation**, −1 … +1, smoothed over 300 ms. (C1).
 - `REQ-meter-4` — **A 1/6-octave spectrum**, 61 bands from 19.7 Hz to 20.2 kHz, each a `Biquad` band-pass (a
   composition), in dB re a full-scale sine. (S1), (S2).

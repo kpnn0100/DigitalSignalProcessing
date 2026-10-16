@@ -439,6 +439,7 @@ namespace arstro
                 {num("ceiling", "Ceiling", "dB", -24, 0, -0.3), [](Limiter &l, double x) { l.setCeilingDb(x); }},
                 {num("release", "Release", "ms", 1, 1000, 60, true), [](Limiter &l, double x) { l.setReleaseMs(x); }},
                 {num("lookahead", "Lookahead", "ms", 0, Limiter::kMaxLookaheadMs, 2), [](Limiter &l, double x) { l.setLookaheadMs(x); }},
+                {choice("truePeak", "True Peak", {"off", "on"}, 0), [](Limiter &l, double x) { l.setTruePeak(x > 0.5); }}, // REQ-fx-limiter-2
             };
             return b;
         }

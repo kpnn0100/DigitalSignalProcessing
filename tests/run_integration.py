@@ -925,6 +925,48 @@ def check_limiter_ceiling(binpath):
     return f"peak {20 * math.log10(peak):.3f} dBFS (ceiling −1.000), {gain_db:.1f} dB louder, RMS {rms(loud) / ceiling:.2f} of the ceiling"
 
 
+def true_peak(y, factor=8, half=32):
+    """The peak of y's band-limited reconstruction, `factor` points a sample: a Blackman-windowed sinc of 2·half
+    taps a phase — an interpolator of its own, not the library's (README (T1)'s Kaiser design)."""
+    phases = []
+    for p in range(1, factor):
+        frac = p / factor
+        taps = []
+        for k in range(-half + 1, half + 1):
+            x = k - frac                      # the tap at y[n + k] for the point n + frac
+            w = 0.42 + 0.5 * math.cos(math.pi * x / half) + 0.08 * math.cos(2 * math.pi * x / half)
+            taps.append((k, w * (math.sin(math.pi * x) / (math.pi * x))))
+        phases.append(taps)
+    most = max(abs(v) for v in y)
+    for n in range(half, len(y) - half):
+        for taps in phases:
+            v = 0.0
+            for k, h in taps:
+                v += h * y[n + k]
+            if abs(v) > most:
+                most = abs(v)
+    return most
+
+
+def check_limiter_true_peak(binpath):
+    """REQ-fx-limiter-2 (L6): with True Peak on, the output's peak BETWEEN samples as BS.1770-4 defines dBTP — at 4×
+    — and at 8×, every point either 4× grid has — measured here by an interpolator of this file's own (Blackman, 64
+    taps a phase), stays at the −1 dB ceiling; off, the same signal goes ≈ 3 dB over it."""
+    ceiling = -1.0
+    on = render(binpath, "limiter_tp", 1)
+    off = render(binpath, "limiter_tp", 0)
+    tp_on = 20 * math.log10(true_peak(on, factor=4))
+    tp_off = 20 * math.log10(true_peak(off, factor=4))
+    tp_on8 = 20 * math.log10(true_peak(on, factor=8))
+    if max(tp_on, tp_on8) > ceiling + 0.005: # the two kernels agree to ±0.003 dB below 16 kHz; 16-bit PCM adds 0.0002
+        raise Failure(f"true-peak mode: {tp_on:.4f} dBTP (8×: {tp_on8:.4f}), over the {ceiling} ceiling")
+    if tp_on < ceiling - 1.0:
+        raise Failure(f"true-peak mode: {tp_on:.3f} dBTP — muting, not limiting")
+    if tp_off < ceiling + 2.0:
+        raise Failure(f"sample-peak mode: {tp_off:.3f} dBTP — the test signal does not peak between samples")
+    return f"on {tp_on:.3f} dBTP (8×: {tp_on8:.3f}), off {tp_off:.3f} dBTP (ceiling −1.000)"
+
+
 def check_sidechain_pump(binpath):
     """(C1)–(C3) keyed: the bass dips after every kick, by at most the key's full reduction; not without a key."""
     def dips(y):
@@ -995,6 +1037,7 @@ CHECKS = [
     ("kick_settles_on_its_tuned_fundamental", check_kick_settles_on_its_tuned_fundamental),
     ("registry_eq_by_name", check_registry_eq_by_name),
     ("limiter_ceiling", check_limiter_ceiling),
+    ("limiter_true_peak", check_limiter_true_peak),
     ("sidechain_pump", check_sidechain_pump),
     ("sampler_pitch", check_sampler_pitch),
 ]
