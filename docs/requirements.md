@@ -584,6 +584,22 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   envelope and velocity sense, the volume, bend and vibrato. Guarded by the registry's tests (every range, no
   allocation after warm-up); integration `fm_plays_bessel_sidebands` (1:1 at index 1: its harmonics the Bessel sums,
   to 0.01 %).
+- `REQ-multisample-1` — **A recorded instrument of many sounds** (source: Solaris R-INST-9, "implement all",
+  2026-10-16): `MultiSampler` — every region a note and its velocity fall in plays (velocity layers), in turn
+  (seq_length / seq_position) or by chance (lorand / hirand, drawn from a counter), each its own sound, root,
+  transpose, tune, volume, balance pan, offset and end, loop (continuous, while held, none, one-shot) and ADSR;
+  a group chokes the regions off by it; level by velocity squared (SFZ's amp_veltrack); 32 voices, the oldest stolen.
+  (Z2)–(Z6). Guarded by `MultiSampler_velocity_layers_choose_their_sound` (each layer its sound; velocity 40 at
+  0.5·(40/127)² exactly), `…_pitch_follows_the_key` (678.57 Hz to 0.15 Hz, a sound at 24 kHz played at 48),
+  `…_round_robin_and_chance` (alternating; 517 of 1000; the same after a reset), `…_loops_one_shots_and_chokes`.
+- `REQ-multisample-2` — **SFZ read** (same source): `parseSfz` — <control> (default_path), <global>, <group>,
+  <region>; a region's opcode its own, else its group's, else the global's; keys as numbers or names (c4 = 60, sharps,
+  flats); comments; a value up to the next opcode (a path with spaces); what it does not read kept as a problem, said,
+  not fatal; `sfzSounds` — the sounds named, each once. (Z1). Guarded by `Sfz_reads_regions_and_inherits`.
+- `REQ-multisample-3` — **The registry's "multisample"** (same source): a definition and its named sounds through
+  `Device::setDefinition` / `setNamedSample` (`takesDefinition`; the library never opens a file); volume, velocity
+  sense, bend range. Guarded by `MultiSampler_through_the_registry` (the names it asks for, its problems, no
+  allocation once given); integration `multisample_chooses_by_velocity`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

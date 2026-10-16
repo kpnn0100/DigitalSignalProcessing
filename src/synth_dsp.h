@@ -56,6 +56,8 @@
 #include "instrument/Sampler.h"
 #include "instrument/Piano.h"
 #include "instrument/FMSynth.h"
+#include "instrument/Sfz.h"
+#include "instrument/MultiSampler.h"
 
 // Every instrument and effect behind one face, every parameter described once — see device/README.md
 #include "device/Device.h"

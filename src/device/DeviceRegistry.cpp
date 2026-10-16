@@ -10,6 +10,7 @@
 #include "../equalizer/StateVariableFilter.h"
 #include "../instrument/BasicSynth.h"
 #include "../instrument/FMSynth.h"
+#include "../instrument/MultiSampler.h"
 #include "../instrument/Piano.h"
 #include "../instrument/DrumMachine.h"
 #include "../reverb/Reverb.h"
@@ -348,6 +349,57 @@ namespace arstro
         private:
             FMSynth mSynth;
             FMSynth::Params mP;
+        };
+
+        // ── the multi-sample instrument (REQ-multisample-3): an SFZ's regions and the sounds they name ──
+
+        const std::vector<Binding<MultiSampler::Params>> &multiBindings()
+        {
+            using P = MultiSampler::Params;
+            static const std::vector<Binding<P>> b = [] {
+                const P d;
+                std::vector<Binding<P>> v;
+                v.push_back({num("volume", "Volume", "dB", -60, 12, d.volumeDb), [](P &p, double x) { p.volumeDb = x; }});
+                v.push_back({num("velocity", "Velocity", "", 0, 1, d.velocity), [](P &p, double x) { p.velocity = x; }});
+                v.push_back({num("voice.bend", "Bend Range", "st", 0, 24, d.bendRange, false, true), [](P &p, double x) { p.bendRange = x; }});
+                return v;
+            }();
+            return b;
+        }
+
+        class MultiDevice : public Device
+        {
+        public:
+            explicit MultiDevice(const DeviceType &t) : Device(t), mP(mSampler.params()) { applyAll(); }
+            void process(Sample *const *io, int channels, int frames) override { mSampler.render(io, channels, frames); }
+            void noteOn(int n, int v) override { mSampler.noteOn(n, v); }
+            void noteOff(int n) override { mSampler.noteOff(n); }
+            void allNotesOff() override { mSampler.allNotesOff(); }
+            void pitchBend(double a) override { mSampler.pitchBend(a); }
+            void reset() override { mSampler.reset(); }
+            int activeVoices() const override { return mSampler.activeVoices(); }
+            std::vector<std::string> setDefinition(const std::string &text, std::vector<std::string> &problems) override
+            {
+                const SfzInstrument sfz = parseSfz(text);
+                problems = sfz.problems;
+                mSampler.setDefinition(sfz);
+                return sfzSounds(sfz);
+            }
+            void setNamedSample(const std::string &name, const float *x, long long frames, int channels, double rate) override
+            {
+                mSampler.setSound(name, x, frames, channels, rate);
+            }
+
+        protected:
+            void apply(int i, double v) override
+            {
+                multiBindings()[i].set(mP, v);
+                mSampler.setParams(mP);
+            }
+
+        private:
+            MultiSampler mSampler;
+            MultiSampler::Params mP;
         };
 
         // ── the piano (REQ-inst-piano-1): the engine's voicing bank, its ranges and defaults ──
@@ -742,6 +794,17 @@ namespace arstro
                 std::sort(drums.notePrefixes.begin(), drums.notePrefixes.end());
             }
             v.push_back(drums);
+
+            DeviceType multi; // REQ-multisample-3
+            multi.name = "multisample"; multi.label = "Multi-sample"; multi.kind = DeviceKind::Instrument;
+            multi.summary = "A recorded instrument read from an SFZ file: its sounds by key and velocity, in turn (round robin) or by "
+                            "chance, looped or one-shot, choking each other; an envelope each; 32 voices.";
+            multi.params = specsOf(multiBindings());
+            multi.takesSample = true;
+            multi.takesDefinition = true;
+            multi.groupLabels = {{"", "Multi-sample"}, {"voice", "Voice"}};
+            multi.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<MultiDevice>(self); };
+            v.push_back(multi);
 
             DeviceType sampler;
             sampler.name = "sampler"; sampler.label = "Sampler"; sampler.kind = DeviceKind::Instrument;

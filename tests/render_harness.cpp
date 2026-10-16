@@ -1012,6 +1012,40 @@ static std::vector<double> renderFm(double pair)
     return y;
 }
 
+// REQ-multisample-3: the registry's "multisample" given an SFZ of two velocity layers — soft (220 Hz) and loud (330 Hz)
+// — on A3: velocity 40 for the first half second, 110 for the second
+static std::vector<double> renderMultisample(double)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("multisample");
+    std::vector<std::string> problems;
+    const auto names = d->setDefinition("<group> key=57 <region> sample=soft.wav hivel=63 <region> sample=loud.wav lovel=64", problems);
+    for (const auto &n : names)
+    {
+        const double hz = n == "soft.wav" ? 220.0 : 330.0;
+        std::vector<float> x((size_t)kSampleRate);
+        for (size_t i = 0; i < x.size(); ++i) x[i] = (float)(0.5 * std::sin(2 * M_PI * hz * (double)i / kSampleRate));
+        d->setNamedSample(n, x.data(), (long long)x.size(), 1, kSampleRate);
+    }
+    std::vector<double> y;
+    std::vector<Sample> L(128), R(128);
+    for (int half = 0; half < 2; ++half)
+    {
+        d->allNotesOff();
+        d->noteOn(57, half == 0 ? 40 : 110);
+        for (int b = 0; b < kSampleRate / 2 / 128; ++b)
+        {
+            std::fill(L.begin(), L.end(), 0.0);
+            std::fill(R.begin(), R.end(), 0.0);
+            Sample *io[2] = {L.data(), R.data()};
+            d->process(io, 2, 128);
+            y.insert(y.end(), L.begin(), L.end());
+        }
+    }
+    return y;
+}
+
 static std::vector<double> renderMeters()
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -1102,6 +1136,7 @@ int main(int argc, char **argv)
     else if (scenario == "follower") samples = renderFollower(arg);
     else if (scenario == "wavetable") samples = renderWavetable(arg);
     else if (scenario == "fm") samples = renderFm(arg);
+    else if (scenario == "multisample") samples = renderMultisample(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

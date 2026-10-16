@@ -1341,6 +1341,23 @@ def check_fm_plays_bessel_sidebands(binpath):
 CHECKS.append(("fm_plays_bessel_sidebands", check_fm_plays_bessel_sidebands))
 
 
+def check_multisample_chooses_by_velocity(binpath):
+    """REQ-multisample-3: an SFZ of two velocity layers — the soft note is the soft sound (220 Hz), the loud the loud
+    (330 Hz), each without the other (−60 dB)."""
+    y = render(binpath, "multisample", 0)
+    h = len(y) // 2
+    soft, loud = y[2400:2400 + 19200], y[h + 2400:h + 2400 + 19200]
+    s220, s330, l220, l330 = goertzel(soft, 220.0), goertzel(soft, 330.0), goertzel(loud, 220.0), goertzel(loud, 330.0)
+    if s220 < 0.01 or l330 < 0.01:
+        raise Failure(f"a layer is silent: soft {s220:.4f}, loud {l330:.4f}")
+    if s330 > s220 * 1e-3 or l220 > l330 * 1e-3:
+        raise Failure(f"the layers mix: soft holds {s330:.5f} of 330 Hz, loud {l220:.5f} of 220 Hz")
+    return f"soft 220 Hz {s220:.3f}, loud 330 Hz {l330:.3f}"
+
+
+CHECKS.append(("multisample_chooses_by_velocity", check_multisample_chooses_by_velocity))
+
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

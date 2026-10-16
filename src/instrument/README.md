@@ -7,6 +7,7 @@
 | `DrumMachine` | ten synthesized pads on the General MIDI drum notes | REQ-drum-1…5 |
 | `Piano` | the physical piano (`physical/PianoEngine`) as an instrument, 16 voices | REQ-inst-piano-1 |
 | `FMSynth` | four sine operators by phase modulation — eight algorithms, a feedback operator, an ADSR each; 16 voices | REQ-fm-1…3 |
+| `Sfz` · `MultiSampler` | a multi-sample instrument read from SFZ text: regions by key, velocity, round robin and chance; loops, one-shots, choke groups; 32 voices | REQ-multisample-1…3 |
 
 The first host is the Solaris DAW (`apps/solaris` in the umbrella), whose rule is that **all of its
 sound lives here** (Solaris R-DSP-1). Sample-accurate timing is the host's job: it splits a block at
@@ -304,3 +305,50 @@ render is the same however a host chops time, its pitch formula and its bend and
 **Limits, said:** a modulator's sidebands past Nyquist fold back, as a DX7's do — at A4 with an index under 3 they
 lie under −60 dB (measured: FM_sidebands_are_bessel); high notes at a high index alias audibly. No filter, no glide,
 no mono mode (BasicSynth has them); FM is mono.
+
+## MultiSampler and SFZ — Math (REQ-multisample-1…3)
+
+A recorded instrument: many sounds, each a REGION of the keyboard and of velocity, read from an SFZ file (the open
+text format samplers share). **Why not composed (rule 1):** `Sampler` plays one sound over the whole keyboard; this
+plays whichever regions a note and its velocity fall in — several at once, in turn (round robin), by chance, choking
+each other — each its own sound, root, tuning, loop and envelope. What it reuses: `ADSREnvelope` (one a voice), the
+suite's balance pan (unity at centre), the Catmull-Rom read of `Wavetable` (W3). The library never opens a file: the
+HOST reads the SFZ's text and decodes the sounds it names (`sfzSounds`), and hands both in.
+
+```
+(Z1) The text — parseSfz:  headers <control> <global> <group> <region>; opcodes `name=value` (a value runs to the next
+     `name=` or header — so a sample path may hold spaces); `//` to the line's end and `/* … */` are comments.
+     A region's opcode is its own, else its group's, else the global's; <control> default_path= prefixes `sample=`.
+     Keys: a number, or a name c-1 … g9 (c4 = 60), sharps `#`, flats `b`;  `key=` sets lokey = hikey = pitch_keycenter.
+(Z2) Which regions sound — MultiSampler::noteOn(n, v):  every region with lokey ≤ n ≤ hikey, lovel ≤ v ≤ hivel,
+     lorand ≤ r < hirand (r a deterministic draw, one a note-on), and its turn:
+     each region counts the notes that reached it, c ← c + 1;  it plays when (c − 1) mod seq_length = seq_position − 1
+(Z3) Its pitch — the step a frame:  s = 2^((n − keycenter + transpose)/12 + tune/1200 + bend/12) · rate_sound / rate_out
+(Z4) Its read — Catmull-Rom at the position x (as Wavetable (W3)), x ← x + s; from `offset`;
+     loop_continuous: past loop_end it goes back by (loop_end − loop_start + 1); loop_sustain: so while held, then on;
+     no_loop / one_shot: it ends at `end` (one_shot ignores the note-off)
+(Z5) Its level:  g = 10^(volume/20) · (1 − t + t·(v/127)²) · e(t),  t = amp_veltrack (the registry's `velocity`, 0…1),
+     e the region's ADSR (ampeg_attack, _decay in s; _sustain in %; _release in s);  L = g·min(1, 1 − pan/100),
+     R = g·min(1, 1 + pan/100)  (the suite's balance: unity at centre)
+(Z6) Choke — group / off_by:  a region of group G starting releases (fast, 6 ms) every voice whose region has off_by = G
+```
+
+| opcode / parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `lokey` `hikey` `key` `pitch_keycenter` | — | 0 … 127 or a name | 0, 127, —, 60 |
+| `lovel` `hivel` | — | 1 … 127 | 1, 127 |
+| `lorand` `hirand` | — | 0 … 1 | 0, 1 |
+| `seq_length` `seq_position` | — | 1 … 100 | 1, 1 |
+| `tune` `transpose` | — | cents, semitones | 0, 0 |
+| `volume` `pan` | — | dB, −100 … 100 | 0, 0 |
+| `offset` `end` | — | frames | 0, the sound's last |
+| `loop_mode` `loop_start` `loop_end` | — | no_loop · one_shot · loop_continuous · loop_sustain; frames | no_loop |
+| `ampeg_attack` `_decay` `_sustain` `_release` | e | s, s, %, s | 0, 0, 100, 0.03 |
+| `group` `off_by` | — | integers | 0, 0 |
+| registry `volume` | — | dB | 0 |
+| registry `velocity` | t | 0 … 1 (SFZ's amp_veltrack, as a fraction) | 1 |
+| registry `voice.bend` | bend | semitones at full | 2 |
+
+**Limits, said:** an unknown opcode is kept as a problem (said), not an error; trigger=release, crossfades
+(xfin/xfout), filters and LFOs are not read yet; a sound read faster than its rate (pitched up) is not band-limited
+— Catmull-Rom's images fall where the sound has little (a multi-sample's regions are a few keys wide).

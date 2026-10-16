@@ -143,6 +143,16 @@ package instrument {
   }
   FMSynth ..|> Instrument
   FMSynth *-- "64" ADSREnvelope : 16 voices x 4 operators
+  class MultiSampler {
+    +setDefinition(SfzInstrument) / setSound(name, frames)  -- the host's, at build
+    -(Z2) regions by key, velocity, round robin, chance; (Z4) loops; (Z6) choke
+  }
+  class Sfz <<function>> {
+    +parseSfz(text) : SfzInstrument  -- (Z1) inheritance, key names
+    +sfzSounds(sfz) / sfzKey(name)
+  }
+  MultiSampler ..|> Instrument
+  MultiSampler ..> Sfz
   class DrumMachine {
     +setPad(Pad, PadParams)
     +noteFor(Pad) / padFor(note)

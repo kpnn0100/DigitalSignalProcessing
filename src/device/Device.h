@@ -86,6 +86,10 @@ namespace arstro
         /** It plays a recorded sound (the Sampler): a host decodes a file and hands the frames in
          *  through `Device::setSample` (REQ-inst-sampler-1). The library never opens a file. */
         bool takesSample = false;
+        /** Its sample is a DEFINITION — text naming sounds (an SFZ file; REQ-multisample-3): a host reads the text,
+         *  hands it in through `Device::setDefinition`, which says the sounds it names, and hands each in through
+         *  `Device::setNamedSample`. `takesSample` too: a host gives it its file the same way. */
+        bool takesDefinition = false;
         std::function<std::unique_ptr<Device>(const DeviceType &)> create;
 
         /** −1 when there is no such parameter. */
@@ -125,6 +129,18 @@ namespace arstro
         virtual void setSample(const float *interleaved, long long frames, int channels, double rate)
         {
             (void)interleaved; (void)frames; (void)channels; (void)rate;
+        }
+        /** REQ-multisample-3 (a type with `takesDefinition`): its definition's text — the sounds it names (as written,
+         *  each once), for the host to decode and hand in; what it could not read in `problems`. Allocates. */
+        virtual std::vector<std::string> setDefinition(const std::string &text, std::vector<std::string> &problems)
+        {
+            (void)text; (void)problems;
+            return {};
+        }
+        /** … one of those sounds, by its name as the definition writes it — COPIED, never on the audio thread. */
+        virtual void setNamedSample(const std::string &name, const float *interleaved, long long frames, int channels, double rate)
+        {
+            (void)name; (void)interleaved; (void)frames; (void)channels; (void)rate;
         }
         /** Clear all state: tails, voices, filter memory (a seek). */
         virtual void reset() = 0;
