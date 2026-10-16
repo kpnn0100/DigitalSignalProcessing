@@ -142,8 +142,9 @@ package instrument {
   }
   class Sampler {
     +setSample(frames*, n, ch, rate) : a copy
-    +setParams(mode, root, span, reverse, ADSR, level, velocity)
+    +setParams(mode, root, span, reverse, ADSR, level, velocity, slices)
     -16 voices: interpolated playback, ADSREnvelope
+    -slices (S7): key root+k plays part k of the span
   }
   class Piano {
     +setParams(tune[15], sustain, soft, volumeDb)
@@ -233,6 +234,10 @@ package meter {
   class LoudnessMeter {
     +process(left*, right*, frames)
     +momentary() / shortTerm() / integrated() : LUFS
+  }
+  class Onsets <<function>> {
+    +detectOnsets(mono*, frames, rate, OnsetParams) : samples
+    (O1)-(O5): energy flux over a local median, refined to the sample
   }
   class TruePeakInterpolator {
     +push(history, x) : the most of its points

@@ -648,6 +648,48 @@ TEST(Compressor_sidechain_ducks_on_the_key_not_the_input)
     CHECK(L.back() < 0.01 * std::pow(10.0, -20.0 / 20.0));
 }
 
+TEST(Sampler_slices_play_by_the_key)
+{
+    configure();
+    // REQ-inst-sampler-2, (S7): eight tones in eighths of a second — key root + k plays tone k, exactly its eighth, as
+    // recorded, over at its end; a key outside them is silent; a note-off does not stop a slice
+    const int N = 48000, part = N / 8;
+    std::vector<float> rec(N);
+    for (int i = 0; i < N; ++i) rec[(size_t)i] = (float)(0.5 * std::sin(2 * M_PI * (200.0 + 100.0 * (i / part)) * i / 48000.0));
+    auto play = [&](int note, bool off) {
+        Sampler s;
+        Sampler::Params p;
+        p.mode = Sampler::Slices;
+        p.slices = 8;
+        p.velocity = 0.0;
+        s.setParams(p);
+        s.setSample(rec.data(), N, 1, 48000.0);
+        s.noteOn(note, 127);
+        if (off) s.noteOff(note);
+        std::vector<Sample> L(part + 2000, 0.0), R(part + 2000, 0.0);
+        for (int pos = 0; pos < (int)L.size(); pos += 128)
+        {
+            Sample *seg[2] = {L.data() + pos, R.data() + pos};
+            s.render(seg, 2, std::min(128, (int)L.size() - pos));
+        }
+        return L;
+    };
+    for (int k : {0, 3, 7})
+    {
+        const auto y = play(60 + k, k == 3);
+        bool exact = true;
+        for (int i = 0; i < part - 1; ++i) exact &= y[(size_t)i] == (Sample)rec[(size_t)(k * part + i)];
+        CHECK(exact);                                            // its slice, sample for sample — the note-off ignored
+        double after = 0;
+        for (int i = part + 1; i < (int)y.size(); ++i) after = std::max(after, std::fabs(y[(size_t)i]));
+        CHECK(after == 0.0);                                     // over at its end
+    }
+    double silent = 0;
+    for (Sample v : play(59, false)) silent = std::max(silent, std::fabs(v));
+    for (Sample v : play(68, false)) silent = std::max(silent, std::fabs(v));
+    CHECK(silent == 0.0);                                        // below the root, past the last slice: nothing
+}
+
 TEST(Sampler_plays_its_sound_pitched_spanned_and_reversed)
 {
     configure();

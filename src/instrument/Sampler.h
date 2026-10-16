@@ -24,7 +24,7 @@ namespace arstro
     {
     public:
         static constexpr int kVoices = 16;
-        enum Mode { Chromatic = 0, OneShot = 1 };
+        enum Mode { Chromatic = 0, OneShot = 1, Slices = 2 }; // Slices: REQ-inst-sampler-2 — a kit of the span's equal parts
         struct Params
         {
             Mode mode = Chromatic;
@@ -35,6 +35,7 @@ namespace arstro
             double levelDb = 0.0;
             double velocity = 1.0;       // sensitivity: 0 = every note full, 1 = level ∝ velocity
             double bendRange = 2.0;      // REQ-inst-expr-1: semitones at full bend
+            int slices = 8;              // REQ-inst-sampler-2: Slices — the span in this many equal parts (S7)
         };
 
         Sampler();
@@ -63,6 +64,7 @@ namespace arstro
             int note = -1;
             double pos = 0.0, inc = 0.0, gain = 1.0;
             long long age = 0;
+            long long a = -1, b = -1;   // (S7) a slice's own span; −1: the sampler's
             ADSREnvelope env;
         };
         void spanOf(long long &a, long long &b) const;

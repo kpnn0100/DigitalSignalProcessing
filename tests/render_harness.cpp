@@ -795,6 +795,59 @@ static std::vector<double> renderSampler(double semitones)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-inst-sampler-2: a recording of eight tones (200 + 100·k Hz, 6000 frames each) through the registry's sampler in
+// slices mode — the key root + `k` plays tone k, as recorded, to its slice's end
+static std::vector<double> renderSamplerSlices(double kk)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    std::vector<float> rec(48000);
+    for (size_t i = 0; i < rec.size(); ++i) rec[i] = (float)(0.6 * std::sin(2 * M_PI * (200.0 + 100.0 * (double)(i / 6000)) * (double)i / 48000.0));
+    auto d = DeviceRegistry::create("sampler");
+    d->setParam("velocity", 0.0);
+    d->setParam("mode", 2.0); // slices
+    d->setParam("slices", 8.0);
+    d->setSample(rec.data(), (long long)rec.size(), 1, 48000.0);
+    d->noteOn(60 + (int)std::lround(kk), 100);
+    std::vector<Sample> L(8000, 0.0), R(8000, 0.0);
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
+// REQ-onset-1: a Drum Machine's kick, snare, hat and kick at known samples through the registry, its onsets found by
+// `detectOnsets` and written as clicks (0.5 where one was found, else silence) for run_integration.py to place
+static std::vector<double> renderOnsets()
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("drums");
+    const long long hits[4] = {12000, 36000, 60000, 84000};
+    const int notes[4] = {36, 38, 42, 36};
+    std::vector<Sample> L(96000, 0.0), R(96000, 0.0);
+    int next = 0;
+    for (long long pos = 0; pos < 96000;)
+    {
+        const long long until = next < 4 ? std::min<long long>(96000, hits[next]) : 96000;
+        while (pos < until)
+        {
+            const int n = (int)std::min<long long>(128, until - pos);
+            Sample *io[2] = {L.data() + pos, R.data() + pos};
+            d->process(io, 2, n);
+            pos += n;
+        }
+        if (next < 4 && pos == hits[next]) d->noteOn(notes[next++], 120);
+    }
+    std::vector<float> mono(L.size());
+    for (size_t i = 0; i < L.size(); ++i) mono[i] = (float)(0.5 * (L[i] + R[i]));
+    std::vector<double> out(L.size(), 0.0);
+    for (long long at : detectOnsets(mono.data(), (long long)mono.size(), kSampleRate)) out[(size_t)at] = 0.5;
+    return out;
+}
+
 // REQ-meter-1…3: a stereo two-tone, loud then 26 dB down, with a burst whose peak lies between samples — the
 // meters' readings printed for run_integration.py, which computes BS.1770-4 and the true peak itself
 static double meterSignal(int ch, double t)
@@ -887,6 +940,8 @@ int main(int argc, char **argv)
     else if (scenario == "glide") samples = renderGlide();
     else if (scenario == "sidechain") samples = renderSidechain(arg);
     else if (scenario == "sampler") samples = renderSampler(arg);
+    else if (scenario == "sampler_slices") samples = renderSamplerSlices(arg);
+    else if (scenario == "onsets") samples = renderOnsets();
     else if (scenario == "meters") samples = renderMeters();
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 

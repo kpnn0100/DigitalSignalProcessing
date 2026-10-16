@@ -1057,6 +1057,32 @@ def check_sampler_pitch(binpath):
     return "Hz " + " ".join(out)
 
 
+def check_sampler_slices(binpath):
+    """(S7): key root + k plays slice k of eight — tone 200 + 100·k Hz, as recorded — and is over at its 6000th frame."""
+    out = []
+    for k in (0, 3, 7):
+        y = render(binpath, "sampler_slices", k)
+        want = 200.0 + 100.0 * k
+        up = [i for i in range(1, 5900) if y[i - 1] < 0.0 <= y[i]]          # whole cycles, first to last rising crossing
+        got = (len(up) - 1) / ((up[-1] - up[0]) / SR)
+        if abs(got - want) / want > 0.02:
+            raise Failure(f"slice {k}: {got:.1f} Hz, want {want:.1f}")
+        if max(abs(v) for v in y[6010:]) > 1e-4:
+            raise Failure(f"slice {k}: sounds past its end")
+        out.append(f"{k}→{got:.0f}")
+    return "Hz " + " ".join(out)
+
+
+def check_onsets_find_the_drums(binpath):
+    """(O1)–(O5): a Drum Machine's four hits through the registry, found within 5 ms each, nothing else."""
+    y = render(binpath, "onsets")
+    found = [i for i, v in enumerate(y) if abs(v) > 0.25]
+    want = [12000, 36000, 60000, 84000]
+    if len(found) != len(want) or any(abs(f - w) > 0.005 * SR for f, w in zip(found, want)):
+        raise Failure(f"onsets at {found}, want {want} (±{int(0.005 * SR)})")
+    return "found " + " ".join(f"{f - w:+d}" for f, w in zip(found, want))
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -1093,6 +1119,8 @@ CHECKS = [
     ("glide_and_bend", check_glide_and_bend),
     ("sidechain_pump", check_sidechain_pump),
     ("sampler_pitch", check_sampler_pitch),
+    ("sampler_slices", check_sampler_slices),
+    ("onsets_find_the_drums", check_onsets_find_the_drums),
 ]
 
 

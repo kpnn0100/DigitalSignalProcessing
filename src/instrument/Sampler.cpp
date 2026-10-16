@@ -71,6 +71,19 @@ namespace arstro
         long long a, b;
         spanOf(a, b);
         if (b <= a) return;
+        v->a = v->b = -1;
+        if (mP.mode == Slices)
+        {
+            // (S7) the key root + k plays slice k of the span, as recorded, to the slice's end; a key outside them, nothing
+            const int n = std::max(1, mP.slices), k = note - mP.root;
+            if (k < 0 || k >= n) return;
+            const long long len = b - a, sa = a + len * k / n, sb = a + len * (k + 1) / n;
+            if (sb <= sa) return;
+            a = sa;
+            b = sb;
+            v->a = sa;
+            v->b = sb;
+        }
         // (S1) the rate: by the note's distance from the root (chromatic), and the file's rate against ours
         const double fs = AudioConfig::instance().sampleRate();
         const double pitch = mP.mode == Chromatic ? std::pow(2.0, (note - mP.root) / 12.0) : 1.0;
@@ -93,7 +106,7 @@ namespace arstro
 
     void Sampler::noteOff(int note)
     {
-        if (mP.mode == OneShot) return; // a one-shot plays to its end
+        if (mP.mode == OneShot || mP.mode == Slices) return; // a one-shot (and a slice) plays to its end
         for (auto &v : mVoices)
             if (v->active && v->held && v->note == note)
             {
@@ -137,10 +150,11 @@ namespace arstro
         {
             Voice &v = *vp;
             if (!v.active) continue;
+            const long long va = v.a >= 0 ? v.a : a, vb = v.b >= 0 ? v.b : b; // (S7) a slice keeps its own span
             for (int i = 0; i < frames; ++i)
             {
                 // (S5) a voice ends when it leaves its span, or when its release has finished
-                if (v.pos < (double)a || v.pos > (double)(b - 1) || (!v.held && v.env.isFinished()))
+                if (v.pos < (double)va || v.pos > (double)(vb - 1) || (!v.held && v.env.isFinished()))
                 {
                     v.active = false;
                     break;
@@ -148,7 +162,7 @@ namespace arstro
                 // (S3) linear interpolation between the two recorded frames around the position
                 const long long k = (long long)std::floor(v.pos);
                 const double f = v.pos - (double)k;
-                const long long k1 = std::min(k + 1, b - 1);
+                const long long k1 = std::min(k + 1, vb - 1);
                 const double l = (1.0 - f) * mL[(size_t)k] + f * mL[(size_t)k1];
                 const double r = (1.0 - f) * mR[(size_t)k] + f * mR[(size_t)k1];
                 const double g = v.gain * v.env.nextValue(0) * mRamp[(size_t)i];

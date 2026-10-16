@@ -63,6 +63,7 @@
 #include "output/OutputBlock.h"
 #include "output/Dither.h"
 #include "meter/Meters.h"
+#include "meter/Onsets.h"
 #include "synth/ParamId.h"
 #include "synth/Voice.h"
 #include "synth/VoiceManager.h"

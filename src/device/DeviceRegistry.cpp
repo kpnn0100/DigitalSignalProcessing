@@ -248,7 +248,7 @@ namespace arstro
         {
             using P = Sampler::Params;
             static const std::vector<Binding<P>> b = {
-                {choice("mode", "Mode", {"chromatic", "one-shot"}, 0), [](P &p, double x) { p.mode = (Sampler::Mode)(int)x; }},
+                {choice("mode", "Mode", {"chromatic", "one-shot", "slices"}, 0), [](P &p, double x) { p.mode = (Sampler::Mode)(int)x; }}, // slices: REQ-inst-sampler-2
                 {num("root", "Root Key", "", 0, 127, 60, false, true), [](P &p, double x) { p.root = (int)x; }},
                 {num("start", "Start", "", 0, 1, 0), [](P &p, double x) { p.start = x; }},
                 {num("end", "End", "", 0, 1, 1), [](P &p, double x) { p.end = x; }},
@@ -260,6 +260,7 @@ namespace arstro
                 {num("level", "Level", "dB", -40, 12, 0), [](P &p, double x) { p.levelDb = x; }},
                 {num("velocity", "Velocity", "", 0, 1, 1), [](P &p, double x) { p.velocity = x; }},
                 {num("bend", "Bend Range", "st", 0, 24, 2, false, true), [](P &p, double x) { p.bendRange = x; }}, // REQ-inst-expr-1, appended
+                {num("slices", "Slices", "", 1, 64, 8, false, true), [](P &p, double x) { p.slices = (int)x; }},     // REQ-inst-sampler-2, appended
             };
             return b;
         }
@@ -559,7 +560,7 @@ namespace arstro
 
             DeviceType sampler;
             sampler.name = "sampler"; sampler.label = "Sampler"; sampler.kind = DeviceKind::Instrument;
-            sampler.summary = "Plays a recorded sound: pitched by the note (chromatic) or as recorded (one-shot); a span, reverse, an ADSR.";
+            sampler.summary = "Plays a recorded sound: pitched by the note (chromatic), as recorded (one-shot), or as a kit of its span's equal slices (slices); a span, reverse, an ADSR.";
             sampler.params = specsOf(samplerBindings());
             sampler.takesSample = true;
             sampler.groupLabels = {{"", "Sampler"}};

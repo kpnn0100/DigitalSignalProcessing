@@ -128,6 +128,52 @@ TEST(Spectrum_puts_a_sine_in_its_band)
     CHECK(s.bandDb(SpectrumAnalyser::kBands - 1) <= -100.0 || SpectrumAnalyser::bandHz(SpectrumAnalyser::kBands - 1) < 21600.0);
 }
 
+TEST(Onsets_are_found_where_sounds_begin)
+{
+    // REQ-onset-1, (O1)–(O5): four decaying bursts over a quiet noise floor — each found within 64 samples; nothing in
+    // the floor alone; two bursts closer than the gap counted once; a soft burst found at high sensitivity, not at low
+    const double fs = 48000.0;
+    const long long n = 4 * 48000;
+    std::vector<float> x((size_t)n);
+    unsigned seed = 7;
+    auto noise = [&] { seed = seed * 1664525u + 1013904223u; return ((float)(seed >> 8) / 16777216.0f - 0.5f) * 0.002f; };
+    for (auto &v : x) v = noise();
+    auto burst = [&](long long at, double amp) {
+        for (long long i = 0; i < 9600 && at + i < n; ++i)
+            x[(size_t)(at + i)] += (float)(amp * std::exp(-i / 1500.0) * std::sin(2 * M_PI * 330.0 * i / fs));
+    };
+    const long long at[4] = {10000, 60000, 110000, 160000};
+    for (long long a : at) burst(a, 0.6);
+    const auto found = detectOnsets(x.data(), n, fs);
+    CHECK(found.size() == 4);
+    for (size_t k = 0; k < found.size() && k < 4; ++k) CHECK(std::llabs(found[k] - at[k]) <= 64);
+    std::vector<float> quiet((size_t)n);
+    seed = 7;
+    for (auto &v : quiet) v = noise();
+    CHECK(detectOnsets(quiet.data(), n, fs).empty());
+    // two hits 20 ms apart: one onset (the gap is 50 ms)
+    std::vector<float> two((size_t)n, 0.0f);
+    for (long long i = 0; i < 4800; ++i)
+    {
+        two[(size_t)(20000 + i)] += (float)(0.6 * std::exp(-i / 800.0) * std::sin(2 * M_PI * 330.0 * i / fs));
+        two[(size_t)(20960 + i)] += (float)(0.6 * std::exp(-i / 800.0) * std::sin(2 * M_PI * 330.0 * i / fs));
+    }
+    CHECK(detectOnsets(two.data(), n, fs).size() == 1);
+    // a soft burst over a steady tone — its flux ~4 dB at most (the window spreads a rise over four hops): found when
+    // sensitive (δ 3 dB), not when not (δ 15 dB)
+    std::vector<float> soft((size_t)n, 0.0f);
+    for (long long i = 0; i < n; ++i) soft[(size_t)i] = (float)(0.02 * std::sin(2 * M_PI * 110.0 * i / fs));
+    for (long long i = 0; i < 4800; ++i) soft[(size_t)(96000 + i)] += (float)(0.05 * std::exp(-i / 1500.0) * std::sin(2 * M_PI * 2000.0 * i / fs));
+    OnsetParams hi, lo;
+    hi.sensitivity = 1.0;
+    lo.sensitivity = 0.0;
+    const auto withHi = detectOnsets(soft.data(), n, fs, hi), withLo = detectOnsets(soft.data(), n, fs, lo);
+    bool hiFound = false, loFound = false;
+    for (long long v : withHi) hiFound |= std::llabs(v - 96000) < 512;
+    for (long long v : withLo) loFound |= std::llabs(v - 96000) < 512;
+    CHECK(hiFound && !loFound);
+}
+
 TEST(Meters_do_not_allocate_after_construction)
 {
     configure();

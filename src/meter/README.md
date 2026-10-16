@@ -77,3 +77,32 @@ Guarded by `KWeighting_at_48k_is_BS1770s_table`, `Loudness_of_a_sine_is_its_leve
 (unittest/meterTests.cpp) and `meters_match_bs1770` (tests/run_integration.py: the integrated loudness against
 BS.1770-4 computed from the standard's own table and gating with every block kept, to 0.05 LU; the true peak
 against the signal's continuous maximum, to 0.3 dB).
+
+## Onsets — Math (REQ-onset-1)
+
+Where sounds begin in a whole recording (`detectOnsets`, `src/meter/Onsets.cpp`): an analysis done once, off any
+audio thread — for slicing a recording at its transients.
+
+```
+(O1) Energy      L[m] = 10·log10( (1/N)·Σ_{i=mH}^{mH+N−1} x[i]² + 10⁻¹² )   dB;  N = 1024, H = 256
+(O2) Flux        d[m] = max(0, L[m] − L[m−1])                               ; how much louder than the frame before
+(O3) Threshold   T[m] = median( d[m−8 … m+8] ) + δ,   δ = 3 + 12·(1 − sensitivity)  dB
+(O4) An onset    d[m] > T[m],  L[m] ≥ floor,  d[m] a peak (d[m−1] ≤ d[m] > d[m+1]),  ≥ minGap after the last
+(O5) To the sample: in [(m−1)H, mH + N), the first i with |x[i]| > b + ¼·(max|x| − b),
+     b = max|x| over the hop before the window                              ; what sounded already does not count
+```
+
+| parameter | default | symbol |
+|---|---|---|
+| `sensitivity` | 0.5 | δ (O3) |
+| `minGapMs` | 50 ms | (O4) |
+| `floorDb` | −60 dB | floor (O4) |
+
+The constants N, H, the ±8-frame median and the quarter of (O5) are empirical — a hop of 5 ms at 48 kHz finds a
+drum's hit, the median keeps a loud passage from reading as one long onset, and a quarter of the peak lands on the
+attack's first steep rise rather than on its noise. Why not composed: the library had no analysis of a whole sound;
+the energy is a plain mean square, no filter needed. (O5) measured from what sounded before: a quarter of the bare peak
+lands on a steady tone underneath a soft hit, a window early (a test showed it). Guarded by `Onsets_are_found_where_sounds_begin`
+(unittest/meterTests.cpp: four bursts found within 64 samples, none in a quiet noise floor, two closer than the gap
+counted once, a lower sensitivity ignoring a soft one) and `onsets_find_the_drums` (tests/run_integration.py: a Drum
+Machine's hits through the registry, found within 5 ms).

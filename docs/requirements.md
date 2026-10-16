@@ -512,6 +512,14 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   ours) or one-shot (as recorded, to its end); a span, reverse, an ADSR, level, velocity sensitivity;
   16 voices. (S1)–(S5) in `src/instrument/README.md`. Guarded by
   `Sampler_plays_its_sound_pitched_spanned_and_reversed` and `sampler_pitch`.
+- `REQ-inst-sampler-2` — **A sampler's slices** (source: Solaris R-EDIT-1 "a Sampler kit", 2026-10-16): mode
+  `slices` cuts the span into `slices` equal parts (1..64, appended to the registry); the key root + k plays part k
+  as recorded, to its end, a note-off ignored; a key outside them is silent. (S7). Guarded by
+  `Sampler_slices_play_by_the_key` and `sampler_slices`.
+- `REQ-onset-1` — **Onsets** (source: Solaris R-EDIT-1 `clip slice --transients`, 2026-10-16): `detectOnsets` finds
+  where sounds begin in a whole recording — energy flux over a local median, a floor and a minimum gap, refined to
+  the sample. (O1)–(O5) in `src/meter/README.md`. Guarded by `Onsets_are_found_where_sounds_begin` and
+  `onsets_find_the_drums`.
 
 - `REQ-meter-1` — **Loudness by ITU-R BS.1770-4** (source: Solaris R-METER-1, user request 2026-10-16): K-weighting
   (the standard's pre-filter and RLB high-pass, designed at any rate so that 48 kHz is its table to 1e-9), momentary

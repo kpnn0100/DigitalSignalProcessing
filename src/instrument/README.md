@@ -180,6 +180,9 @@ A recorded sound s[k] (N frames, recorded at fr Hz, mono or stereo) played by no
 (S4)  y = x(p) · env · 10^(level/20) · (1 − σ + σ·vel/127)            ; σ = velocity sensitivity   ; the level applied per block, ramped as (Y4)'s volume (D-8)
 (S5)  the voice ends when p leaves [a, b − 1] — or, chromatic, when its release has finished
 (S6)  p += Δp · 2^(bend·bendRange/12)            ; the pitch wheel moves every voice's rate (REQ-inst-expr-1)
+(S7)  slices (REQ-inst-sampler-2):  k = note − root;  silent unless 0 ≤ k < n   (n = `slices`)
+      [a_k, b_k) = [a + ⌊(b − a)·k / n⌋,  a + ⌊(b − a)·(k + 1) / n⌋)    ; slice k of the span, the voice's own span
+      ratio = fr / fs                           ; as recorded, to the slice's end (a one-shot: the note-off ignored)
 ```
 
 `env` is the library's `ADSREnvelope` per voice (attack 0 → 1 from the first sample, so a note at the
@@ -190,7 +193,8 @@ hands the frames in (`setSample`, a copy); the library never opens a file.
 | parameter | unit | symbol |
 |---|---|---|
 | `bend` | semitones at full wheel (0..24, default 2) | bendRange (S6) |
-| `mode` | chromatic / one-shot | which (S1) |
+| `mode` | chromatic / one-shot / slices | which (S1); slices (S7) |
+| `slices` | parts of the span (1..64, default 8) | n (S7) |
 | `root` | key | root |
 | `start`, `end` | fraction | (S2) |
 | `reverse` | on / off | (S2) |
@@ -204,7 +208,10 @@ sample, reversed and spanned likewise; an octave up is 880 Hz and over in half t
 440·2^(−7/12) and within 2e-3 of the analytic tone (nearest-frame playback misses by 1.4e-2 — a mutant
 showed it); a 24 kHz recording keeps its pitch at 48 kHz (`Sampler_plays_its_sound_pitched_spanned_and_reversed`);
 through the registry a 44.1 kHz 220 Hz recording plays 109 / 218 / 326 / 436 Hz at −12 / 0 / +7 / +12
-(`sampler_pitch`).
+(`sampler_pitch`). Slices (S7): a recording of eight tones in eighths plays tone k at root + k, each exactly its
+eighth and over at its end, a key outside them silent, a note-off ignored (`Sampler_slices_play_by_the_key`);
+through the registry the keys play their slices' pitches (`sampler_slices`). Not composed: it is (S2)'s span cut in
+n, the same voice code with a span of its own.
 
 ## Piano — Math (REQ-inst-piano-1)
 
