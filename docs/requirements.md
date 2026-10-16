@@ -489,3 +489,13 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   16 voices. (S1)–(S5) in `src/instrument/README.md`. Guarded by
   `Sampler_plays_its_sound_pitched_spanned_and_reversed` and `sampler_pitch`.
 
+- `REQ-meter-1` — **Loudness by ITU-R BS.1770-4** (source: Solaris R-METER-1, user request 2026-10-16): K-weighting
+  (the standard's pre-filter and RLB high-pass, designed at any rate so that 48 kHz is its table to 1e-9), momentary
+  (400 ms), short-term (3 s) and integrated loudness in LUFS, gated absolutely (−70 LUFS) and relatively (−10 LU)
+  over 400 ms blocks at 75 % overlap; a 0 dBFS 1 kHz sine in one channel reads −3.01 LUFS. Allocation-free after
+  construction. (L1)–(L6) in `src/meter/README.md`.
+- `REQ-meter-2` — **True peak**: 4× oversampled through a 64-tap Kaiser-windowed sinc interpolator in four
+  normalised phases; never under the sample peak. (T1)–(T3).
+- `REQ-meter-3` — **Stereo correlation**, −1 … +1, smoothed over 300 ms. (C1).
+- `REQ-meter-4` — **A 1/6-octave spectrum**, 61 bands from 19.7 Hz to 20.2 kHz, each a `Biquad` band-pass (a
+  composition), in dB re a full-scale sine. (S1), (S2).

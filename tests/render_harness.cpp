@@ -721,6 +721,45 @@ static std::vector<double> renderSampler(double semitones)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-meter-1…3: a stereo two-tone, loud then 26 dB down, with a burst whose peak lies between samples — the
+// meters' readings printed for run_integration.py, which computes BS.1770-4 and the true peak itself
+static double meterSignal(int ch, double t)
+{
+    const double PI2 = 2.0 * 3.14159265358979323846;
+    double x = ch == 0 ? 0.3 * std::sin(PI2 * 1000.0 * t) + 0.2 * std::sin(PI2 * 5000.0 * t + 0.3)
+                       : 0.3 * std::sin(PI2 * 1000.0 * t) + 0.25 * std::sin(PI2 * 100.0 * t + 1.1);
+    if (t >= 2.0 && t < 2.1) x += 0.4 * std::sin(PI2 * 12000.0 * t + 0.7853981633974483); // fs/4, 45° out
+    return t < 4.0 ? x : 0.05 * x;
+}
+
+static std::vector<double> renderMeters()
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    LoudnessMeter lm;
+    TruePeakMeter tp;
+    CorrelationMeter cm;
+    const int n = 8 * kSampleRate, block = 128;
+    std::vector<float> l(block), r(block);
+    std::vector<double> out;
+    out.reserve((size_t)n);
+    for (int i = 0; i < n; i += block)
+    {
+        const int k = std::min(block, n - i);
+        for (int j = 0; j < k; ++j)
+        {
+            const double t = (double)(i + j) / kSampleRate;
+            l[(size_t)j] = (float)meterSignal(0, t);
+            r[(size_t)j] = (float)meterSignal(1, t);
+            out.push_back(l[(size_t)j]);
+        }
+        lm.process(l.data(), r.data(), k);
+        tp.process(l.data(), r.data(), k);
+        cm.process(l.data(), r.data(), k);
+    }
+    std::printf("integrated=%.6f shortterm=%.6f truepeak=%.6f correlation=%.6f\n", lm.integrated(), lm.shortTerm(), tp.peakDb(), cm.correlation());
+    return out;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3)
@@ -771,6 +810,7 @@ int main(int argc, char **argv)
     else if (scenario == "limiter") samples = renderLimiter(arg);
     else if (scenario == "sidechain") samples = renderSidechain(arg);
     else if (scenario == "sampler") samples = renderSampler(arg);
+    else if (scenario == "meters") samples = renderMeters();
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

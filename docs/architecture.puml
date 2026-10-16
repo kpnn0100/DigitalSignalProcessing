@@ -222,6 +222,25 @@ package effects {
 package output {
   class OutputBlock
 }
+package meter {
+  class LoudnessMeter {
+    +process(left*, right*, frames)
+    +momentary() / shortTerm() / integrated() : LUFS
+  }
+  class TruePeakMeter {
+    +process(left*, right*, frames)
+    +peakDb() / lastBlockDb() : dBTP, 4x
+  }
+  class CorrelationMeter {
+    +correlation() : -1..+1
+  }
+  class SpectrumAnalyser {
+    +bandHz(b) / bandDb(b) : 61 bands, 1/6 oct
+  }
+  class KWeighting
+  LoudnessMeter *-- KWeighting
+  SpectrumAnalyser *-- "61" Biquad : band-passes
+}
 package functional {
   class ProcessorRepeater<T>
 }

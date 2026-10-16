@@ -1000,6 +1000,72 @@ CHECKS = [
 ]
 
 
+def check_meters_match_bs1770(binpath):
+    """REQ-meter-1/2: the LoudnessMeter's integrated loudness against BS.1770-4 computed here from the standard's
+    own 48 kHz coefficient table and its gating (every block kept — no histogram); the TruePeakMeter against the
+    signal's continuous peak, evaluated 32 times a sample from its formula."""
+    out = os.path.join(tempfile.gettempdir(), "arstro_meters.wav")
+    r = subprocess.run([binpath, "meters", out], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Failure("render 'meters' failed: " + r.stderr)
+    said = dict(kv.split("=") for kv in r.stdout.split())
+    pi2 = 2.0 * math.pi
+
+    def sig(ch, t):
+        x = (0.3 * math.sin(pi2 * 1000 * t) + 0.2 * math.sin(pi2 * 5000 * t + 0.3)) if ch == 0 else \
+            (0.3 * math.sin(pi2 * 1000 * t) + 0.25 * math.sin(pi2 * 100 * t + 1.1))
+        if 2.0 <= t < 2.1:
+            x += 0.4 * math.sin(pi2 * 12000 * t + math.pi / 4)
+        return x if t < 4.0 else 0.05 * x
+    n = 8 * SR
+    # BS.1770-4 Table 1 / Table 2 (48 kHz)
+    s1 = ([1.53512485958697, -2.69169618940638, 1.19839281085285], [1.0, -1.69065929318241, 0.73248077421585])
+    s2 = ([1.0, -2.0, 1.0], [1.0, -1.99004745483398, 0.99007225036621])
+    sq = []
+    for ch in (0, 1):
+        z1 = z2 = w1 = w2 = 0.0
+        out_sq = []
+        for i in range(n):
+            x = sig(ch, i / SR)
+            (b0, b1, b2), (_, a1, a2) = s1
+            y = b0 * x + z1
+            z1 = b1 * x - a1 * y + z2
+            z2 = b2 * x - a2 * y
+            (c0, c1, c2), (_, d1, d2) = s2
+            v = c0 * y + w1
+            w1 = c1 * y - d1 * v + w2
+            w2 = c2 * y - d2 * v
+            out_sq.append(v * v)
+        sq.append(out_sq)
+    blk, hop = int(0.4 * SR), int(0.1 * SR)
+    zs = []
+    for start in range(0, n - blk + 1, hop):
+        zs.append(sum(sq[0][start:start + blk]) / blk + sum(sq[1][start:start + blk]) / blk)
+    lk = lambda z: -0.691 + 10 * math.log10(z) if z > 0 else -1e9
+    above = [z for z in zs if lk(z) > -70]
+    gate = lk(sum(above) / len(above)) - 10
+    gated = [z for z in above if lk(z) > gate]
+    want = lk(sum(gated) / len(gated))
+    got = float(said["integrated"])
+    if abs(got - want) > 0.05:
+        raise Failure(f"integrated {got:.3f} LUFS, BS.1770-4 says {want:.3f}")
+    # the true peak: the formula's continuous maximum
+    peak = 0.0
+    for ch in (0, 1):
+        for i in range(int(1.95 * SR), int(2.15 * SR)):
+            for k in range(32):
+                peak = max(peak, abs(sig(ch, (i + k / 32.0) / SR)))
+    tp_want = 20 * math.log10(peak)
+    tp_got = float(said["truepeak"])
+    sample_peak = max(abs(sig(ch, i / SR)) for ch in (0, 1) for i in range(int(1.95 * SR), int(2.15 * SR)))
+    if abs(tp_got - tp_want) > 0.3 or tp_got < 20 * math.log10(sample_peak) - 1e-6:
+        raise Failure(f"true peak {tp_got:.3f} dBTP, the signal's is {tp_want:.3f} (its sample peak {20 * math.log10(sample_peak):.3f})")
+    return f"integrated {got:.3f} vs {want:.3f} LUFS; true peak {tp_got:.2f} vs {tp_want:.2f} dBTP over a {20 * math.log10(sample_peak):.2f} dB sample peak"
+
+
+CHECKS.append(("meters_match_bs1770", check_meters_match_bs1770))
+
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:
