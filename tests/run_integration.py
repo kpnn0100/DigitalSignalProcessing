@@ -1307,6 +1307,40 @@ def check_wavetable_plays_its_note(binpath):
 CHECKS.append(("wavetable_plays_its_note", check_wavetable_plays_its_note))
 
 
+def bessel_j(n, x):
+    if n < 0:
+        return (-1) ** n * bessel_j(-n, x)  # J_{−n} = (−1)^n J_n
+    total, term = 0.0, (x / 2) ** n / math.factorial(n)
+    for k in range(40):
+        total += term
+        term *= -(x * x / 4) / ((k + 1) * (k + 1 + n))
+    return total
+
+
+def check_fm_plays_bessel_sidebands(binpath):
+    """REQ-fm-3: the registry's FM synth on A4 — a carrier and a modulator both at 440 Hz, index 1 rad: its harmonics are
+    the Bessel sums J_{h−1}(1) − J_{−h−1}(1) of the carrier (1 %), at 440 Hz; its defaults sound there too."""
+    y = render(binpath, "fm", 1)[SR // 10: SR // 10 + 24000]  # 0.5 s: 220 whole cycles
+    a = [goertzel(y, 440.0 * h) for h in (1, 2, 3)]
+    # 1:1 — sideband n lands on harmonic 1 + n; the negative ones fold (sin(−x) = −sin x)
+    want = [abs(bessel_j(h - 1, 1.0) - bessel_j(-h - 1, 1.0)) for h in (1, 2, 3)]
+    r2, r3 = a[1] / a[0], a[2] / a[0]
+    w2, w3 = want[1] / want[0], want[2] / want[0]
+    if abs(r2 / w2 - 1.0) > 0.01 or abs(r3 / w3 - 1.0) > 0.02:
+        raise Failure(f"harmonics {r2:.4f}, {r3:.4f} of the 1st; Bessel {w2:.4f}, {w3:.4f}")
+    rich = render(binpath, "fm", 0)[SR // 10: SR // 10 + 24000]
+    # at its pitch: over whole cycles of 440 Hz, a tone 4 Hz off would read near nothing at 440 (two bins away)
+    on, off = goertzel(y, 440.0), goertzel(y, 444.0)
+    if on < 50 * off:
+        raise Failure(f"A4 is not at 440 Hz: {on:.4f} at 440, {off:.4f} at 444")
+    if goertzel(rich, 440.0) < 1e-4:
+        raise Failure("its defaults are silent at 440 Hz")
+    return f"at 440 Hz ({20 * math.log10(on / off):.0f} dB over 444); the 2nd {r2:.4f} (Bessel {w2:.4f}), the 3rd {r3:.4f} (Bessel {w3:.4f})"
+
+
+CHECKS.append(("fm_plays_bessel_sidebands", check_fm_plays_bessel_sidebands))
+
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

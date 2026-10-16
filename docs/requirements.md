@@ -569,6 +569,21 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   oscillators, the built-ins or a sound given, `takesSample`). Guarded by `BasicSynth_plays_a_table_moved_by_its_
   envelope` (sine → square over a second: the third harmonic 0.008 → 0.333), `BasicSynth_plays_the_table_of_a_sound`;
   the registry's tests (every range, no allocation after warm-up); integration `wavetable_plays_its_note`.
+- `REQ-fm-1` — **Four operators by phase modulation** (source: Solaris R-INST-8, "implement all", 2026-10-16):
+  `FMSynth` — each operator a sine at its ratio of the note (and fine cents), its phase moved by the operators above it
+  (index 8 rad at level 1), its own ADSR and level, velocity-sensed; every operator from phase 0 at a note (key sync);
+  pitch on the 32-sample grid (a render the same however chopped). (M1), (M2), (M5), (M6). Guarded by
+  `FM_sidebands_are_bessel` (a carrier under one modulator of index 1: the sidebands J_n(1)/J_0(1) to 0.0003, nothing
+  else above −140 dB), `FM_envelopes_and_velocity_shape_each_operator`, `FM_renders_the_same_however_chopped`,
+  `FM_does_not_allocate`.
+- `REQ-fm-2` — **Eight algorithms and feedback** (same source): the TX81Z's eight (serial, branched, stacked, parallel),
+  the carriers summed and shared (an algorithm does not change the loudness); operator 4 fed back on itself through
+  the mean of its last two outputs (it does not chatter). (M2)–(M4). Guarded by `FM_algorithms_route_as_drawn`,
+  `FM_feedback_brightens_operator_four` (no feedback: a sine; full: still a tone, 230 dB between its harmonics).
+- `REQ-fm-3` — **The registry's "fm"** (same source): the algorithm, the feedback, each operator's ratio, fine, level,
+  envelope and velocity sense, the volume, bend and vibrato. Guarded by the registry's tests (every range, no
+  allocation after warm-up); integration `fm_plays_bessel_sidebands` (1:1 at index 1: its harmonics the Bessel sums,
+  to 0.01 %).
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

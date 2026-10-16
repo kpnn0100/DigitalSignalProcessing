@@ -9,6 +9,7 @@
 #include "../equalizer/ParametricEQ.h"
 #include "../equalizer/StateVariableFilter.h"
 #include "../instrument/BasicSynth.h"
+#include "../instrument/FMSynth.h"
 #include "../instrument/Piano.h"
 #include "../instrument/DrumMachine.h"
 #include "../reverb/Reverb.h"
@@ -289,6 +290,64 @@ namespace arstro
         private:
             BasicSynth mSynth;
             BasicSynth::Params mP;
+        };
+
+        // ── the FM synth (REQ-fm-3): four operators, eight algorithms ──
+
+        const std::vector<Binding<FMSynth::Params>> &fmBindings()
+        {
+            using P = FMSynth::Params;
+            static const std::vector<Binding<P>> b = [] {
+                const P d;
+                std::vector<Binding<P>> v;
+                v.push_back({choice("algorithm", "Algorithm", {"1", "2", "3", "4", "5", "6", "7", "8"}, d.algorithm - 1),
+                             [](P &p, double x) { p.algorithm = (int)x + 1; }});
+                v.push_back({num("feedback", "Feedback", "", 0, 1, d.feedback), [](P &p, double x) { p.feedback = x; }});
+                for (int k = 0; k < FMSynth::kOps; ++k)
+                {
+                    const std::string o = "op" + std::to_string(k + 1);
+                    const FMSynth::Op &od = d.op[(size_t)k];
+                    v.push_back({num(o + ".ratio", "Ratio", "x", 0.5, 16, od.ratio, true), [k](P &p, double x) { p.op[(size_t)k].ratio = x; }});
+                    v.push_back({num(o + ".fine", "Fine", "ct", -100, 100, od.fine), [k](P &p, double x) { p.op[(size_t)k].fine = x; }});
+                    v.push_back({num(o + ".level", "Level", "", 0, 1, od.level), [k](P &p, double x) { p.op[(size_t)k].level = x; }});
+                    v.push_back({num(o + ".attack", "Attack", "ms", 0, 10000, od.attack, true), [k](P &p, double x) { p.op[(size_t)k].attack = x; }});
+                    v.push_back({num(o + ".decay", "Decay", "ms", 0, 10000, od.decay, true), [k](P &p, double x) { p.op[(size_t)k].decay = x; }});
+                    v.push_back({num(o + ".sustain", "Sustain", "", 0, 1, od.sustain), [k](P &p, double x) { p.op[(size_t)k].sustain = x; }});
+                    v.push_back({num(o + ".release", "Release", "ms", 0, 10000, od.release, true), [k](P &p, double x) { p.op[(size_t)k].release = x; }});
+                    v.push_back({num(o + ".velocity", "Velocity", "", 0, 1, od.velocity), [k](P &p, double x) { p.op[(size_t)k].velocity = x; }});
+                }
+                v.push_back({num("volume", "Volume", "dB", -60, 6, d.volumeDb), [](P &p, double x) { p.volumeDb = x; }});
+                v.push_back({num("voice.bend", "Bend Range", "st", 0, 24, d.bendRange, false, true), [](P &p, double x) { p.bendRange = x; }});
+                v.push_back({num("vibrato.depth", "Vibrato", "st", 0, 2, d.vibrato), [](P &p, double x) { p.vibrato = x; }});
+                v.push_back({num("vibrato.rate", "Vibrato Rate", "Hz", 0.1, 20, d.vibratoRate, true), [](P &p, double x) { p.vibratoRate = x; }});
+                return v;
+            }();
+            return b;
+        }
+
+        class FMDevice : public Device
+        {
+        public:
+            explicit FMDevice(const DeviceType &t) : Device(t), mP(mSynth.params()) { applyAll(); }
+            void process(Sample *const *io, int channels, int frames) override { mSynth.render(io, channels, frames); }
+            void noteOn(int n, int v) override { mSynth.noteOn(n, v); }
+            void noteOff(int n) override { mSynth.noteOff(n); }
+            void allNotesOff() override { mSynth.allNotesOff(); }
+            void pitchBend(double a) override { mSynth.pitchBend(a); }
+            void modWheel(double a) override { mSynth.modWheel(a); }
+            void reset() override { mSynth.reset(); }
+            int activeVoices() const override { return mSynth.activeVoices(); }
+
+        protected:
+            void apply(int i, double v) override
+            {
+                fmBindings()[i].set(mP, v);
+                mSynth.setParams(mP);
+            }
+
+        private:
+            FMSynth mSynth;
+            FMSynth::Params mP;
         };
 
         // ── the piano (REQ-inst-piano-1): the engine's voicing bank, its ranges and defaults ──
@@ -644,6 +703,15 @@ namespace arstro
                                      {"voice", "Voice"}, {"vibrato", "Vibrato"}};
             wavetable.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<WavetableDevice>(self); };
             v.push_back(wavetable);
+
+            DeviceType fm; // REQ-fm-3
+            fm.name = "fm"; fm.label = "FM Synth"; fm.kind = DeviceKind::Instrument;
+            fm.summary = "Four sine operators by phase modulation — eight algorithms, operator 4 fed back, an envelope each; 16 voices.";
+            fm.params = specsOf(fmBindings());
+            fm.groupLabels = {{"op1", "Operator 1"}, {"op2", "Operator 2"}, {"op3", "Operator 3"}, {"op4", "Operator 4"},
+                              {"", "Algorithm & Output"}, {"voice", "Voice"}, {"vibrato", "Vibrato"}};
+            fm.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<FMDevice>(self); };
+            v.push_back(fm);
 
             DeviceType piano;
             piano.name = "piano"; piano.label = "Piano"; piano.kind = DeviceKind::Instrument;

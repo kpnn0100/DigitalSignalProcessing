@@ -136,6 +136,13 @@ package instrument {
     -(Y7) pitch on an absolute 32-sample grid
     -16 voices: 2 Oscillator, SVF, 2 ADSR, Noise
   }
+  class FMSynth {
+    +setParams(Params)  -- algorithm 1..8, feedback, 4 Op: ratio, fine, level, ADSR, velocity
+    +modulates(a, j, k) / carrier(a, k)  -- (M3)
+    -(M1)-(M2) operators 4 -> 1, phase modulation, index 8 rad; the 32-sample pitch grid
+  }
+  FMSynth ..|> Instrument
+  FMSynth *-- "64" ADSREnvelope : 16 voices x 4 operators
   class DrumMachine {
     +setPad(Pad, PadParams)
     +noteFor(Pad) / padFor(note)

@@ -974,6 +974,44 @@ static std::vector<double> renderWavetable(double sine)
     return y;
 }
 
+// REQ-fm-3: the registry's "fm" — A4 for a second; arg 0 its defaults (algorithm 1, a bell-ish stack), arg 1 a carrier
+// at A4 under one modulator at A4 of index 1 rad (algorithm 5, operators 3 and 4 silent, every envelope held)
+static std::vector<double> renderFm(double pair)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("fm");
+    if (pair > 0.5)
+    {
+        d->setParam("algorithm", 4); // the 5th: 4→3, 2→1
+        for (const char *o : {"op1", "op2", "op3", "op4"})
+        {
+            const std::string k = o;
+            d->setParam(k + ".attack", 0.0);
+            d->setParam(k + ".decay", 0.0);
+            d->setParam(k + ".sustain", 1.0);
+            d->setParam(k + ".velocity", 0.0);
+            d->setParam(k + ".ratio", 1.0);
+        }
+        d->setParam("op1.level", 1.0);
+        d->setParam("op2.level", 0.125);
+        d->setParam("op3.level", 0.0);
+        d->setParam("op4.level", 0.0);
+    }
+    d->noteOn(69, 100);
+    std::vector<double> y;
+    std::vector<Sample> L(128), R(128);
+    while ((int)y.size() < kSampleRate)
+    {
+        std::fill(L.begin(), L.end(), 0.0);
+        std::fill(R.begin(), R.end(), 0.0);
+        Sample *io[2] = {L.data(), R.data()};
+        d->process(io, 2, 128);
+        y.insert(y.end(), L.begin(), L.end());
+    }
+    return y;
+}
+
 static std::vector<double> renderMeters()
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -1063,6 +1101,7 @@ int main(int argc, char **argv)
     else if (scenario == "meters") samples = renderMeters();
     else if (scenario == "follower") samples = renderFollower(arg);
     else if (scenario == "wavetable") samples = renderWavetable(arg);
+    else if (scenario == "fm") samples = renderFm(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

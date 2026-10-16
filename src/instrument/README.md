@@ -6,6 +6,7 @@
 | `BasicSynth` | two-oscillator subtractive polysynth, 16 voices — an oscillator may play a wavetable (the registry's "wavetable") | REQ-synth2-1…5, REQ-wavetable-3 |
 | `DrumMachine` | ten synthesized pads on the General MIDI drum notes | REQ-drum-1…5 |
 | `Piano` | the physical piano (`physical/PianoEngine`) as an instrument, 16 voices | REQ-inst-piano-1 |
+| `FMSynth` | four sine operators by phase modulation — eight algorithms, a feedback operator, an ADSR each; 16 voices | REQ-fm-1…3 |
 
 The first host is the Solaris DAW (`apps/solaris` in the umbrella), whose rule is that **all of its
 sound lives here** (Solaris R-DSP-1). Sample-accurate timing is the host's job: it splits a block at
@@ -257,3 +258,49 @@ it: a never-struck voice is a damped string, not an undamped one at the construc
 through the bridge. So the same notes from a `reset()` are the same samples as from a new piano
 (`Piano_reset_is_silent_at_once_and_starts_again_the_same`).
 
+
+## FMSynth — Math (REQ-fm-1…3)
+
+Four operators, each a sine whose PHASE the operators above it modulate (as Yamaha's four-operator instruments: the
+TX81Z's eight algorithms). **Why not composed (rule 1):** BasicSynth's voice is an oscillator into a filter; an FM
+voice is four sines each with its own envelope, read in an order the algorithm sets — a different voice, not a
+different oscillator. What it reuses: `ADSREnvelope` (one an operator), BasicSynth's control grid for pitch (Y7) so a
+render is the same however a host chops time, its pitch formula and its bend and vibrato.
+
+```
+(M1) An operator k of a voice on note p — FMSynth::render
+     f_k = 440·2^((p + b − 69)/12) · r_k · 2^(c_k/1200)          r_k ratio (0.5 … 16), c_k fine (cents), b bend+vibrato
+     φ_k[n+1] = φ_k[n] + f_k/fs  (wrapped to [0,1)),  φ_k = 0 at the note's start (every operator in step: key sync)
+     y_k[n] = sin(2π·φ_k[n] + β_k[n]) · g_k[n]
+     g_k = L_k · e_k[n] · (1 − s_k + s_k·v)                      L_k level 0…1, e_k its ADSR, s_k velocity sense, v vel
+(M2) What an operator hears — the algorithm A:  β_k = I · Σ_{j ∈ A(k)} y_j   (j > k: read first, ops 4 → 1)
+     I = 8 rad (a modulator at level 1 swings its carrier ±8 radians)
+     feedback on operator 4:  β_4 = F·π·(y_4[n−1] + y_4[n−2])/2   (the mean of two: a DX's, it does not oscillate)
+(M3) The algorithms (→ modulates; carriers are heard):
+     1: 4→3→2→1          carriers 1          5: 4→3, 2→1        carriers 1, 3
+     2: (3, 4)→2→1        carriers 1          6: 4→(3, 2, 1)     carriers 1, 2, 3
+     3: 3→2→1, 4→1        carriers 1          7: 4→3, 2, 1       carriers 1, 2, 3
+     4: 4→3→1, 2→1        carriers 1          8: 1, 2, 3, 4      carriers all four
+(M4) Out:  y = vol · Σ_{carriers} y_k / C   (C the carriers' count — an algorithm does not change the loudness)
+     the same on every channel (FM is mono here)
+(M5) Two operators, a check on (M1)–(M2): a carrier at r·f0 under a modulator at f0 of index I·L
+     sin(2π r f0 t + I·L·sin 2π f0 t) = Σ_n J_n(I·L) sin(2π (r + n) f0 t)  — sidebands at the Bessel functions
+(M6) The sine — a table of 4096 points read linearly (its error ≈ (2π/4096)²/8 ≈ 3·10⁻⁷, −130 dB); its phase from
+     the operator's accumulator, never a clock
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `algorithm` | A | 1 … 8 | 1 |
+| `feedback` | F | 0…1 (π·F radians at most) | 0 |
+| `op1…4.ratio` | r_k | 0.5 … 16 | 1, 1, 2, 3.5 |
+| `op1…4.fine` | c_k | −100 … 100 cents | 0 |
+| `op1…4.level` | L_k | 0…1 | 1, 0.6, 0.3, 0.2 |
+| `op1…4.attack/decay/sustain/release` | e_k | ms, ms, 0…1, ms | (op 1) 2/400/0.6/300, (modulators) 2/600/0.3/300 |
+| `op1…4.velocity` | s_k | 0…1 | 0.7 |
+| `volume` | vol | dB | −12 |
+| `bend`, `vibrato`, `vibrato.rate` | b | st, st, Hz | 2, 0.5, 5.5 |
+
+**Limits, said:** a modulator's sidebands past Nyquist fold back, as a DX7's do — at A4 with an index under 3 they
+lie under −60 dB (measured: FM_sidebands_are_bessel); high notes at a high index alias audibly. No filter, no glide,
+no mono mode (BasicSynth has them); FM is mono.
