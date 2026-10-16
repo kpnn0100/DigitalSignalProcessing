@@ -65,8 +65,8 @@ The phase vocoder (timeStretch, vocode):
 The resampler (resample):
 (R1) out[j] = Σ_m in[m] · h(j·step − m),  m within R of j·step;  c = min(1, 1/step)  (the cutoff falls when it reads faster)
 (R2) h(t) = c · sinc(c·t) · I0(β√(1 − (t/R)²)) / I0(β),  |t| < R = Z/c,  Z = 16 zero crossings,  β = 8.6 (Kaiser)
-     sinc(u) = sin(πu)/(πu);  I0 by its series Σ ((x/2)^k / k!)²  — besselI0
-(R3) h tabulated at 512 points a sample and read linearly — `h` in resample
+     sinc(u) = sin(πu)/(πu);  I0 by its series Σ ((x/2)^k / k!)²  — SincKernel (src/resample, shared with REQ-resample-2)
+(R3) h tabulated at 512 points a sample and read linearly — SincKernel::operator(), used by resample
 ```
 
 | parameter | symbol | unit / range | used in |

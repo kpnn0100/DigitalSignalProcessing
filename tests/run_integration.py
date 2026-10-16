@@ -1233,6 +1233,51 @@ def check_meters_match_bs1770(binpath):
 CHECKS.append(("meters_match_bs1770", check_meters_match_bs1770))
 
 
+def sine_fit(y, f):
+    """Least squares: a·sin + b·cos at `f` Hz (48 kHz frames) — the amplitude, and what is left over."""
+    w = 2 * math.pi * f / SR
+    ss = sc = cc = ys = yc = 0.0
+    for k, v in enumerate(y):
+        sn, cs = math.sin(w * k), math.cos(w * k)
+        ss += sn * sn; sc += sn * cs; cc += cs * cs; ys += v * sn; yc += v * cs
+    det = ss * cc - sc * sc
+    a, b = (ys * cc - yc * sc) / det, (yc * ss - ys * sc) / det
+    e = sum((v - a * math.sin(w * k) - b * math.cos(w * k)) ** 2 for k, v in enumerate(y))
+    p = sum((a * math.sin(w * k) + b * math.cos(w * k)) ** 2 for k in range(len(y)))
+    return math.hypot(a, b), 10 * math.log10(p / max(e, 1e-30))
+
+
+def phase_at(y, f):
+    w = 2 * math.pi * f / SR
+    re = sum(v * math.cos(w * k) for k, v in enumerate(y))
+    im = sum(v * math.sin(w * k) for k, v in enumerate(y))
+    return math.atan2(im, re)
+
+
+def check_follower_holds_the_clock(binpath):
+    """REQ-resample-2/3: a consumer 1000 ppm fast, two simulated minutes on — its last 2 s carry 1 kHz at
+    48000/48048 of it (the producer's second, played on the consumer's crystal: 1e-6), at its level (0.05 dB),
+    clean to 16 bits (SINAD > 85 dB)."""
+    y = render(binpath, "follower", 1000)
+    want = 1000.0 * 48000.0 / (48000.0 * 1.001)
+    h = len(y) // 2
+    # the frequency from how far the phase got ahead of `want`'s between the halves (the DFT's angle is −θ)
+    d = (phase_at(y[:h], want) - phase_at(y[h:], want)) - 2 * math.pi * want * h / SR
+    d = (d + math.pi) % (2 * math.pi) - math.pi
+    f = want + d / (2 * math.pi * h / SR)
+    amp, sinad = sine_fit(y, f)
+    if abs(f / want - 1.0) > 1e-6:
+        raise Failure(f"{f:.6f} Hz, want {want:.6f}")
+    if abs(20 * math.log10(amp / 0.5)) > 0.05:
+        raise Failure(f"amplitude {amp:.5f}, want 0.5")
+    if sinad < 85.0:
+        raise Failure(f"SINAD {sinad:.1f} dB")
+    return f"{f:.6f} Hz (want {want:.6f}), SINAD {sinad:.1f} dB"
+
+
+CHECKS.append(("follower_holds_the_clock", check_follower_holds_the_clock))
+
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

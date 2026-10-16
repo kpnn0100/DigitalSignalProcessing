@@ -1,6 +1,7 @@
 #include "TimeStretch.h"
 #include "FFT.h"
 #include "../meter/Onsets.h"
+#include "../resample/SincKernel.h"
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -10,18 +11,6 @@ namespace arstro
     namespace
     {
         double princarg(double a) { return a - 2.0 * M_PI * std::floor((a + M_PI) / (2.0 * M_PI)); } // into [−π, π)
-
-        double besselI0(double x)
-        {
-            double sum = 1.0, term = 1.0;
-            for (int k = 1; k < 64; ++k)
-            {
-                term *= (x / (2.0 * k)) * (x / (2.0 * k));
-                sum += term;
-                if (term < 1e-17 * sum) break;
-            }
-            return sum;
-        }
 
         /** (P1)…(P6) one channel, framed at `ta` (analysis centres) → `ts` = k·Hs; `reset[k]`: the phases restart. */
         void vocode(const std::vector<float> &x, const std::vector<long long> &ta, long long first, const std::vector<char> &reset, int N, int Hs,
@@ -98,29 +87,12 @@ namespace arstro
 
     std::vector<float> resample(const std::vector<float> &in, double step, long long frames)
     {
-        // (R1) cutoff c = min(1, 1/step) of the input's Nyquist; (R2) Z = 16 zero crossings each side, Kaiser β = 8.6
-        constexpr int kZero = 16, kRes = 512;
-        constexpr double kBeta = 8.6;
+        // (R1) cutoff c = min(1, 1/step) of the input's Nyquist; (R2)–(R3) the kernel — Z = 16, Kaiser β = 8.6 —
+        // src/resample's SincKernel, shared with the streaming AdaptiveResampler (REQ-resample-2)
         const double c = std::min(1.0, 1.0 / std::max(1e-9, step));
-        const double R = kZero / c; // the kernel's half width, input samples
-        const int tableN = (int)std::ceil(R * kRes) + 2;
-        std::vector<double> table((size_t)tableN);
-        const double i0b = besselI0(kBeta);
-        for (int i = 0; i < tableN; ++i)
-        {
-            const double t = (double)i / kRes, u = t / R;
-            const double s = t == 0.0 ? 1.0 : std::sin(M_PI * c * t) / (M_PI * c * t);
-            table[(size_t)i] = u >= 1.0 ? 0.0 : c * s * besselI0(kBeta * std::sqrt(1.0 - u * u)) / i0b;
-        }
-        auto h = [&](double t) {
-            const double a = std::fabs(t) * kRes;
-            const int i = (int)a;
-            if (i + 1 >= tableN) return 0.0;
-            const double f = a - i;
-            return table[(size_t)i] + f * (table[(size_t)i + 1] - table[(size_t)i]); // (R3) the kernel, tabulated
-        };
+        const SincKernel h(c, 16, 8.6, 512);
         std::vector<float> out((size_t)std::max(0LL, frames));
-        const long long L = (long long)in.size(), r = (long long)std::ceil(R);
+        const long long L = (long long)in.size(), r = (long long)std::ceil(h.halfWidth());
         for (long long j = 0; j < frames; ++j)
         {
             const double xpos = j * step;

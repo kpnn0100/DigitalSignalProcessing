@@ -552,6 +552,23 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   (16 zero crossings, β 8.6), its cutoff 1/step when reading faster. (R1)–(R3). Guarded by `Resample_is_band_limited`
   (a sine at half speed to 1e-4 in frequency and 0.05 dB; 5 kHz at double speed to 0.1 dB; 15 kHz, which would fold,
   below −60 dB).
+- `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
+  multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
+  read `step` input frames an output frame, the step free to change every block with no click (the read position
+  carried, its phase continuous); REQ-resample-1's kernel (now `SincKernel`, shared — `resample` gives the same
+  samples) at c = 1, 32 taps, its weights normalised; `inputNeeded` exact; a constant R-frame lookahead; no
+  allocation once built. src/resample/README.md (A1)–(A5). Guarded by `AdaptiveResampler_at_step_one_is_the_input`
+  (to 1e-17, any blocks), `…_reads_a_sine_at_its_step` (93 dB clean — the table's linear reading the bound),
+  `…_bends_with_no_click` (a step changed every block, blocks of 1…512: 3e-6 from the ideal), `…_does_not_allocate`.
+- `REQ-resample-3` — **The step that holds a buffer's fill** (same source): `FillController` — a PI loop on the fill
+  (smoothed over 4 s; a minute's natural period, critically damped — gains from those, not tuned), its integral the
+  drift in ppm (clamped at ±2000 with the step: no wind-up), a new target approached at 200 ppm (no kick), a run
+  started from a known drift locked at once. (F1)–(F6). Guarded by `FillController_holds_two_crystals_together`
+  (48 000 v 48 003 Hz and ±1000 ppm, unlike blocks, five simulated minutes: no underrun, the fill within 2 frames,
+  the drift to 0.5 ppm, no waver), `…_rides_out_a_late_scheduler` (±1 ms in the fill's time: the drift to 3 ppm, a
+  waver under 2 ppm RMS), `…_travels_to_a_new_target`, `…_starts_locked_with_a_known_drift`, `…_clamps_and_recovers`,
+  `…_never_winds_up`; integration `follower_holds_the_clock` (a consumer 1000 ppm fast: 1 kHz at 1e-6 of where the
+  producer's second puts it, at its level, 91 dB clean in 16 bits).
 
 - `REQ-meter-1` — **Loudness by ITU-R BS.1770-4** (source: Solaris R-METER-1, user request 2026-10-16): K-weighting
   (the standard's pre-filter and RLB high-pass, designed at any rate so that 48 kHz is its table to 1e-9), momentary

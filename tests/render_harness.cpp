@@ -902,6 +902,48 @@ static double meterSignal(int ch, double t)
     return t < 4.0 ? x : 0.05 * x;
 }
 
+// REQ-resample-2/3: a follower — a producer at 48 000 Hz, a consumer `ppm` fast, for two simulated minutes: 1 kHz at
+// −6 dBFS through a buffer held at 1024 frames by a FillController steering an AdaptiveResampler; the consumer's last
+// two seconds, its own frames
+static std::vector<double> renderFollower(double ppm)
+{
+    const double fc = 48000.0, ff = 48000.0 * (1.0 + ppm * 1e-6);
+    const int bc = 256, bf = 256;
+    arstro::FillParams fp;
+    fp.target = 1024.0;
+    fp.rate = 48000.0;
+    arstro::FillController ctl(fp);
+    arstro::AdaptiveResampler rs(1, bf, 1.01);
+    std::vector<float> ring(1 << 16), in, out((size_t)bf);
+    long long pushed = 0, popped = 0;
+    auto src = [&](long long m) { return (float)(0.5 * std::sin(2.0 * M_PI * 1000.0 * (double)m / fc)); };
+    for (; pushed < 1024; ++pushed) ring[(size_t)(pushed & 0xFFFF)] = src(pushed);
+    ctl.reset(1024.0 + rs.buffered());
+    double tPush = 0.0, tPull = 0.0, lastPush = 0.0;
+    const double seconds = 120.0;
+    std::vector<double> y;
+    while (tPull < seconds)
+    {
+        if (tPush <= tPull)
+        {
+            for (int i = 0; i < bc; ++i, ++pushed) ring[(size_t)(pushed & 0xFFFF)] = src(pushed);
+            lastPush = tPush;
+            tPush += bc / fc;
+            continue;
+        }
+        const double since = std::min((double)bc, (tPull - lastPush) * 48000.0);
+        const double step = 1.0 + ctl.update((double)(pushed - popped) + since - bc + rs.buffered(), bf);
+        const int need = rs.inputNeeded(bf, step);
+        in.assign((size_t)need, 0.0f);
+        for (int i = 0; i < need && popped < pushed; ++i, ++popped) in[(size_t)i] = ring[(size_t)(popped & 0xFFFF)];
+        rs.process(in.data(), need, out.data(), bf, step);
+        if (tPull >= seconds - 2.0)
+            for (int j = 0; j < bf; ++j) y.push_back(out[(size_t)j]);
+        tPull += bf / ff;
+    }
+    return y;
+}
+
 static std::vector<double> renderMeters()
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -989,6 +1031,7 @@ int main(int argc, char **argv)
     else if (scenario == "tempo") samples = renderTempo(arg);
     else if (scenario == "pitch") samples = renderStretched(1.0, arg);
     else if (scenario == "meters") samples = renderMeters();
+    else if (scenario == "follower") samples = renderFollower(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

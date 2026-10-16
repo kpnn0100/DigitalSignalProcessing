@@ -243,6 +243,24 @@ package spectral {
 }
 TimeStretch ..> FFT
 TimeStretch ..> Onsets : (P6) where attacks are
+package resample {
+  class SincKernel {
+    +SincKernel(cutoff, zeroCrossings, beta, perSample)
+    +operator()(t) : (R2) Kaiser-windowed sinc, (R3) tabulated
+  }
+  class AdaptiveResampler {
+    +inputNeeded(outFrames, step) : (A3) exactly
+    +process(in*, inFrames, out*, outFrames, step) : (A1)-(A2), a step free to change each block
+    +buffered() : (A5) / lookahead() : (A4) R
+  }
+  class FillController {
+    +update(fill, frames) : (F1)-(F3) the step's deviation
+    +driftPpm() : (F5) / setTarget(t) : (F6) ramped / reset(fill, driftPpm)
+  }
+}
+TimeStretch ..> SincKernel : resample's kernel (REQ-resample-1)
+AdaptiveResampler *-- SincKernel
+FillController ..> AdaptiveResampler : steers its step (a host wires them)
 package meter {
   class LoudnessMeter {
     +process(left*, right*, frames)
