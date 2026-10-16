@@ -8,8 +8,10 @@
 #include "MiniTest.h"
 #include "../src/synth_dsp.h"
 #include "../src/meter/Meters.h"
+#include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 using namespace arstro;
@@ -194,4 +196,64 @@ TEST(Meters_do_not_allocate_after_construction)
     (void)lm.integrated();
     gCounting = false;
     CHECK(gAllocs.load() == 0);
+}
+
+namespace
+{
+    /** A groove: a kick on `kicks`, a snare on `snares`, a closed hat every eighth — `beats` long at `bpm`, cut to `seconds`. */
+    std::vector<float> groove(double bpm, double seconds, const std::vector<int> &kicks, const std::vector<int> &snares, int barBeats = 4)
+    {
+        const double fs = 48000.0, spb = 60.0 / bpm * fs;
+        const long long n = (long long)std::llround(seconds * fs);
+        std::vector<float> x((size_t)n, 0.0f);
+        unsigned seed = 11;
+        auto noise = [&] { seed = seed * 1664525u + 1013904223u; return (float)(seed >> 8) / 16777216.0f - 0.5f; };
+        auto hit = [&](double at, int kind) {
+            const long long a = (long long)std::llround(at);
+            for (long long i = 0; i < 12000 && a + i < n; ++i)
+            {
+                double v = 0;
+                if (kind == 0) v = 0.8 * std::exp(-i / 3000.0) * std::sin(2 * M_PI * (60.0 + 80.0 * std::exp(-i / 400.0)) * i / fs);
+                else if (kind == 1) v = 0.5 * std::exp(-i / 1500.0) * noise();
+                else if (i < 2400) v = 0.15 * std::exp(-i / 300.0) * noise();
+                x[(size_t)(a + i)] += (float)v;
+            }
+        };
+        for (int beat = 0; beat * spb < n; ++beat)
+        {
+            const int inBar = beat % barBeats;
+            if (std::find(kicks.begin(), kicks.end(), inBar) != kicks.end()) hit(beat * spb, 0);
+            if (std::find(snares.begin(), snares.end(), inBar) != snares.end()) hit(beat * spb, 1);
+            hit(beat * spb, 2);
+            hit((beat + 0.5) * spb, 2);
+        }
+        return x;
+    }
+}
+
+TEST(Tempo_is_found)
+{
+    // REQ-tempo-1, (B1)–(B5): a four-on-the-floor groove at 133 bpm (between two lags) cut to no whole beat — within
+    // 0.3 bpm; a loop of
+    // four bars at 97 bpm (cut to the sample) — 97 to its length's sample (snapped to its whole beats); a backbeat at
+    // 90 — 90, not 45 or 180; a steady tone — none
+    const double fs = 48000.0;
+    const auto a = groove(133.0, 7.3, {0, 1, 2, 3}, {1, 3});
+    const double ta = estimateTempo(a.data(), (long long)a.size(), fs);
+    const auto b = groove(97.0, 16 * 60.0 / 97.0, {0, 2}, {1, 3});
+    const double tb = estimateTempo(b.data(), (long long)b.size(), fs);
+    const auto c = groove(90.0, 8.0, {0, 2}, {1, 3});
+    TempoParams noSnap;
+    noSnap.snap = 0.0;
+    const double tc = estimateTempo(c.data(), (long long)c.size(), fs, noSnap);
+    std::vector<float> tone(4 * 48000);
+    for (size_t i = 0; i < tone.size(); ++i) tone[i] = (float)(0.3 * std::sin(2 * M_PI * 220.0 * (double)i / fs));
+    const double td = estimateTempo(tone.data(), (long long)tone.size(), fs);
+    const double tbFree = estimateTempo(b.data(), (long long)b.size(), fs, noSnap);
+    std::printf("    the 97 loop unsnapped: %.3f\n", tbFree);
+    std::printf("    133 → %.3f, 97 (4 bars) → %.6f, 90 → %.3f, a tone → %.1f\n", ta, tb, tc, td);
+    CHECK(std::fabs(ta - 133.0) < 0.3);
+    CHECK(std::fabs(tb - 97.0) < 1e-4);
+    CHECK(std::fabs(tc - 90.0) < 1.0);
+    CHECK(td == 0.0);
 }

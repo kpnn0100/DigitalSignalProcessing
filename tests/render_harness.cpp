@@ -861,6 +861,36 @@ static std::vector<double> renderOnsets()
     return out;
 }
 
+// REQ-tempo-1: the Drum Machine through the registry playing `bpm` — kicks on 1 and 3, snares on 2 and 4, closed hats
+// on every eighth — for 6.1 s (no whole beat); its tempo printed (bpm=…) for run_integration.py, the groove written
+static std::vector<double> renderTempo(double bpm)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("drums");
+    const long long n = (long long)(6.1 * kSampleRate);
+    const double half = 30.0 / bpm * kSampleRate; // an eighth, samples
+    std::vector<Sample> L((size_t)n, 0.0), R((size_t)n, 0.0);
+    long long pos = 0;
+    for (int k = 0; pos < n; ++k)
+    {
+        const long long until = std::min<long long>(n, (long long)std::llround((k + 1) * half));
+        if (k % 2 == 0) d->noteOn((k / 2) % 2 == 0 ? 36 : 38, 120); // a beat: kick on 1 and 3, snare on 2 and 4
+        d->noteOn(42, 90);
+        while (pos < until)
+        {
+            const int m = (int)std::min<long long>(128, until - pos);
+            Sample *io[2] = {L.data() + pos, R.data() + pos};
+            d->process(io, 2, m);
+            pos += m;
+        }
+    }
+    std::vector<float> mono(L.size());
+    for (size_t i = 0; i < L.size(); ++i) mono[i] = (float)(0.5 * (L[i] + R[i]));
+    std::printf("bpm=%.6f\n", estimateTempo(mono.data(), (long long)mono.size(), kSampleRate));
+    return std::vector<double>(mono.begin(), mono.end());
+}
+
 // REQ-meter-1…3: a stereo two-tone, loud then 26 dB down, with a burst whose peak lies between samples — the
 // meters' readings printed for run_integration.py, which computes BS.1770-4 and the true peak itself
 static double meterSignal(int ch, double t)
@@ -956,6 +986,7 @@ int main(int argc, char **argv)
     else if (scenario == "sampler_slices") samples = renderSamplerSlices(arg);
     else if (scenario == "onsets") samples = renderOnsets();
     else if (scenario == "stretch") samples = renderStretched(arg, 0.0);
+    else if (scenario == "tempo") samples = renderTempo(arg);
     else if (scenario == "pitch") samples = renderStretched(1.0, arg);
     else if (scenario == "meters") samples = renderMeters();
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }

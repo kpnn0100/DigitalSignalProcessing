@@ -521,6 +521,12 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   the sample. (O1)–(O5) in `src/meter/README.md`. Guarded by `Onsets_are_found_where_sounds_begin` and
   `onsets_find_the_drums`.
 
+- `REQ-tempo-1` — **A sound's tempo** (source: Solaris R-WARP-1 "its own BPM detected on import", 2026-10-16):
+  `estimateTempo(mono, frames, rate, {minBpm, maxBpm, snap})` — a log-compressed, smoothed energy flux, its
+  autocorrelation weighted toward 120 bpm, the peak between frames by a parabola; a loop within 0.5 % of a whole
+  number of beats takes the tempo that makes it so; 0 when nothing rises. (B1)–(B5) in `src/meter/README.md`. Guarded
+  by `Tempo_is_found` (133 → 132.95, 90 not 45 or 180, a 4-bar loop at 97 to its sample, a tone none) and
+  `tempo_of_a_drum_groove` (the Drum Machine at 124 and 87 bpm, within 0.5).
 - `REQ-fft-1` — **An FFT** (source: Solaris R-WARP-1, the time-stretcher's need, 2026-10-16): `FFT` — the DFT of 2^m
   points in place, forward and inverse, radix 2, twiddles computed once each; a size not a power of two is refused.
   (F1)–(F3) in `src/spectral/README.md`. Guarded by `FFT_is_the_DFT` (64 points against the sum to 1e-9, back to 1e-12).

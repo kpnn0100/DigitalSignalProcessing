@@ -250,7 +250,9 @@ package meter {
   }
   class Onsets <<function>> {
     +detectOnsets(mono*, frames, rate, OnsetParams) : samples
+    +estimateTempo(mono*, frames, rate, TempoParams) : bpm, 0 none
     (O1)-(O5): energy flux over a local median, refined to the sample
+    (B1)-(B5): a smoothed log flux, autocorrelated, weighted to 120 bpm
   }
   class TruePeakInterpolator {
     +push(history, x) : the most of its points

@@ -1108,6 +1108,21 @@ def check_pitch_moves_the_length_stays(binpath):
     return f"{len(y)} frames, {freq:.2f} Hz"
 
 
+def check_tempo_of_a_drum_groove(binpath):
+    """(B1)-(B5): the Drum Machine playing a backbeat at 124 and at 87 bpm, 6.1 s (no whole beat) - each within 0.5 bpm."""
+    said = []
+    for bpm in (124.0, 87.0):
+        out = os.path.join(tempfile.gettempdir(), f"arstro_tempo_{bpm}.wav")
+        r = subprocess.run([binpath, "tempo", out, str(bpm)], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise Failure("render 'tempo' failed: " + r.stderr)
+        got = float(r.stdout.split("bpm=")[1].split()[0])
+        if abs(got - bpm) > 0.5:
+            raise Failure(f"a {bpm} bpm groove read {got:.3f}")
+        said.append(f"{bpm:g}->{got:.2f}")
+    return " ".join(said)
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -1148,6 +1163,7 @@ CHECKS = [
     ("onsets_find_the_drums", check_onsets_find_the_drums),
     ("stretch_keeps_the_pitch", check_stretch_keeps_the_pitch),
     ("pitch_moves_the_length_stays", check_pitch_moves_the_length_stays),
+    ("tempo_of_a_drum_groove", check_tempo_of_a_drum_groove),
 ]
 
 

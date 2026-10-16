@@ -90,6 +90,19 @@ audio thread — for slicing a recording at its transients.
 (O4) An onset    d[m] > T[m],  L[m] ≥ floor,  d[m] a peak (d[m−1] ≤ d[m] > d[m+1]),  ≥ minGap after the last
 (O5) To the sample: in [(m−1)H, mH + N), the first i with |x[i]| > b + ¼·(max|x| − b),
      b = max|x| over the hop before the window                              ; what sounded already does not count
+
+The tempo (estimateTempo, REQ-tempo-1):
+(B1) Strength   S[m] = ln(1 + 1000·(1/N)·Σ_{i=mH}^{mH+N−1} x[i]²),  N = 512, H = 256  (log-compressed: a hit out of
+     silence and one over a tail rise alike);  r[m] = max(0, S[m] − S[m−1]);  none rises by 0.1: no beat (0)
+     d = r smoothed by [1 2 3 2 1]/9 (a period between two frames keeps its height), its mean taken out
+(B2) Autocorrelation  A(τ) = (1/(M − τ)) Σ_m d[m]·d[m+τ],  τ from round-down(fr·60/maxBpm) to round-up(fr·60/minBpm),
+     fr = rate/H frames a second
+(B3) A peak of A (no smaller than either neighbour, > 0), weighted toward 120 bpm (Ellis 2007):
+     W(τ) = exp(−½·(log2(τ/τ0)/1.4)²),  τ0 = fr/2 (half a second);  the beat is the peak of W·A
+(B4) Between frames: the parabola through A(τ−1), A(τ), A(τ+1),  τ* = τ + ½(A(τ−1) − A(τ+1))/(A(τ−1) − 2A(τ) + A(τ+1))
+     bpm = 60·fr/τ*
+(B5) A loop: n = round(seconds·bpm/60) ≥ 2 beats; when n·60/seconds is within `snap` (0.5 %) of bpm, it is the tempo —
+     a loop cut to whole beats reads its tempo to its length's sample
 ```
 
 | parameter | default | symbol |
@@ -97,8 +110,14 @@ audio thread — for slicing a recording at its transients.
 | `sensitivity` | 0.5 | δ (O3) |
 | `minGapMs` | 50 ms | (O4) |
 | `floorDb` | −60 dB | floor (O4) |
+| `TempoParams::minBpm` · `maxBpm` | 60 · 200 | the lags of (B2) |
+| `TempoParams::snap` | 0.005 | (B5); 0: never |
 
-The constants N, H, the ±8-frame median and the quarter of (O5) are empirical — a hop of 5 ms at 48 kHz finds a
+(B1)'s 1000 (−30 dB where the log bends), its N and the [1 2 3 2 1] kernel are empirical: the onsets' dB flux over
+1024-sample frames spreads a hit's rise over four frames and lets a rise out of digital silence (100 dB) outweigh
+every other — a test groove read at half its tempo until the energy was compressed and the flux smoothed. (B3) is
+Ellis's tempo prior (1.4 octaves); (B5)'s 0.5 % is several times the estimate's error and far below a beat in 16
+(6 %) — at 2 % a 7.3 s groove snapped to 16 beats, 1.1 % wrong. The constants N, H, the ±8-frame median and the quarter of (O5) are empirical — a hop of 5 ms at 48 kHz finds a
 drum's hit, the median keeps a loud passage from reading as one long onset, and a quarter of the peak lands on the
 attack's first steep rise rather than on its noise. Why not composed: the library had no analysis of a whole sound;
 the energy is a plain mean square, no filter needed. (O5) measured from what sounded before: a quarter of the bare peak
