@@ -944,6 +944,36 @@ static std::vector<double> renderFollower(double ppm)
     return y;
 }
 
+// REQ-wavetable-3: the registry's "wavetable" — A4 for a second; arg 0: its defaults (Basic toward a saw, three
+// unison voices), arg 1: one voice on Basic at position 0 (a sine), the filter wide open
+static std::vector<double> renderWavetable(double sine)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("wavetable");
+    if (sine > 0.5)
+    {
+        d->setParam("osc1.position", 0.0);
+        d->setParam("osc1.voices", 1);
+        d->setParam("osc1.width", 0.0);
+        d->setParam("filter.cutoff", 20000.0);
+        d->setParam("filter.env", 0.0);
+        d->setParam("filter.keytrack", 0.0);
+    }
+    d->noteOn(69, 100);
+    std::vector<double> y;
+    std::vector<Sample> L(128), R(128);
+    while ((int)y.size() < kSampleRate)
+    {
+        std::fill(L.begin(), L.end(), 0.0);
+        std::fill(R.begin(), R.end(), 0.0);
+        Sample *io[2] = {L.data(), R.data()};
+        d->process(io, 2, 128);
+        y.insert(y.end(), L.begin(), L.end());
+    }
+    return y;
+}
+
 static std::vector<double> renderMeters()
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -1032,6 +1062,7 @@ int main(int argc, char **argv)
     else if (scenario == "pitch") samples = renderStretched(1.0, arg);
     else if (scenario == "meters") samples = renderMeters();
     else if (scenario == "follower") samples = renderFollower(arg);
+    else if (scenario == "wavetable") samples = renderWavetable(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

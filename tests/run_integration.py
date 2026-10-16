@@ -1278,6 +1278,35 @@ def check_follower_holds_the_clock(binpath):
 CHECKS.append(("follower_holds_the_clock", check_follower_holds_the_clock))
 
 
+def goertzel(y, f):
+    w = 2 * math.pi * f / SR
+    re = sum(v * math.cos(w * k) for k, v in enumerate(y))
+    im = sum(v * math.sin(w * k) for k, v in enumerate(y))
+    return 2 * math.hypot(re, im) / len(y)
+
+
+def check_wavetable_plays_its_note(binpath):
+    """REQ-wavetable-3: the registry's wavetable plays A4 at 440 Hz (0.2 %), its defaults rich (the 3rd harmonic over
+    −20 dB); set to one voice at position 0, a sine (the 2nd and 3rd under −40 dB)."""
+    rich = render(binpath, "wavetable", 0)[SR // 4: SR // 4 + 24000]  # 0.5 s: 220 whole cycles
+    pure = render(binpath, "wavetable", 1)[SR // 4: SR // 4 + 24000]
+    freq = rising_zero_crossings(pure) / (len(pure) / SR)
+    if abs(freq / 440.0 - 1.0) > 0.002:
+        raise Failure(f"A4 reads {freq:.2f} Hz")
+    f1r, f3r = goertzel(rich, 440.0), goertzel(rich, 1320.0)
+    f1, f2, f3 = goertzel(pure, 440.0), goertzel(pure, 880.0), goertzel(pure, 1320.0)
+    r3 = 20 * math.log10(f3r / f1r)
+    p2, p3 = 20 * math.log10(max(f2, 1e-12) / f1), 20 * math.log10(max(f3, 1e-12) / f1)
+    if r3 < -20.0:
+        raise Failure(f"its defaults are thin: the 3rd harmonic at {r3:.1f} dB")
+    if p2 > -40.0 or p3 > -40.0:
+        raise Failure(f"position 0 is no sine: {p2:.1f} / {p3:.1f} dB")
+    return f"{freq:.2f} Hz; defaults' 3rd {r3:.1f} dB; the sine's 2nd {p2:.1f}, 3rd {p3:.1f} dB"
+
+
+CHECKS.append(("wavetable_plays_its_note", check_wavetable_plays_its_note))
+
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

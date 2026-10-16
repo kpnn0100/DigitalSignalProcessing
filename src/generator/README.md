@@ -136,3 +136,57 @@ every channel with a `pow` each; a phasor takes its increment from the caller.
 (P1)  φ[n+1] = φ[n] + inc − ⌊φ[n] + inc⌋,   inc = f/fs          ; wrapped to [0,1) for any inc, negative too
       sine   = sin(2π·φ)      square = (φ < ½) ? +1 : −1        ; NOT band-limited (see instrument/README.md)
 ```
+
+## Wavetable (REQ-wavetable-1, REQ-wavetable-2) — `generator/Wavetable.h`
+
+A sound made of FRAMES — single cycles, 2048 samples each — read at any pitch with nothing above Nyquist, and moved
+through by a POSITION. Played as one more waveform of `Oscillator` (`Table`), so unison, detune, stereo width and
+every BasicSynth voice feature come with it (Solaris R-INST-7).
+
+**Why not composed (rule 1):** nothing in the library holds a cycle at several bandwidths or reads one between its
+samples. What it IS composed of: the library's `FFT` (REQ-fft-1) band-limits every frame; the oscillator's phase
+accumulator, unison and spread carry it; BasicSynth's voices, envelopes, filter and expression play it.
+
+### Math
+
+```
+(W1) Levels — Wavetable::Wavetable, from frames x_f[n], n < 2048
+     X_f = FFT(x_f);  level l keeps harmonics 1 … H_l,  H_l = 256 / 2^l,  l = 0 … 8  (H_8 = 1: a sine)
+     its table: N_l = max(256, 16·H_l) points  =  IFFT_{N_l}(X_f[1 … H_l], mirrored)   — the DC dropped
+     (16 points a harmonic at worst: at 8 a hard-synced saw's reading images reached −44 dB at 1.8 kHz — measured;
+     at 16, under −76 dB everywhere; 8 960 points a frame, 1.1 MB a 32-frame table)
+     each frame scaled so its level-0 table peaks at 1 (the same gain on every level: a frame's levels agree)
+(W2) Which levels — Wavetable::read, dt = the phase step of the oscillator's highest voice (f/fs)
+     λ = log2(2·H_0·dt)       (λ = l exactly when level l's top harmonic reaches Nyquist)
+     λ ≤ −1: level 0 alone;  otherwise, k = ⌈λ⌉ (so λ ∈ (k−1, k]):  y = (k − λ)·L_k + (λ − k + 1)·L_{k+1}
+     both levels mixed are below Nyquist over the whole span (L_k is, for λ ≤ k) — a crossfade that never aliases;
+     λ ≥ 8: level 8 (a sine)
+(W3) Between samples — Catmull-Rom (4-point Hermite) on the circular table at x = φ·N_l, i = ⌊x⌋, t = x − i:
+     y = y_i + ½t(y_{i+1} − y_{i−1}) + t²(y_{i−1} − 2.5y_i + 2y_{i+1} − ½y_{i+2}) + ½t³(3(y_i − y_{i+1}) + y_{i+2} − y_{i−1})
+     16 points a harmonic at worst: its images lie far down (measured: Wavetable_reads_with_nothing_above_nyquist)
+(W4) Position — p ∈ [0, 1]:  q = p·(F − 1),  f = ⌊q⌋,  w = q − f;   y = (1 − w)·y_f + w·y_{f+1}   (F frames)
+(W5) Built-ins — Wavetable::builtIn, 32 frames each, from formulas (deterministic, made once, shared, immutable):
+     Basic     sine → triangle → saw → square, harmonic amplitudes interpolated across three spans
+     Pulse     a pulse from 50 % to 4 % wide
+     Harmonics harmonics 1 … j+1 at 1/h (frame j): a saw growing from a sine
+     Formant   1/h under two formant peaks sweeping a → e → i → o → u (a reference fundamental of 130 Hz)
+     Sync      a saw hard-synced at 1 … 8 times the cycle
+     Fold      sin(g·sin 2πx), g from 1 to 12
+     each formula sampled at 2048 points a cycle, then band-limited by (W1) like any frame
+(W6) From a sound — Wavetable::fromSample: a mono sound cut into ⌊frames / 2048⌋ cycles (at most 256); shorter than
+     one cycle, it is stretched to one (linear)
+(W7) In the oscillator — Oscillator::setPosition(p, ramp): the position moves to p over `ramp` samples, a straight
+     line per channel — a moved position never steps (a zipper)
+```
+
+| parameter | symbol | unit / range | used in |
+|---|---|---|---|
+| frame size | — | 2048 points | (W1) |
+| `kMaxHarmonics` | H_0 | 256 | (W1), (W2) |
+| `kLevels` | — | 9 | (W1) |
+| `read` `phase`, `position`, `dt` | φ, p, dt | 0…1, 0…1, f/fs | (W2)–(W4) |
+| `Oscillator::setPosition` `ramp` | — | samples | (W7) |
+
+**Limits, said:** 256 harmonics at most — below about 94 Hz a table's top lies under Nyquist (a 55 Hz note reaches
+14 kHz); between octaves the crossfade keeps the content between half and all of what Nyquist allows. A position
+moved by a BasicSynth envelope is set every 32 samples (its control grid) and ramped between.

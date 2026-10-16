@@ -130,7 +130,8 @@ package instrument {
     +pitchBend(-1..1) / modWheel(0..1) : ignored by default
   }
   class BasicSynth {
-    +setParams(Params)  -- mode poly|mono|legato, glide, bendRange, vibrato
+    +setParams(Params)  -- mode poly|mono|legato, glide, bendRange, vibrato; an Osc's table, position, posEnv
+    +setWavetable(mono, frames)  -- the "sample" table (REQ-wavetable-3)
     +oscFrequency(k, pitch) / cutoffFor(note, env) / voicePitch(v)
     -(Y7) pitch on an absolute 32-sample grid
     -16 voices: 2 Oscillator, SVF, 2 ADSR, Noise
@@ -160,9 +161,17 @@ package generator {
   }
   enum Waveform
   class Oscillator {
-    +setWaveform(Waveform)
+    +setWaveform(Waveform)  -- Table reads a Wavetable
+    +setTable(Wavetable*) / setPosition(p, ramp)  -- (W7)
+  }
+  class Wavetable {
+    +Wavetable(cycles)  -- (W1) nine levels by the FFT
+    +read(phase, position, dt)  -- (W2)-(W4) no alias
+    +builtIn(i) / fromSample(mono, frames)  -- (W5), (W6)
   }
   Oscillator ..> Waveform
+  Oscillator ..> Wavetable : Table
+  Wavetable ..> FFT : (W1)
 }
 package envelope {
   class ADSREnvelope

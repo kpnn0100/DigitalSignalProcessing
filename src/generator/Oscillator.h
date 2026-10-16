@@ -14,6 +14,7 @@
  */
 #pragma once
 #include "../base/SignalGenerator.h"
+#include "Wavetable.h"
 #include <vector>
 #include <cstdint>
 
@@ -22,7 +23,7 @@ namespace arstro
     class Oscillator : public SignalGenerator
     {
     public:
-        enum Waveform { Sine = 0, Saw = 1, Square = 2, Triangle = 3 };
+        enum Waveform { Sine = 0, Saw = 1, Square = 2, Triangle = 3, Table = 4 }; // Table: a Wavetable (REQ-wavetable-1)
         enum PropertyIndex
         {
             voiceCountID, // 1..5 unison voices
@@ -38,6 +39,11 @@ namespace arstro
         void setDetuneCents(Sample cents);
         void setStereoSpreadCents(Sample cents);
         void setWaveform(Waveform w) { mWaveform = w; }
+        /** REQ-wavetable-1: the table `Table` reads (not owned — it outlives the oscillator; null: silence). */
+        void setTable(const Wavetable *t) { mTable = t; }
+        /** (W7) the table's position, 0…1, reached over `ramp` samples on every channel (0: at once). */
+        void setPosition(Sample position, int ramp);
+        Sample position(int channel) const;
 
         void setFrequency(Sample hz) override;
         void update() override;
@@ -65,6 +71,10 @@ namespace arstro
 
         static bool sUseSimd;
         Waveform mWaveform = Saw;
+        const Wavetable *mTable = nullptr;
+        std::vector<Sample> mPos, mPosStep;  // [channel] the table's position now, and its step a sample (W7)
+        std::vector<int> mPosLeft;           // [channel] samples of the ramp to go
+        std::vector<Sample> mMaxInc;         // [channel] the highest voice's step: which levels a Table reads (W2)
         int mVoiceCount = 1;              // cached (avoids per-sample getProperty)
         Sample mNorm = 1;                 // cached 1/sqrt(voiceCount)
         std::vector<Sample> mVoiceCents;  // [kMaxVoices] symmetric detune per voice

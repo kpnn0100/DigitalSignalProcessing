@@ -22,6 +22,7 @@ namespace arstro
         Sample pitch = 0.0, from = 0.0, to = 0.0;
         long long left = 0, total = 0;
         Sample applied = -1000.0;          // the pitch the oscillators were last set to (with bend and vibrato)
+        Sample fenvLast = 0.0;             // REQ-wavetable-3: the filter envelope's last value (channel 0)
     };
 
     namespace
@@ -44,6 +45,7 @@ namespace arstro
 
     BasicSynth::BasicSynth()
     {
+        Wavetable::builtIn(0); // REQ-wavetable-2: the built-ins made HERE, never on a host's audio thread
         mScratch.assign(4096, 0.0); // a host's blocks up to 4096 frames never allocate in render()
         mRamp.assign(4096, 0.0);
         for (int i = 0; i < kVoices; ++i)
@@ -67,12 +69,46 @@ namespace arstro
 
     BasicSynth::~BasicSynth() = default;
 
-    void BasicSynth::applyTo(Voice &v)
+    const Wavetable *BasicSynth::tableFor(int index) const
+    {
+        if (index < 0) return nullptr;
+        if (index >= kSampleTable) return mUserTable ? mUserTable.get() : &Wavetable::builtIn(0); // none given: Basic
+        return &Wavetable::builtIn(index);
+    }
+
+    Sample BasicSynth::positionOf(const Osc &o, Sample env) const
+    {
+        return std::clamp(o.position + o.posEnv * env, (Sample)0.0, (Sample)1.0); // REQ-wavetable-3
+    }
+
+    void BasicSynth::startTables(Voice &v)
+    {
+        // REQ-wavetable-3: a new attack's table starts where its envelope does (at 0), not where the last note left it
+        v.fenvLast = 0.0;
+        const Osc *o[2] = {&mParams.osc1, &mParams.osc2};
+        for (int k = 0; k < 2; ++k)
+            if (o[k]->table >= 0) v.osc[k].setPosition(positionOf(*o[k], 0.0), 0);
+    }
+
+    void BasicSynth::setWavetable(const float *mono, long long frames)
+    {
+        mUserTable = Wavetable::fromSample(mono, frames);
+        for (auto &v : mVoices) applyTo(*v);
+    }
+
+    void BasicSynth::applyTo(Voice &v, bool sounding)
     {
         const Osc *o[2] = {&mParams.osc1, &mParams.osc2};
         for (int k = 0; k < 2; ++k)
         {
-            v.osc[k].setWaveform(toOsc(o[k]->wave));
+            if (const Wavetable *t = tableFor(o[k]->table))
+            {
+                // REQ-wavetable-3: a table in the oscillator's place; a sounding note's position moves there, a new one starts there
+                v.osc[k].setWaveform(Oscillator::Table);
+                v.osc[k].setTable(t);
+                v.osc[k].setPosition(positionOf(*o[k], v.fenvLast), sounding ? kControl : 0);
+            }
+            else v.osc[k].setWaveform(toOsc(o[k]->wave));
             v.osc[k].setVoiceCount(o[k]->voices);
             v.osc[k].setDetuneCents(o[k]->detune);
             v.osc[k].setStereoSpreadCents(o[k]->width); // REQ-synth2-6
@@ -91,7 +127,7 @@ namespace arstro
         mParams.osc1.voices = std::clamp(mParams.osc1.voices, 1, Oscillator::kMaxVoices);
         mParams.osc2.voices = std::clamp(mParams.osc2.voices, 1, Oscillator::kMaxVoices);
         for (auto &v : mVoices)
-            applyTo(*v);
+            applyTo(*v, v->active);
     }
 
     Sample BasicSynth::oscFrequency(int which, Sample pitch) const
@@ -127,6 +163,12 @@ namespace arstro
         return mVoices[(size_t)i]->applied;
     }
 
+    Sample BasicSynth::voicePosition(int i, int osc) const
+    {
+        if (i < 0 || i >= (int)mVoices.size()) return -1.0;
+        return mVoices[(size_t)i]->osc[std::clamp(osc, 0, 1)].position(0);
+    }
+
     void BasicSynth::pitchBend(Sample amount) { mBend = std::clamp(amount, (Sample)-1.0, (Sample)1.0); }
     void BasicSynth::modWheel(Sample amount) { mMod = std::clamp(amount, (Sample)0.0, (Sample)1.0); }
 
@@ -151,6 +193,7 @@ namespace arstro
         const Sample vel = std::clamp(velocity, 1, 127) / 127.0;
         v.gain = 1.0 - mParams.velocity + mParams.velocity * vel;
         retune(v);
+        startTables(v);
         for (auto &o : v.osc) o.noteOn(1.0);
         v.amp.noteOn(1.0);
         v.fenv.noteOn(1.0);
@@ -219,6 +262,7 @@ namespace arstro
         v.left = v.total = 0;
         v.applied = -1000.0; // a new note: its pitch set whatever was there
         retune(v);
+        startTables(v);
         for (int k = 0; k < 2; ++k) v.osc[k].noteOn(1.0);
         v.amp.noteOn(1.0);
         v.fenv.noteOn(1.0);
@@ -293,7 +337,14 @@ namespace arstro
             const int n = std::min(frames - done, kControl - into);
             if (into == 0)
                 for (auto &vp : mVoices)
-                    if (vp->active) retune(*vp);
+                    if (vp->active)
+                    {
+                        retune(*vp);
+                        // REQ-wavetable-3: a table's position follows the filter envelope, ramped across the grid's step
+                        const Osc *o[2] = {&mParams.osc1, &mParams.osc2};
+                        for (int k = 0; k < 2; ++k)
+                            if (o[k]->table >= 0 && o[k]->posEnv != 0.0) vp->osc[k].setPosition(positionOf(*o[k], vp->fenvLast), kControl);
+                    }
             for (auto &vp : mVoices)
             {
                 Voice &v = *vp;
@@ -309,7 +360,9 @@ namespace arstro
                     for (int i = 0; i < n; ++i)
                     {
                         const Sample x = buf[i] + (nz > 0 ? nz * v.noise[c].next() : 0.0);
-                        const Sample y = v.filter.tick(x, c, cutoffFor(v.note, v.fenv.nextValue(c)));
+                        const Sample e = v.fenv.nextValue(c);
+                        if (c == 0) v.fenvLast = e;
+                        const Sample y = v.filter.tick(x, c, cutoffFor(v.note, e));
                         const Sample s = y * v.amp.nextValue(c) * v.gain * mRamp[(size_t)(done + i)];
                         if (dst) dst[i] += s;
                     }

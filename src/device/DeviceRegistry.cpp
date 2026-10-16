@@ -186,6 +186,111 @@ namespace arstro
             BasicSynth::Params mP;
         };
 
+        // ── the wavetable synth (REQ-wavetable-3): BasicSynth with a table in each oscillator's place ──
+
+        const std::vector<std::string> kTables = {"basic", "pulse", "harmonics", "formant", "sync", "fold", "sample"};
+
+        BasicSynth::Params wavetableDefaults()
+        {
+            BasicSynth::Params p;
+            p.osc1.table = 0;          // Basic, toward the saw
+            p.osc1.position = 0.66;
+            p.osc1.posEnv = 0.0;
+            p.osc1.voices = 3;
+            p.osc1.detune = 12.0;
+            p.osc1.width = 10.0;
+            p.osc2.table = 2;          // Harmonics, silent until raised
+            p.osc2.position = 0.3;
+            p.osc2.level = 0.0;
+            p.osc2.octave = -1;
+            p.osc2.fine = 0.0;
+            p.cutoff = 6000.0;
+            p.envAmount = 1.0;
+            return p;
+        }
+
+        void tableOscBindings(std::vector<Binding<BasicSynth::Params>> &b, const std::string &k,
+                              BasicSynth::Osc BasicSynth::Params::*o, const BasicSynth::Osc &d)
+        {
+            using P = BasicSynth::Params;
+            b.push_back({choice(k + ".table", "Table", kTables, d.table), [o](P &p, double v) { (p.*o).table = (int)v; }});
+            b.push_back({num(k + ".position", "Position", "", 0, 1, d.position), [o](P &p, double v) { (p.*o).position = v; }});
+            b.push_back({num(k + ".posenv", "Env > Position", "", -1, 1, d.posEnv), [o](P &p, double v) { (p.*o).posEnv = v; }});
+            b.push_back({num(k + ".octave", "Octave", "oct", -3, 3, d.octave, false, true), [o](P &p, double v) { (p.*o).octave = (int)v; }});
+            b.push_back({num(k + ".semi", "Semi", "st", -12, 12, d.semi, false, true), [o](P &p, double v) { (p.*o).semi = v; }});
+            b.push_back({num(k + ".fine", "Fine", "ct", -100, 100, d.fine), [o](P &p, double v) { (p.*o).fine = v; }});
+            b.push_back({num(k + ".level", "Level", "", 0, 1, d.level), [o](P &p, double v) { (p.*o).level = v; }});
+            b.push_back({num(k + ".voices", "Unison", "", 1, 5, d.voices, false, true), [o](P &p, double v) { (p.*o).voices = (int)v; }});
+            b.push_back({num(k + ".detune", "Detune", "ct", 0, 100, d.detune), [o](P &p, double v) { (p.*o).detune = v; }});
+            b.push_back({num(k + ".width", "Width", "ct", 0, 50, d.width), [o](P &p, double v) { (p.*o).width = v; }});
+        }
+
+        const std::vector<Binding<BasicSynth::Params>> &wavetableBindings()
+        {
+            using P = BasicSynth::Params;
+            static const std::vector<Binding<P>> b = [] {
+                const P d = wavetableDefaults();
+                std::vector<Binding<P>> v;
+                tableOscBindings(v, "osc1", &P::osc1, d.osc1);
+                tableOscBindings(v, "osc2", &P::osc2, d.osc2);
+                v.push_back({num("noise", "Noise", "", 0, 1, d.noise), [](P &p, double x) { p.noise = x; }});
+                v.push_back({choice("filter.mode", "Mode", kModes, (int)d.filterMode), [](P &p, double x) { p.filterMode = (StateVariableFilter::Mode)(int)x; }});
+                v.push_back({num("filter.cutoff", "Cutoff", "Hz", 20, 20000, d.cutoff, true), [](P &p, double x) { p.cutoff = x; }});
+                v.push_back({num("filter.res", "Resonance", "", 0, 1, d.resonance), [](P &p, double x) { p.resonance = x; }});
+                v.push_back({num("filter.env", "Env Amount", "oct", -8, 8, d.envAmount), [](P &p, double x) { p.envAmount = x; }});
+                v.push_back({num("filter.keytrack", "Key Track", "", 0, 1, d.keytrack), [](P &p, double x) { p.keytrack = x; }});
+                envBindings(v, "fenv", &P::filterEnv, d.filterEnv);
+                envBindings(v, "amp", &P::ampEnv, d.ampEnv);
+                v.push_back({num("volume", "Volume", "dB", -60, 6, d.volumeDb), [](P &p, double x) { p.volumeDb = x; }});
+                v.push_back({num("velocity", "Velocity", "", 0, 1, d.velocity), [](P &p, double x) { p.velocity = x; }});
+                v.push_back({choice("voice.mode", "Voice Mode", {"poly", "mono", "legato"}, (int)d.mode), [](P &p, double x) { p.mode = (BasicSynth::Mode)(int)x; }});
+                v.push_back({num("voice.glide", "Glide", "ms", 0, 2000, d.glide), [](P &p, double x) { p.glide = x; }});
+                v.push_back({num("voice.bend", "Bend Range", "st", 0, 24, d.bendRange, false, true), [](P &p, double x) { p.bendRange = x; }});
+                v.push_back({num("vibrato.depth", "Vibrato", "st", 0, 2, d.vibrato), [](P &p, double x) { p.vibrato = x; }});
+                v.push_back({num("vibrato.rate", "Vibrato Rate", "Hz", 0.1, 20, d.vibratoRate, true), [](P &p, double x) { p.vibratoRate = x; }});
+                return v;
+            }();
+            return b;
+        }
+
+        class WavetableDevice : public Device
+        {
+        public:
+            explicit WavetableDevice(const DeviceType &t) : Device(t), mP(wavetableDefaults()) { mSynth.setParams(mP); applyAll(); }
+            void process(Sample *const *io, int channels, int frames) override { mSynth.render(io, channels, frames); }
+            void noteOn(int n, int v) override { mSynth.noteOn(n, v); }
+            void noteOff(int n) override { mSynth.noteOff(n); }
+            void allNotesOff() override { mSynth.allNotesOff(); }
+            void pitchBend(double a) override { mSynth.pitchBend(a); }
+            void modWheel(double a) override { mSynth.modWheel(a); }
+            void reset() override { mSynth.reset(); }
+            int activeVoices() const override { return mSynth.activeVoices(); }
+            // REQ-wavetable-3: a sound given is cut into cycles — the "sample" table
+            void setSample(const float *x, long long frames, int channels, double) override
+            {
+                std::vector<float> mono((size_t)std::max(0LL, frames));
+                const int c = std::max(1, channels);
+                for (long long i = 0; i < frames; ++i)
+                {
+                    double sum = 0;
+                    for (int k = 0; k < c; ++k) sum += x[(size_t)(i * c + k)];
+                    mono[(size_t)i] = (float)(sum / c);
+                }
+                mSynth.setWavetable(mono.data(), frames);
+            }
+
+        protected:
+            void apply(int i, double v) override
+            {
+                wavetableBindings()[i].set(mP, v);
+                mSynth.setParams(mP);
+            }
+
+        private:
+            BasicSynth mSynth;
+            BasicSynth::Params mP;
+        };
+
         // ── the piano (REQ-inst-piano-1): the engine's voicing bank, its ranges and defaults ──
 
         const std::vector<Binding<Piano::Params>> &pianoBindings()
@@ -527,6 +632,18 @@ namespace arstro
                                  {"voice", "Voice"}, {"vibrato", "Vibrato"}}; // REQ-synth2-7, -8
             synth.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<SynthDevice>(self); };
             v.push_back(synth);
+
+            DeviceType wavetable; // REQ-wavetable-3
+            wavetable.name = "wavetable"; wavetable.label = "Wavetable"; wavetable.kind = DeviceKind::Instrument;
+            wavetable.summary = "Two wavetable oscillators — six built-in tables, or a sound of 2048-point cycles — moved through by a position "
+                                "and the filter envelope; band-limited at every pitch; a resonant filter, two envelopes; 16 voices.";
+            wavetable.params = specsOf(wavetableBindings());
+            wavetable.takesSample = true;
+            wavetable.groupLabels = {{"osc1", "Oscillator 1"}, {"osc2", "Oscillator 2"}, {"filter", "Filter"},
+                                     {"fenv", "Filter Envelope"}, {"amp", "Amplifier"}, {"", "Mix & Output"},
+                                     {"voice", "Voice"}, {"vibrato", "Vibrato"}};
+            wavetable.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<WavetableDevice>(self); };
+            v.push_back(wavetable);
 
             DeviceType piano;
             piano.name = "piano"; piano.label = "Piano"; piano.kind = DeviceKind::Instrument;

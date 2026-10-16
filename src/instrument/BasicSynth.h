@@ -49,7 +49,13 @@ namespace arstro
             int voices = 1;        // unison 1..5
             Sample detune = 15.0;  // unison spread, cents
             Sample width = 0.0;    // REQ-synth2-6: stereo width, cents (each channel detuned apart by it)
+            // REQ-wavetable-3 (appended): a table in place of `wave` — −1 none, 0…5 a built-in, kSampleTable the sound
+            // given by setWavetable; its position, and how far the filter envelope moves it (−1…+1)
+            int table = -1;
+            Sample position = 0.0;
+            Sample posEnv = 0.0;
         };
+        static constexpr int kSampleTable = 6;
         struct Env
         {
             Sample attack, decay, sustain, release; // ms, ms, 0..1, ms
@@ -83,6 +89,9 @@ namespace arstro
         ~BasicSynth() override;
 
         void setParams(const Params &p);
+        /** REQ-wavetable-3: a mono sound cut into cycles (Wavetable::fromSample) — the table `kSampleTable` plays.
+         *  Allocates: not on an audio thread. */
+        void setWavetable(const float *mono, long long frames);
         const Params &params() const { return mParams; }
 
         void noteOn(int note, int velocity) override;
@@ -92,6 +101,8 @@ namespace arstro
         void modWheel(Sample amount) override;     // 0 … 1: the vibrato's depth
         /** The pitch voice `v` plays now (semitones, the note plus glide, bend and vibrato) — for tests; −1 silent. */
         Sample voicePitch(int v) const;
+        /** REQ-wavetable-3: where oscillator `osc` of voice `v` reads its table now (channel 0) — for tests. */
+        Sample voicePosition(int v, int osc) const;
         void reset() override;
         void render(Sample *const *out, int channels, int frames) override;
         int activeVoices() const override;
@@ -103,7 +114,10 @@ namespace arstro
 
     private:
         struct Voice;
-        void applyTo(Voice &v);
+        void applyTo(Voice &v, bool sounding = false);
+        const Wavetable *tableFor(int index) const;
+        void startTables(Voice &v);
+        Sample positionOf(const Osc &o, Sample env) const;
         void retune(Voice &v);                      // (Y7) its pitch now — set on the oscillators when it moved
         Sample modulation() const;                  // (Y9) bend and vibrato, semitones, at mPos
         void monoOn(int note, int velocity);        // (Y10)
@@ -113,6 +127,7 @@ namespace arstro
         std::vector<Sample> mRamp;     // REQ-synth2-4 amended: the volume across a block, ramped
         Sample mVolGain = -1.0;        // the volume the last block ended at (−1: none yet — the next block starts there)
         Params mParams;
+        std::unique_ptr<Wavetable> mUserTable; // REQ-wavetable-3: the sound's table
         long mClock = 0; // note-on counter: the oldest voice is stolen first
         long long mPos = 0;              // samples rendered since `reset`: the control grid and the vibrato's phase
         Sample mBend = 0.0, mMod = 0.0;  // −1…+1, 0…1

@@ -3,7 +3,7 @@
 | class | what | requirement |
 |---|---|---|
 | `Instrument` | the interface: notes in, samples **added** into the host's buffers out | REQ-inst-1 |
-| `BasicSynth` | two-oscillator subtractive polysynth, 16 voices | REQ-synth2-1…5 |
+| `BasicSynth` | two-oscillator subtractive polysynth, 16 voices — an oscillator may play a wavetable (the registry's "wavetable") | REQ-synth2-1…5, REQ-wavetable-3 |
 | `DrumMachine` | ten synthesized pads on the General MIDI drum notes | REQ-drum-1…5 |
 | `Piano` | the physical piano (`physical/PianoEngine`) as an instrument, 16 voices | REQ-inst-piano-1 |
 
@@ -104,6 +104,12 @@ attack > 15 dB brighter than the sustain (`BasicSynth_filter_cutoff_…`); veloc
 1 %; the 200 ms release is half-way at 100 ms and silent after (`BasicSynth_release_…`).
 
 ---
+
+**A table in an oscillator's place (REQ-wavetable-3).** `Osc::table` ≥ 0 sets the oscillator to `Table` on
+`Wavetable::builtIn(table)` (or the sound given by `setWavetable` — `kSampleTable`); its position is
+`clamp(position + posEnv · e)`, `e` the filter envelope's value — set at the 32-sample grid (Y7) and ramped across it
+(generator/README (W7)); a new note's table starts at `position` (e = 0) at once. The built-ins are made in the
+constructor, never on an audio thread.
 
 ## DrumMachine — Math
 

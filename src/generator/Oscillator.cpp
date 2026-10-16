@@ -1,4 +1,5 @@
 #include "Oscillator.h"
+#include <algorithm>
 #include "../base/AudioConfig.h"
 #include <cmath>
 
@@ -46,6 +47,10 @@ namespace arstro
             mInc.assign(need, 0.0);
             mPhaseU.assign(need, 0u);
             mIncU.assign(need, 0u);
+            mPos.assign((size_t)n, 0.0);
+            mPosStep.assign((size_t)n, 0.0);
+            mPosLeft.assign((size_t)n, 0);
+            mMaxInc.assign((size_t)n, 0.0);
             // REQ-synth2-6: unison voices start at SPREAD phases — voice v at frac(v / phi), the same on every
             // channel (so no width stays mono-identical) — not all at zero, where a detuned unison's saws line
             // up at the attack and flam. Voice 0 starts at 0: one voice is as it always was.
@@ -135,7 +140,26 @@ namespace arstro
                 double f = cyclesPerSample - std::floor(cyclesPerSample); // wrap to [0,1)
                 mIncU[(size_t)c * kMaxVoices + v] = (uint32_t)(f * 4294967296.0);
             }
+            Sample top = 0.0; // (W2) the highest sounding voice's step
+            for (int v = 0; v < mVoiceCount && v < kMaxVoices; ++v) top = std::max(top, std::fabs(mInc[(size_t)c * kMaxVoices + v]));
+            mMaxInc[(size_t)c] = top;
         }
+    }
+
+    void Oscillator::setPosition(Sample position, int ramp)
+    {
+        ensureChannels();
+        position = std::clamp(position, (Sample)0.0, (Sample)1.0);
+        for (size_t c = 0; c < mPos.size(); ++c)
+        {
+            if (ramp <= 0) { mPos[c] = position; mPosLeft[c] = 0; mPosStep[c] = 0.0; }
+            else { mPosStep[c] = (position - mPos[c]) / (Sample)ramp; mPosLeft[c] = ramp; } // (W7) a straight line there
+        }
+    }
+
+    Sample Oscillator::position(int channel) const
+    {
+        return channel >= 0 && (size_t)channel < mPos.size() ? mPos[(size_t)channel] : 0.0;
     }
 
     // Branchless block oscillator: each voice is a fixed-point phase accumulator
@@ -184,6 +208,18 @@ namespace arstro
         Sample sum = 0.0;
         Sample *phase = &mPhase[(size_t)channel * kMaxVoices];
         const Sample *inc = &mInc[(size_t)channel * kMaxVoices];
+        Sample pos = 0.0, top = 0.0;
+        if (mWaveform == Table)
+        {
+            // (W7) the position moves a step a sample while its ramp lasts
+            if (mPosLeft[(size_t)channel] > 0)
+            {
+                mPos[(size_t)channel] += mPosStep[(size_t)channel];
+                --mPosLeft[(size_t)channel];
+            }
+            pos = mPos[(size_t)channel];
+            top = mMaxInc[(size_t)channel];
+        }
         for (int v = 0; v < vc; ++v)
         {
             Sample dt = inc[v];
@@ -210,6 +246,9 @@ namespace arstro
             }
             case Triangle:
                 sum += (2.0 / 3.141592653589793) * std::asin(std::sin(kTwoPi * t));
+                break;
+            case Table: // REQ-wavetable-1: band-limited by the highest voice's step (W2)
+                if (mTable) sum += mTable->read(t, pos, top);
                 break;
             default:
                 break; // unknown waveform -> silence

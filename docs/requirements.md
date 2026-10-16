@@ -552,6 +552,23 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   (16 zero crossings, β 8.6), its cutoff 1/step when reading faster. (R1)–(R3). Guarded by `Resample_is_band_limited`
   (a sine at half speed to 1e-4 in frequency and 0.05 dB; 5 kHz at double speed to 0.1 dB; 15 kHz, which would fold,
   below −60 dB).
+- `REQ-wavetable-1` — **A wavetable read with nothing above Nyquist** (source: Solaris R-INST-7, the user's "implement
+  all", 2026-10-16): `generator/Wavetable` — frames of 2048-point cycles, each band-limited by the FFT at nine levels
+  of halving bandwidth (256 … 1 harmonics, 16 points a harmonic at least), read between two levels that both lie
+  below Nyquist (never an alias), between points by Catmull-Rom and between frames linearly; one more waveform of
+  `Oscillator` (`Table`), its position ramped a straight line per sample. (W1)–(W4), (W7). Guarded by
+  `Wavetable_levels_keep_their_harmonics` (each level exactly its harmonics, one gain on all), `…_reads_with_nothing_
+  above_nyquist` (a square, 32 harmonics, a hard-synced saw from 55 Hz to 14 kHz: under −76 dB off the harmonics;
+  the fundamental the same at every pitch), `…_position_mixes_two_frames`, `…_position_ramps_a_straight_line`.
+- `REQ-wavetable-2` — **Built-in tables, and tables from a sound** (same source): Basic, Pulse, Harmonics, Formant,
+  Sync, Fold (32 frames each, from formulas, made once and shared); a mono sound cut into 2048-point cycles (at most
+  256). (W5)–(W6). Guarded by `Wavetable_from_a_sound`.
+- `REQ-wavetable-3` — **A wavetable synth** (same source): BasicSynth's oscillators may play a table (`Osc::table`,
+  `position`, `posEnv` — appended, the Basic Synth plugin's ids unchanged), the position moved by the filter
+  envelope on the 32-sample grid, a new note's from where its envelope starts; the registry's "wavetable" (two table
+  oscillators, the built-ins or a sound given, `takesSample`). Guarded by `BasicSynth_plays_a_table_moved_by_its_
+  envelope` (sine → square over a second: the third harmonic 0.008 → 0.333), `BasicSynth_plays_the_table_of_a_sound`;
+  the registry's tests (every range, no allocation after warm-up); integration `wavetable_plays_its_note`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position
