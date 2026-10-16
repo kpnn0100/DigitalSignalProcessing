@@ -543,6 +543,11 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   sensitivity `transients`) the time map runs at slope 1 for up to half a window either side — the attack copied to
   ratio·onset, phases reset, no frame before it holding it. (P6). Guarded by `Transients_stay_where_they_begin` (bursts at
   twice their time within 1 ms, nothing of them in the 10 ms before: below −60 dB; a plain vocoder above −30 dB).
+- `REQ-stretch-4` — **A time map** (source: Solaris R-TEMPO-1 — a warped clip under a tempo that changes, 2026-10-16):
+  `StretchParams::map`, (output, input) frame anchors in place of a ratio; the attacks' zones placed where the map hears
+  them, the stretch between them following the map's shape. (P9). Guarded by `Stretch_follows_a_time_map` (half a
+  second as it was then the rest twice as long: 440 Hz in both; a swell heard at its mapped level, 0.25 and 0.875; bursts
+  at 0.25 s and 1.0 s within 1 ms).
 - `REQ-resample-1` — **A band-limited resampler** (same source): `resample(in, step, frames)` — a Kaiser-windowed sinc
   (16 zero crossings, β 8.6), its cutoff 1/step when reading faster. (R1)–(R3). Guarded by `Resample_is_band_limited`
   (a sine at half speed to 1e-4 in frequency and 0.05 dB; 5 kHz at double speed to 0.1 dB; 15 kHz, which would fold,

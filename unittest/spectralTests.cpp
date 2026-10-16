@@ -191,3 +191,33 @@ TEST(Resample_is_band_limited)
     std::printf("    15 kHz read every two: %.1f dB\n", gone);
     CHECK(gone < -60.0);
 }
+
+TEST(Stretch_follows_a_time_map)
+{
+    // REQ-stretch-4, (P9): a map in place of a ratio — the first half second as it was, the second twice as long (a
+    // tempo halving there): 1.5 s out; a 440 Hz sine stays 440 Hz in both halves; bursts at 0.25 s and 0.75 s land at
+    // 0.25 s and 1.0 s (within 1 ms), each attack whole
+    StretchParams p;
+    p.map = {{0.0, 0.0}, {24000.0, 24000.0}, {72000.0, 48000.0}};
+    const auto y = timeStretch({sine(440.0, 0.5, 48000)}, kFs, p)[0];
+    CHECK(y.size() == 72000);
+    const double f1 = freqOf(y, 4800, 19200), f2 = freqOf(y, 31200, 64800);
+    std::printf("    mapped: %.3f Hz then %.3f Hz\n", f1, f2);
+    CHECK(std::fabs(f1 / 440.0 - 1.0) < 0.002 && std::fabs(f2 / 440.0 - 1.0) < 0.002);
+    // between attacks the map's own shape: a sine swelling evenly from nothing (no attack — one long gap) is heard at
+    // 0.25 of its level at 0.25 s and at 0.875 at 1.25 s (input 0.875 s) — a straight line would give 0.17 and 0.83
+    std::vector<float> swell(48000);
+    for (size_t i = 0; i < swell.size(); ++i) swell[i] = (float)((double)i / 48000.0 * std::sin(2 * M_PI * 440.0 * (double)i / kFs));
+    const auto sw = timeStretch({swell}, kFs, p)[0];
+    const double at1 = rmsOf(sw, 11520, 12480) * std::sqrt(2.0), at2 = rmsOf(sw, 59520, 60480) * std::sqrt(2.0);
+    std::printf("    the swell heard at %.3f then %.3f (want 0.250, 0.875)\n", at1, at2);
+    CHECK(std::fabs(at1 - 0.25) < 0.01 && std::fabs(at2 - 0.875) < 0.01);
+    const auto z = timeStretch({bursts({12000, 36000}, 48000)}, kFs, p)[0];
+    const auto found = detectOnsets(z.data(), (long long)z.size(), kFs);
+    CHECK(found.size() == 2);
+    if (found.size() == 2)
+    {
+        std::printf("    bursts at %lld and %lld (want 12000, 48000)\n", found[0], found[1]);
+        CHECK(std::llabs(found[0] - 12000) <= 48 && std::llabs(found[1] - 48000) <= 48);
+    }
+}

@@ -19,6 +19,10 @@ namespace arstro
         int fftSize = 2048;       // N, a power of two, 256 … 16384 (2048 at 48 kHz: 43 ms)
         int overlap = 4;          // O, frames per window: the synthesis hop is N/O (4 or 8)
         double transients = 0.5;  // (P6) the onset sensitivity of the attacks kept whole; < 0: none (a plain vocoder)
+        /** (P9) A time map in place of `ratio`: (output frame, input frame) anchors from (0, 0), both rising — where each
+         *  input frame is heard (a tempo that changes). The output is the last anchor's frames long; the input past
+         *  its last anchor is not read. Empty: the ratio's straight line. */
+        std::vector<std::pair<double, double>> map;
     };
 
     /** `channels` (equal lengths) at `rate` Hz → round(ratio · length) frames each, the pitch moved `semitones`.

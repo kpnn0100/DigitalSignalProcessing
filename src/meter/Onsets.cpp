@@ -105,7 +105,7 @@ namespace arstro
         // (B4) the peak between frames: a parabola through it and its neighbours
         const double a = ac[(size_t)best - 1], b = ac[(size_t)best], c = ac[(size_t)best + 1];
         const double den = a - 2.0 * b + c, off = den < 0.0 ? std::clamp(0.5 * (a - c) / den, -0.5, 0.5) : 0.0;
-        double bpm = 60.0 * fr / ((double)best + 0.0 * off);
+        double bpm = 60.0 * fr / ((double)best + off);
         // (B5) a loop cut to whole beats: the tempo that makes it so, when that is this near
         const double seconds = (double)frames / rate, beats = std::round(seconds * bpm / 60.0);
         if (p.snap > 0.0 && beats >= 2.0)

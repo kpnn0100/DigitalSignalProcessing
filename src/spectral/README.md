@@ -54,6 +54,13 @@ The phase vocoder (timeStretch, vocode):
      (P3) makes φs ≡ φa (mod 2π) every frame (identity, to rounding)
 (P8) Pitch — timeStretch       stretched to round(β·L) frames, then read back every 2^(s/12) samples by (R1)…(R3):
      round(ratio · L) frames, every frequency × 2^(s/12)
+(P9) A time map — StretchParams::map, (output o_k, input i_k) from (0, 0), both rising (else ignored): where each input
+     frame is heard, a tempo that changes. The BASE map runs in stretched time, (o_k·2^(s/12), i_k); the output is
+     round(o_last) frames; the input past i_last is not read. (P6)'s zones sit where the base map hears each onset,
+     c = base⁻¹(o_i), their sizes a quarter of what lies between in input AND in stretched time; a GAP between zones
+     (ze, ie) … (zs, is) follows the base map's own shape scaled to meet them:
+        T(t) = ie + (base(t) − base(ze))·(is − ie)/(base(zs) − base(ze))
+     (with no map the base is the line t/β and T is (P6)'s line, computed as before). Outside, the base's end slopes.
 
 The resampler (resample):
 (R1) out[j] = Σ_m in[m] · h(j·step − m),  m within R of j·step;  c = min(1, 1/step)  (the cutoff falls when it reads faster)
@@ -69,6 +76,7 @@ The resampler (resample):
 | `StretchParams::fftSize` | N | 256 … 16384, a power of two (2048 at 48 kHz = 43 ms) | (P1), (P2) |
 | `StretchParams::overlap` | O | 4 or 8 | (P1), (P7) |
 | `StretchParams::transients` | the onset sensitivity of (P6)'s zones | 0 … 1, < 0 none (a plain vocoder) | (P6) |
+| `StretchParams::map` | (P9)'s anchors, output and input frames | from (0, 0), both rising; empty: `ratio` | (P9) |
 | `resample` `step` | input samples a sample | > 0 | (R1) |
 
 **Limits, said:** a rigid zone is at most a window (N) long and at most half of what lies between two onsets (a
