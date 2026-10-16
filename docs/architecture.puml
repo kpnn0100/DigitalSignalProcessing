@@ -230,6 +230,19 @@ package output {
   }
 }
 Dither *-- "2" Noise : (D1) the triangle
+package spectral {
+  class FFT {
+    +FFT(n) : a power of two
+    +forward(data*) / inverse(data*) : in place, (F1)-(F3)
+  }
+  class TimeStretch <<function>> {
+    +timeStretch(channels, rate, StretchParams) : ratio x as long, pitch x 2^(s/12)
+    +resample(in, step, frames) : Kaiser-windowed sinc, (R1)-(R3)
+    (P1)-(P8): phase vocoder, identity phase locking, a time map rigid around onsets
+  }
+}
+TimeStretch ..> FFT
+TimeStretch ..> Onsets : (P6) where attacks are
 package meter {
   class LoudnessMeter {
     +process(left*, right*, frames)

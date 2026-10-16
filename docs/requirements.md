@@ -521,6 +521,27 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   the sample. (O1)–(O5) in `src/meter/README.md`. Guarded by `Onsets_are_found_where_sounds_begin` and
   `onsets_find_the_drums`.
 
+- `REQ-fft-1` — **An FFT** (source: Solaris R-WARP-1, the time-stretcher's need, 2026-10-16): `FFT` — the DFT of 2^m
+  points in place, forward and inverse, radix 2, twiddles computed once each; a size not a power of two is refused.
+  (F1)–(F3) in `src/spectral/README.md`. Guarded by `FFT_is_the_DFT` (64 points against the sum to 1e-9, back to 1e-12).
+- `REQ-stretch-1` — **A sound stretched, its pitch kept** (source: Solaris R-WARP-1, user request "implement all",
+  2026-10-16): `timeStretch(channels, rate, {ratio})` — a phase vocoder (periodic Hann, overlap 4 or 8, the peak
+  frequencies from the phases' travel over the actual hop, identity phase locking) making round(ratio·L) frames,
+  ratio 0.25 … 4; at ratio 1 the sound itself. Deterministic. (P1)–(P5), (P7). Guarded by
+  `Stretch_at_one_gives_the_sound_back` (to 1e-5), `Stretch_keeps_the_pitch` (440 Hz at ×1.5 and ×0.6 to 0.2 %, its level
+  to 0.5 dB), `Stretch_is_the_same_twice`, `stretch_keeps_the_pitch`.
+- `REQ-stretch-2` — **Its pitch moved, its length kept** (same source): `{semitones}` −24 … +24 — stretched 2^(s/12)
+  further and read back that much faster through REQ-resample-1 (P8). Guarded by `Pitch_moves_and_the_length_stays`
+  (+7 and −12 semitones to 0.2 %, the same length, the level to 0.5 dB), `pitch_moves_the_length_stays`.
+- `REQ-stretch-3` — **Attacks kept** (same source — "with transient handling"): around each onset (REQ-onset-1, its
+  sensitivity `transients`) the time map runs at slope 1 for up to half a window either side — the attack copied to
+  ratio·onset, phases reset, no frame before it holding it. (P6). Guarded by `Transients_stay_where_they_begin` (bursts at
+  twice their time within 1 ms, nothing of them in the 10 ms before: below −60 dB; a plain vocoder above −30 dB).
+- `REQ-resample-1` — **A band-limited resampler** (same source): `resample(in, step, frames)` — a Kaiser-windowed sinc
+  (16 zero crossings, β 8.6), its cutoff 1/step when reading faster. (R1)–(R3). Guarded by `Resample_is_band_limited`
+  (a sine at half speed to 1e-4 in frequency and 0.05 dB; 5 kHz at double speed to 0.1 dB; 15 kHz, which would fold,
+  below −60 dB).
+
 - `REQ-meter-1` — **Loudness by ITU-R BS.1770-4** (source: Solaris R-METER-1, user request 2026-10-16): K-weighting
   (the standard's pre-filter and RLB high-pass, designed at any rate so that 48 kHz is its table to 1e-9), momentary
   (400 ms), short-term (3 s) and integrated loudness in LUFS, gated absolutely (−70 LUFS) and relatively (−10 LU)

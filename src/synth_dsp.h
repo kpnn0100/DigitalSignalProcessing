@@ -64,6 +64,8 @@
 #include "output/Dither.h"
 #include "meter/Meters.h"
 #include "meter/Onsets.h"
+#include "spectral/FFT.h"
+#include "spectral/TimeStretch.h"
 #include "synth/ParamId.h"
 #include "synth/Voice.h"
 #include "synth/VoiceManager.h"

@@ -1083,6 +1083,31 @@ def check_onsets_find_the_drums(binpath):
     return "found " + " ".join(f"{f - w:+d}" for f, w in zip(found, want))
 
 
+def check_stretch_keeps_the_pitch(binpath):
+    """(P1)-(P5): 2 s of 440 Hz made 1.6 times as long — 3.2 s, still 440 Hz (0.2 %)."""
+    y = render(binpath, "stretch", 1.6)
+    if abs(len(y) - round(1.6 * 2 * SR)) > 0:
+        raise Failure(f"{len(y)} frames, want {round(1.6 * 2 * SR)}")
+    mid = y[len(y) // 5: 4 * len(y) // 5]
+    freq = rising_zero_crossings(mid) / (len(mid) / SR)
+    if abs(freq / 440.0 - 1.0) > 0.002:
+        raise Failure(f"stretched 440 Hz reads {freq:.2f} Hz")
+    return f"{len(y)} frames, {freq:.2f} Hz"
+
+
+def check_pitch_moves_the_length_stays(binpath):
+    """(P8), (R1)-(R3): 2 s of 440 Hz five semitones up — 587.33 Hz (0.2 %), 2 s long."""
+    y = render(binpath, "pitch", 5.0)
+    want = 440.0 * 2 ** (5 / 12)
+    if len(y) != 2 * SR:
+        raise Failure(f"{len(y)} frames, want {2 * SR}")
+    mid = y[len(y) // 5: 4 * len(y) // 5]
+    freq = rising_zero_crossings(mid) / (len(mid) / SR)
+    if abs(freq / want - 1.0) > 0.002:
+        raise Failure(f"shifted reads {freq:.2f} Hz, want {want:.2f}")
+    return f"{len(y)} frames, {freq:.2f} Hz"
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -1121,6 +1146,8 @@ CHECKS = [
     ("sampler_pitch", check_sampler_pitch),
     ("sampler_slices", check_sampler_slices),
     ("onsets_find_the_drums", check_onsets_find_the_drums),
+    ("stretch_keeps_the_pitch", check_stretch_keeps_the_pitch),
+    ("pitch_moves_the_length_stays", check_pitch_moves_the_length_stays),
 ]
 
 

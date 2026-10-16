@@ -818,6 +818,19 @@ static std::vector<double> renderSamplerSlices(double kk)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-stretch-1/2: two seconds of a 440 Hz sine, `ratio` times as long (stretch) or `semitones` higher, as long (pitch) —
+// run_integration.py measures the length and the frequency
+static std::vector<double> renderStretched(double ratio, double semitones)
+{
+    std::vector<float> x((size_t)(2 * kSampleRate));
+    for (size_t i = 0; i < x.size(); ++i) x[i] = (float)(0.5 * std::sin(2 * M_PI * 440.0 * (double)i / kSampleRate));
+    StretchParams p;
+    p.ratio = ratio;
+    p.semitones = semitones;
+    const auto y = timeStretch({x}, kSampleRate, p)[0];
+    return std::vector<double>(y.begin(), y.end());
+}
+
 // REQ-onset-1: a Drum Machine's kick, snare, hat and kick at known samples through the registry, its onsets found by
 // `detectOnsets` and written as clicks (0.5 where one was found, else silence) for run_integration.py to place
 static std::vector<double> renderOnsets()
@@ -942,6 +955,8 @@ int main(int argc, char **argv)
     else if (scenario == "sampler") samples = renderSampler(arg);
     else if (scenario == "sampler_slices") samples = renderSamplerSlices(arg);
     else if (scenario == "onsets") samples = renderOnsets();
+    else if (scenario == "stretch") samples = renderStretched(arg, 0.0);
+    else if (scenario == "pitch") samples = renderStretched(1.0, arg);
     else if (scenario == "meters") samples = renderMeters();
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
