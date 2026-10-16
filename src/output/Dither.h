@@ -6,6 +6,8 @@
  *  the error's mean and power independent of the signal — a constant, white floor of Δ²/4 — so a sound below
  *  one LSB survives as itself under the noise (README ## Math (D1)–(D3)).
  *
+ *  An exact zero passes as zero (D0): digital silence — a render's silent intro, its end — stays silence.
+ *
  *  Composed: the triangle is the sum of two of the library's `Noise` uniforms (generator/Noise.h, xorshift32);
  *  nothing new but the rounding. Seeded, so the same input gives the same bytes — a render stays pure. Takes
  *  float, as hosts write files; no allocation.

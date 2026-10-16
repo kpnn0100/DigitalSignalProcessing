@@ -100,3 +100,15 @@ TEST(Dither_is_seeded)
     a.process(z.data(), 4096);
     CHECK(z == y);
 }
+
+TEST(Dither_lets_digital_silence_be)
+{
+    // (D0): exact zeros stay zero — a silent intro is still silent; the smallest non-zero value is dithered as any
+    Dither d(16);
+    bool silent = true;
+    for (int i = 0; i < 10000; ++i) silent &= d.quantize(0.0f) == 0.0f;
+    int moved = 0;
+    for (int i = 0; i < 10000; ++i) moved += d.quantize(1e-9f) != 0.0f;
+    CHECK(silent && moved > 1000 && moved < 4000); // ±1 step 1/4 of the time
+}
+

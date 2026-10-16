@@ -25,6 +25,8 @@ namespace arstro
 
     float Dither::quantize(float x)
     {
+        // (D0) digital silence stays silence: an exact zero carries nothing to decorrelate (auto-blanking)
+        if (x == 0.0f) return 0.0f;
         // (D1) d = (u1 + u2)/2, u ~ U[−1, 1): triangular on (−1, 1) — in steps of the grid
         const double d = mOn ? 0.5 * ((double)mA.next() + (double)mB.next()) : 0.0;
         // (D2) round onto the grid; (D3) clamp to the integers the depth has

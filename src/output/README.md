@@ -84,6 +84,7 @@ the same input gives the same integers (a render stays pure).
 
 ```
 Q = 2^(bits − 1)                                   ; steps per unit (16 bits: 32768)
+(D0) x = 0 exactly → y = 0                          ; digital silence stays silence (auto-blanking); no noise drawn
 (D1) d = (u₁ + u₂)/2,  u₁, u₂ ~ U[−1, 1) independent ; triangular on (−1, 1): ±1 step — Dither::quantize
 (D2) k = ⌊x·Q + d + ½⌋                              ; round onto the grid (d = 0 when disabled)
 (D3) k ← clamp(k, −Q, Q − 1);  y = k / Q            ; the integers the depth has
@@ -94,7 +95,10 @@ half way): distortion, and a sound under ½ step rounds to silence. A dither d a
 e = (k − x·Q)/Q, has E[e] = 0 and E[e²] = Δ²/12 + Var(d) for every x exactly when d's distribution is the
 convolution of two one-step uniforms (Wannamaker, Lipshitz, Vanderkooy 2000) — the triangle of (D1), whose variance
 is Δ²/6, so the floor is Δ²/4 (−101.2 dBFS at 16 bits, white) whatever plays. On a step, the tails past ±½ send
-1/8 of the samples one step down and 1/8 one step up.
+1/8 of the samples one step down and 1/8 one step up. **Why (D0).** An exact zero is digital silence — a render's
+intro before the first note, its end after the tail — with nothing in it to decorrelate; dithering it would only
+turn −∞ into a −138 dB hiss (24 bits) that a file compare or a meter reads as sound. Any other value, however small,
+is dithered.
 
 | setter | unit | symbol |
 |---|---|---|
@@ -105,6 +109,6 @@ is Δ²/6, so the floor is Δ²/4 (−101.2 dBFS at 16 bits, white) whatever pla
 Verified: on the grid, in range, clamped (`Dither_writes_on_the_grid_of_its_depth`); mean 0 and power ¼ step² at
 four places between steps, rounding alone 0 or ¼ by where x falls (`Dither_error_has_the_same_mean_and_power_whatever_the_signal`);
 a 0.4-step sine rounded to silence, dithered measured within 10 % (`Dither_keeps_a_sound_under_one_step`);
-seeded (`Dither_is_seeded`); the integers in a written file counted 1/8 · 3/4 · 1/8 on a step and ½ · ½ half way
+seeded (`Dither_is_seeded`); zeros pass, the smallest non-zero is still dithered (`Dither_lets_digital_silence_be`); the integers in a written file counted 1/8 · 3/4 · 1/8 on a step and ½ · ½ half way
 (`dither_triangular`).
 
