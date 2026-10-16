@@ -699,6 +699,17 @@ static std::vector<double> renderLimiterTruePeak(double on)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-out-dither-1: a constant 1000 + arg steps of 16 bits, TPDF-dithered onto the 16-bit grid, 96000 frames.
+// The WAV writer's ×32767 lands every grid value k < 16384 on k itself, so the file holds the dither's integers.
+static std::vector<double> renderDither(double frac)
+{
+    Dither d(16);
+    std::vector<double> y(96000);
+    const float x = (float)((1000.0 + frac) / 32768.0);
+    for (auto &v : y) v = d.quantize(x);
+    return y;
+}
+
 // D4: a 55 Hz bass through the registry's compressor with Sidechain on, keyed (arg 1) by a kick every
 // half second, or with no key (arg 0) — the pump (REQ-fx-sidechain-1)
 static std::vector<double> renderSidechain(double keyed)
@@ -838,6 +849,7 @@ int main(int argc, char **argv)
     else if (scenario == "deviceeq") samples = renderDeviceEq(arg);
     else if (scenario == "limiter") samples = renderLimiter(arg);
     else if (scenario == "limiter_tp") samples = renderLimiterTruePeak(arg);
+    else if (scenario == "dither") samples = renderDither(arg);
     else if (scenario == "sidechain") samples = renderSidechain(arg);
     else if (scenario == "sampler") samples = renderSampler(arg);
     else if (scenario == "meters") samples = renderMeters();

@@ -222,7 +222,11 @@ package effects {
 }
 package output {
   class OutputBlock
+  class Dither {
+    +quantize(x) / process(x*, n) : TPDF, onto 2^(bits-1)
+  }
 }
+Dither *-- "2" Noise : (D1) the triangle
 package meter {
   class LoudnessMeter {
     +process(left*, right*, frames)

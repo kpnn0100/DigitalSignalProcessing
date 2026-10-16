@@ -967,6 +967,28 @@ def check_limiter_true_peak(binpath):
     return f"on {tp_on:.3f} dBTP (8×: {tp_on8:.3f}), off {tp_off:.3f} dBTP (ceiling −1.000)"
 
 
+def check_dither_is_triangular(binpath):
+    """REQ-out-dither-1 (D1)–(D3): on a step, TPDF of ±1 LSB writes the step below, the step and the step above
+    1/8, 3/4, 1/8 of the time (the triangle's tails past ±½); half way, the two neighbours ½ each — counted here
+    from the integers in the file, nothing of the library's."""
+    def counts(frac):
+        y = render(binpath, "dither", frac)
+        ks = [round(v * 32767) for v in y]
+        n = len(ks)
+        c = {}
+        for k in ks:
+            c[k] = c.get(k, 0) + 1
+        return {k: v / n for k, v in c.items()}
+    on = counts(0.0)
+    want = {999: 0.125, 1000: 0.75, 1001: 0.125}
+    if set(on) != set(want) or any(abs(on[k] - want[k]) > 0.01 for k in want):
+        raise Failure(f"dither on a step: {sorted(on.items())}, want 1/8 · 3/4 · 1/8")
+    half = counts(0.5)
+    if set(half) != {1000, 1001} or abs(half[1000] - 0.5) > 0.01:
+        raise Failure(f"dither half way: {sorted(half.items())}, want ½ · ½")
+    return f"on a step {on[999]:.3f} / {on[1000]:.3f} / {on[1001]:.3f}; half way {half[1000]:.3f} / {half[1001]:.3f}"
+
+
 def check_sidechain_pump(binpath):
     """(C1)–(C3) keyed: the bass dips after every kick, by at most the key's full reduction; not without a key."""
     def dips(y):
@@ -1038,6 +1060,7 @@ CHECKS = [
     ("registry_eq_by_name", check_registry_eq_by_name),
     ("limiter_ceiling", check_limiter_ceiling),
     ("limiter_true_peak", check_limiter_true_peak),
+    ("dither_triangular", check_dither_is_triangular),
     ("sidechain_pump", check_sidechain_pump),
     ("sampler_pitch", check_sampler_pitch),
 ]

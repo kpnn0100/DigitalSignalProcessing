@@ -470,6 +470,9 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   lookahead (0…10 ms, its latency); channels linked; the output never above the ceiling BY
   CONSTRUCTION ((L1)–(L5)); a glide of at most 1/(L+1) a frame; transparent under the ceiling. Registry
   type `limiter`. Guarded by `Limiter_never_exceeds_its_ceiling_and_glides` and `limiter_ceiling`.
+- `REQ-out-dither-1` — **TPDF dither** (source: Solaris R-EXPORT-1, 2026-10-16): `Dither` quantises float to a
+  bit depth (2…24) with triangular dither of ±1 step — the error's mean 0 and power Δ²/4 whatever the signal; seeded;
+  composed from `Noise`. (D1)–(D3), output/README. Guarded by the four `Dither_*` tests and `dither_triangular`.
 - `REQ-fx-limiter-2` — **True-peak mode** (source: Solaris R-EDM-4a, 2026-10-16): `truePeak` off|on (off by
   default: a song's sound does not change). On, the ceiling holds BETWEEN samples: detected through the meter's
   interpolator at 8× (every ⅛ sample — both grids a 4× BS.1770 meter may use), each frame's gain also meeting

@@ -61,6 +61,7 @@
 
 // Output + engine
 #include "output/OutputBlock.h"
+#include "output/Dither.h"
 #include "meter/Meters.h"
 #include "synth/ParamId.h"
 #include "synth/Voice.h"
