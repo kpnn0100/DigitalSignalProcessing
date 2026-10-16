@@ -34,6 +34,7 @@ namespace arstro
             double attackMs = 0.0, decayMs = 0.0, sustain = 1.0, releaseMs = 30.0;
             double levelDb = 0.0;
             double velocity = 1.0;       // sensitivity: 0 = every note full, 1 = level ∝ velocity
+            double bendRange = 2.0;      // REQ-inst-expr-1: semitones at full bend
         };
 
         Sampler();
@@ -45,6 +46,7 @@ namespace arstro
         long long sampleFrames() const { return mFrames; }
 
         void noteOn(int note, int velocity) override;
+        void pitchBend(Sample amount) override; // −1 … +1: ± bendRange semitones, every voice's rate (S6)
         void noteOff(int note) override;
         void allNotesOff() override;
         void reset() override;
@@ -52,6 +54,7 @@ namespace arstro
         int activeVoices() const override;
 
     private:
+        double mBendRatio = 1.0;     // (S6) 2^(bend·range/12)
         std::vector<double> mRamp;      // REQ-inst-sampler-1 amended: the level across a block, ramped (D-8)
         double mLevelGain = -1.0;       // the level the last block ended at (−1: none yet)
         struct Voice

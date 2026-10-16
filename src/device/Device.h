@@ -113,6 +113,10 @@ namespace arstro
         virtual void noteOn(int note, int velocity) { (void)note; (void)velocity; }
         virtual void noteOff(int note) { (void)note; }
         virtual void allNotesOff() {}
+        /** REQ-inst-expr-1: the pitch wheel, −1 … +1, and the mod wheel, 0 … 1 — an instrument with nothing to move
+         *  ignores them (a kit, the piano, an effect). Between blocks, on the thread that renders. */
+        virtual void pitchBend(double amount) { (void)amount; }
+        virtual void modWheel(double amount) { (void)amount; }
         /** The key for the NEXT process() call (a type with `takesKey`): `channels` buffers of at
          *  least that many frames, valid until it returns; nullptr = silence. Others ignore it. */
         virtual void setKey(const Sample *const *key, int channels) { (void)key; (void)channels; }

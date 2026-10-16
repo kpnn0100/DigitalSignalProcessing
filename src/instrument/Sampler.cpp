@@ -86,6 +86,11 @@ namespace arstro
         v->env.noteOn(1.0); // from the attack's start (ADSREnvelope restarts on every note-on)
     }
 
+    void Sampler::pitchBend(Sample amount)
+    {
+        mBendRatio = std::pow(2.0, std::clamp((double)amount, -1.0, 1.0) * mP.bendRange / 12.0);
+    }
+
     void Sampler::noteOff(int note)
     {
         if (mP.mode == OneShot) return; // a one-shot plays to its end
@@ -149,7 +154,7 @@ namespace arstro
                 const double g = v.gain * v.env.nextValue(0) * mRamp[(size_t)i];
                 out[0][i] += l * g;
                 if (channels > 1) out[1][i] += r * g;
-                v.pos += v.inc;
+                v.pos += v.inc * mBendRatio; // (S6) the wheel moves every voice's rate
             }
         }
     }

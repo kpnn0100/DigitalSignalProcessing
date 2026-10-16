@@ -150,6 +150,12 @@ namespace arstro
                 envBindings(v, "amp", &P::ampEnv, d.ampEnv);
                 v.push_back({num("volume", "Volume", "dB", -60, 6, d.volumeDb), [](P &p, double x) { p.volumeDb = x; }});
                 v.push_back({num("velocity", "Velocity", "", 0, 1, d.velocity), [](P &p, double x) { p.velocity = x; }});
+                // REQ-synth2-7, -8 — appended: a parameter's index is its id in a plugin host
+                v.push_back({choice("voice.mode", "Voice Mode", {"poly", "mono", "legato"}, (int)d.mode), [](P &p, double x) { p.mode = (BasicSynth::Mode)(int)x; }});
+                v.push_back({num("voice.glide", "Glide", "ms", 0, 2000, d.glide), [](P &p, double x) { p.glide = x; }});
+                v.push_back({num("voice.bend", "Bend Range", "st", 0, 24, d.bendRange, false, true), [](P &p, double x) { p.bendRange = x; }});
+                v.push_back({num("vibrato.depth", "Vibrato", "st", 0, 2, d.vibrato), [](P &p, double x) { p.vibrato = x; }});
+                v.push_back({num("vibrato.rate", "Vibrato Rate", "Hz", 0.1, 20, d.vibratoRate, true), [](P &p, double x) { p.vibratoRate = x; }});
                 return v;
             }();
             return b;
@@ -163,6 +169,8 @@ namespace arstro
             void noteOn(int n, int v) override { mSynth.noteOn(n, v); }
             void noteOff(int n) override { mSynth.noteOff(n); }
             void allNotesOff() override { mSynth.allNotesOff(); }
+            void pitchBend(double a) override { mSynth.pitchBend(a); }
+            void modWheel(double a) override { mSynth.modWheel(a); }
             void reset() override { mSynth.reset(); }
             int activeVoices() const override { return mSynth.activeVoices(); }
 
@@ -251,6 +259,7 @@ namespace arstro
                 {num("release", "Release", "ms", 1, 5000, 30, true), [](P &p, double x) { p.releaseMs = x; }},
                 {num("level", "Level", "dB", -40, 12, 0), [](P &p, double x) { p.levelDb = x; }},
                 {num("velocity", "Velocity", "", 0, 1, 1), [](P &p, double x) { p.velocity = x; }},
+                {num("bend", "Bend Range", "st", 0, 24, 2, false, true), [](P &p, double x) { p.bendRange = x; }}, // REQ-inst-expr-1, appended
             };
             return b;
         }
@@ -262,6 +271,7 @@ namespace arstro
             void process(Sample *const *io, int channels, int frames) override { mSampler.render(io, channels, frames); }
             void noteOn(int n, int v) override { mSampler.noteOn(n, v); }
             void noteOff(int n) override { mSampler.noteOff(n); }
+            void pitchBend(double a) override { mSampler.pitchBend(a); }
             void allNotesOff() override { mSampler.allNotesOff(); }
             void reset() override { mSampler.reset(); }
             int activeVoices() const override { return mSampler.activeVoices(); }
@@ -512,7 +522,8 @@ namespace arstro
             synth.summary = "Two oscillators and noise through a resonant filter and an amplitude envelope; 16 voices.";
             synth.params = specsOf(synthBindings());
             synth.groupLabels = {{"osc1", "Oscillator 1"}, {"osc2", "Oscillator 2"}, {"filter", "Filter"},
-                                 {"fenv", "Filter Envelope"}, {"amp", "Amplifier"}, {"", "Mix & Output"}};
+                                 {"fenv", "Filter Envelope"}, {"amp", "Amplifier"}, {"", "Mix & Output"},
+                                 {"voice", "Voice"}, {"vibrato", "Vibrato"}}; // REQ-synth2-7, -8
             synth.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<SynthDevice>(self); };
             v.push_back(synth);
 

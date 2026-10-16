@@ -127,10 +127,12 @@ package instrument {
     +allNotesOff() / reset()
     +render(out**, channels, frames) : ADDS
     +activeVoices()
+    +pitchBend(-1..1) / modWheel(0..1) : ignored by default
   }
   class BasicSynth {
-    +setParams(Params)
-    +oscFrequency(k, note) / cutoffFor(note, env)
+    +setParams(Params)  -- mode poly|mono|legato, glide, bendRange, vibrato
+    +oscFrequency(k, pitch) / cutoffFor(note, env) / voicePitch(v)
+    -(Y7) pitch on an absolute 32-sample grid
     -16 voices: 2 Oscillator, SVF, 2 ADSR, Noise
   }
   class DrumMachine {

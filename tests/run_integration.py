@@ -989,6 +989,35 @@ def check_dither_is_triangular(binpath):
     return f"on a step {on[999]:.3f} / {on[1000]:.3f} / {on[1001]:.3f}; half way {half[1000]:.3f} / {half[1001]:.3f}"
 
 
+def check_glide_and_bend(binpath):
+    """REQ-synth2-8 (Y8): a legato glide is linear in semitones — 100 ms into a 200 ms slide from A3 to A4 the pitch is
+    their midpoint, Eb4 (311.1 Hz), measured here from zero crossings; before, A3; after, A4. REQ-synth2-7 (Y9): the
+    wheel fully up is two semitones: B4 (493.9 Hz)."""
+    y = render(binpath, "glide")
+    fs = 48000.0
+
+    def hz(a, b):
+        a, b = int(a * fs), int(b * fs)
+        first = last = None
+        n = 0
+        for i in range(a + 1, b):
+            if y[i - 1] < 0.0 <= y[i]:
+                t = (i - 1) + y[i - 1] / (y[i - 1] - y[i])
+                if first is None:
+                    first = t
+                else:
+                    n += 1
+                last = t
+        return n * fs / (last - first)
+
+    checks = [("A3 before", hz(0.30, 0.48), 220.0, 0.005), ("the midpoint", hz(0.595, 0.605), 440.0 * 2 ** (-6 / 12), 0.015),
+              ("A4 after", hz(0.75, 0.88), 440.0, 0.005), ("bent up", hz(0.95, 1.15), 440.0 * 2 ** (2 / 12), 0.005)]
+    for name, got, want, tol in checks:
+        if abs(got / want - 1.0) > tol:
+            raise Failure(f"glide: {name} {got:.2f} Hz, want {want:.2f}")
+    return ", ".join(f"{name} {got:.1f} Hz" for name, got, _, _ in checks)
+
+
 def check_sidechain_pump(binpath):
     """(C1)–(C3) keyed: the bass dips after every kick, by at most the key's full reduction; not without a key."""
     def dips(y):
@@ -1061,6 +1090,7 @@ CHECKS = [
     ("limiter_ceiling", check_limiter_ceiling),
     ("limiter_true_peak", check_limiter_true_peak),
     ("dither_triangular", check_dither_is_triangular),
+    ("glide_and_bend", check_glide_and_bend),
     ("sidechain_pump", check_sidechain_pump),
     ("sampler_pitch", check_sampler_pitch),
 ]

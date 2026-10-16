@@ -31,5 +31,10 @@ namespace arstro
         virtual void render(Sample *const *out, int channels, int frames) = 0;
         /** Voices still sounding (0 = the instrument is silent and may be skipped). */
         virtual int activeVoices() const = 0;
+        /** REQ-inst-expr-1: the pitch wheel, −1 … +1 (each instrument its own range); an instrument with no pitch to
+         *  bend (a kit, the piano) ignores it. */
+        virtual void pitchBend(Sample amount) { (void)amount; }
+        /** The mod wheel, 0 … 1 — each instrument says what it moves. */
+        virtual void modWheel(Sample amount) { (void)amount; }
     };
 }

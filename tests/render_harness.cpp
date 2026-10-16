@@ -710,6 +710,40 @@ static std::vector<double> renderDither(double frac)
     return y;
 }
 
+// REQ-synth2-7, -8: the registry's synth, a sine, legato with 200 ms of glide — A3, then A4 at 0.5 s with A3 held;
+// at 0.9 s the wheel bent fully up (2 semitones); 1.2 s
+static std::vector<double> renderGlide()
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("synth");
+    d->setParam("osc1.wave", 0);
+    d->setParam("osc2.level", 0);
+    d->setParam("filter.cutoff", 20000);
+    d->setParam("filter.env", 0);
+    d->setParam("filter.keytrack", 0);
+    d->setParam("amp.attack", 0);
+    d->setParam("amp.sustain", 1);
+    d->setParam("voice.mode", 2); // legato
+    d->setParam("voice.glide", 200);
+    std::vector<Sample> L((size_t)(1.2 * kSampleRate), 0.0), R(L.size(), 0.0);
+    auto run = [&](size_t from, size_t to) {
+        for (size_t pos = from; pos < to; pos += 128)
+        {
+            Sample *io[2] = {L.data() + pos, R.data() + pos};
+            d->process(io, 2, (int)std::min<size_t>(128, to - pos));
+        }
+    };
+    const size_t half = (size_t)(0.5 * kSampleRate), bend = (size_t)(0.9 * kSampleRate);
+    d->noteOn(57, 100);
+    run(0, half);
+    d->noteOn(69, 100);
+    run(half, bend);
+    d->pitchBend(1.0);
+    run(bend, L.size());
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // D4: a 55 Hz bass through the registry's compressor with Sidechain on, keyed (arg 1) by a kick every
 // half second, or with no key (arg 0) — the pump (REQ-fx-sidechain-1)
 static std::vector<double> renderSidechain(double keyed)
@@ -850,6 +884,7 @@ int main(int argc, char **argv)
     else if (scenario == "limiter") samples = renderLimiter(arg);
     else if (scenario == "limiter_tp") samples = renderLimiterTruePeak(arg);
     else if (scenario == "dither") samples = renderDither(arg);
+    else if (scenario == "glide") samples = renderGlide();
     else if (scenario == "sidechain") samples = renderSidechain(arg);
     else if (scenario == "sampler") samples = renderSampler(arg);
     else if (scenario == "meters") samples = renderMeters();

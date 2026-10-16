@@ -39,6 +39,14 @@ out[n] = y[n] · amp[n] · G                                            ; amp = 
 (Y5)  allocation: the same note retriggers its voice; else the first idle voice; else the voice
                   with the oldest note-on (smallest age) is stolen
 (Y6)  noise seed  = 0x5EED0000 + 16·voice + channel                  ; one generator per voice PER CHANNEL
+(Y7)  control grid: every K = 32 samples COUNTED FROM `reset` (mPos), each sounding voice's pitch P is re-set on its
+      oscillators — only if it moved (`retune`); render runs in pieces on that grid, so a host's chopping changes nothing
+(Y8)  P = to − (to − from)·left/total                                ; a glide: linear in SEMITONES, constant time —
+      total = glide·fs/1000 samples, `left` counted down by the samples rendered; no glide: P = the note
+(Y9)  P_heard = P + bend·bendRange + mod·vibrato·sin(2π·vibratoRate·mPos/fs)   ; the wheel and the vibrato (`modulation`)
+(Y10) mono / legato: ONE voice and a stack of the keys held, the last on top (16 deep). A key pressed: on top; the
+      voice slides there (Y8) — mono strikes again (the envelopes from their attack), legato does not while a key is
+      held. A key let go that was sounding: back to the key now on top, sliding, never striking; none left: release.
 ```
 
 | parameter | symbol | unit / range | default |
@@ -57,6 +65,11 @@ out[n] = y[n] · amp[n] · G                                            ; amp = 
 | `filterEnv`, `ampEnv` | fenv, amp | ADSR: ms, ms, 0..1, ms | 3/350/0.25/300 · 3/120/0.8/250 |
 | `volumeDb` | (Y4) | dB | −12 |
 | `velocity` | (Y4) | 0..1 sensitivity | 0.8 |
+| `voice.mode` | (Y10) | poly · mono · legato | poly |
+| `voice.glide` | (Y8) | 0..2000 ms (mono / legato only) | 0 |
+| `voice.bend` | bendRange (Y9) | 0..24 st at full wheel | 2 |
+| `vibrato.depth`, `vibrato.rate` | (Y9) | 0..2 st at full mod wheel · 0.1..20 Hz | 0.5 · 5.5 |
+| `pitchBend(a)`, `modWheel(m)` | bend, mod | −1..+1 · 0..1 (REQ-inst-expr-1) | 0 · 0 |
 
 **Why exponential cutoff modulation (Y3).** Pitch is heard logarithmically, so an envelope that adds
 *octaves* sweeps evenly by ear, and key tracking of 1 keeps the filter at a fixed interval above the
@@ -71,6 +84,16 @@ cut the release tail. The amp envelope runs after the filter: oscillators → fi
 a generator shared by the channels hands each one whichever stretch of the sequence the block size
 leaves it, so the same notes chopped into blocks of 128 and of 77 sounded different. Found by
 Solaris's chunking-determinism test; guarded here by `BasicSynth_noise_does_not_depend_on_block_size`.
+
+**Why an absolute control grid (Y7).** A pitch that moves inside a block (a glide, a vibrato) must be set somewhere
+in it; setting it at the start of every `render` would make the output depend on how a host chops time — the rule
+the host's own engine is held to (byte-identical however time is chopped). Counting the grid from `reset` makes the
+points the same samples whatever the blocks; a still pitch is never re-set, so a patch with no glide, no bend and no
+vibrato renders exactly as before. 32 samples is 0.67 ms at 48 kHz: a 5.5 Hz vibrato is 260 steps a cycle; the
+glide's midpoint lags its line by at most one step (0.08 st for an octave in 100 ms). **Why glide is linear in
+semitones (Y8).** Pitch is heard logarithmically — a constant-time slide even in semitones sounds even; its
+midpoint is the two notes' geometric mean in Hz. **Piano and kit** take no bend or wheel (an acoustic piano's
+strings are tuned, a pad is a hit): `Instrument::pitchBend` defaults to ignoring it.
 
 **Levels (empirical).** One voice at `volumeDb = 0`, velocity 127, default patch, C4 peaks at 1.41
 (two oscillators summing); the default −12 dB puts a note at ≈ 0.35, leaving headroom for chords.
@@ -156,6 +179,7 @@ A recorded sound s[k] (N frames, recorded at fr Hz, mono or stereo) played by no
 (S3)  x(p) = (1 − f)·s[k] + f·s[min(k+1, b−1)],  k = ⌊p⌋, f = p − k   ; linear interpolation  (`render`)
 (S4)  y = x(p) · env · 10^(level/20) · (1 − σ + σ·vel/127)            ; σ = velocity sensitivity   ; the level applied per block, ramped as (Y4)'s volume (D-8)
 (S5)  the voice ends when p leaves [a, b − 1] — or, chromatic, when its release has finished
+(S6)  p += Δp · 2^(bend·bendRange/12)            ; the pitch wheel moves every voice's rate (REQ-inst-expr-1)
 ```
 
 `env` is the library's `ADSREnvelope` per voice (attack 0 → 1 from the first sample, so a note at the
@@ -165,6 +189,7 @@ hands the frames in (`setSample`, a copy); the library never opens a file.
 
 | parameter | unit | symbol |
 |---|---|---|
+| `bend` | semitones at full wheel (0..24, default 2) | bendRange (S6) |
 | `mode` | chromatic / one-shot | which (S1) |
 | `root` | key | root |
 | `start`, `end` | fraction | (S2) |

@@ -339,6 +339,20 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   `Volume_and_level_move_a_sounding_note` — a stepped volume seen red.)
 - `REQ-synth2-5` — Voice allocation: same note retriggers its voice, else an idle voice, else the
   oldest note is stolen (Y5).
+- `REQ-inst-expr-1` — **The wheels** (source: Solaris R-MIDI-3, 2026-10-16): `Instrument` / `Device` take
+  `pitchBend(−1…+1)` and `modWheel(0…1)`, between blocks; each instrument its own range and meaning — the Basic
+  Synth bends ± `voice.bend` semitones (default 2) and the wheel is its vibrato; the Sampler bends its rate ± `bend`;
+  a kit and the piano ignore both. Guarded by `Synth_pitch_bend_moves_every_note_by_its_range`,
+  `Synth_mod_wheel_is_vibrato`, `Sampler_bends_its_rate`, `Expression_reaches_the_instruments_through_the_registry`,
+  `glide_and_bend`.
+- `REQ-synth2-7` — **Bend and vibrato in the Basic Synth** (Solaris R-MIDI-3): (Y9) on an absolute control grid
+  (Y7), so a render is the same however a host chops time (`Synth_expression_is_the_same_however_time_is_chopped`);
+  no allocation (`Expression_does_not_allocate`). Parameters appended (`voice.bend`, `vibrato.depth`, `.rate`).
+- `REQ-synth2-8` — **Mono / legato and glide** (Solaris R-INST-6): `voice.mode` poly · mono · legato, `voice.glide`
+  ms — one voice, the keys held as a stack, a constant-time slide linear in semitones; legato does not strike again
+  while a key is held (Y8), (Y10). Guarded by `Synth_legato_glides_without_a_new_attack` (the midpoint to a control
+  step; no new attack in legato, a new one in mono; back to the key held) and `glide_and_bend` (an independent
+  zero-crossing measure: 220.0 → 309.8 (Eb4 311.1) → 440.0 Hz; bent 493.9).
 - `REQ-synth2-6` — **Stereo unison** (source: Solaris R-INST-1 amended, user request 2026-10-15: *"make an edm
   song, edm require more advance sound"*). Each oscillator has a WIDTH in cents (`osc1/2.width`, 0…50, default
   0): the `Oscillator`'s per-channel detune offset, the channels detuned apart by it, so a unison spreads across
