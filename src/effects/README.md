@@ -425,3 +425,35 @@ library rounds or holds; this is two lines of arithmetic.
 8 bits on a sine at 0.9: SNR 49.15 dB against the formula's 49.01; 12 bits 73.13 against 73.09
 (`Bitcrusher_rounds_to_its_grid`); at 7 kHz held 6 or 7 samples, 7000 taken a second (`Bitcrusher_holds_at_its_rate`).
 (BC1)–(BC3) are `Bitcrusher::process`.
+
+## Math — `Phaser.cpp` (REQ-fx-phaser-1)
+
+Notches swept by an LFO. **Why not composed:** the library has no first-order all-pass (the multiband's are
+Linkwitz-Riley biquads, the reverb's diffusion an FDN); the stage is one line, so it is written here.
+
+```
+(PH1) A stage — a first-order all-pass, its break frequency f_b (the bilinear transform of (1 − s/ω_b)/(1 + s/ω_b)):
+      A(z) = (a + z⁻¹) / (1 + a·z⁻¹),   a = (t − 1)/(t + 1),   t = tan(π·f_b/fs)
+      |A| = 1 everywhere;  its phase θ(f) = −2·atan(tan(πf/fs) / t):  0 at DC, −π/2 at f_b, −π at Nyquist
+      y = a·v + z;  z ← v − a·y                    (`Phaser::process`; `Phaser::coefficient`)
+(PH2) The sweep — a sine in log frequency, the odd channels `stereo` ahead:
+      f_b = clamp(f_c · 2^(depth · sin(2π(φ + offset))), 20 Hz, 0.45·fs),  φ ← φ + rate/fs each sample
+(PH3) Fed back, a sample on:  v = x + fb·w[n − 1],  w = A^N(v)
+(PH4) Mixed:  y = (1 − mix)·x + mix·w
+(PH5) Still (depth 0): H(e^jω) = (1 − mix) + mix·A^N / (1 − fb·A^N·e^(−jω));  with fb = 0 and mix ½ it is
+      |cos(N·θ/2)| — N/2 notches, where N·θ = −π(2k + 1):
+      f_k = (fs/π)·atan(t·tan(π(2k + 1)/(2N))),  k = 0 … N/2 − 1;  0 dB where N·θ is a whole turn (N = 4: at f_b)
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `rate` | rate | Hz 0.01 … 10 (log) | 0.5 |
+| `center` | f_c | Hz 100 … 8000 (log) | 800 |
+| `depth` | depth | octaves 0 … 4 | 2 |
+| `stages` | N | 2 … 12, even | 4 |
+| `feedback` | fb | −0.9 … 0.9 | 0.3 |
+| `stereo` | offset·360 | degrees 0 … 180 | 90 |
+| `mix` | mix | 0 … 1 | 0.5 |
+
+Still, a sine at each f_k cancels to the float floor (4 and 8 stages); with feedback ½ and mix 0.7 every frequency
+is (PH5) to 0.0000 dB (`Phaser_notches_where_the_phase_says`); the sweep is (PH2) to 1e−9 (`Phaser_sweeps_its_break`).

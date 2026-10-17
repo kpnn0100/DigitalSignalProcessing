@@ -829,3 +829,141 @@ TEST(Bitcrusher_does_not_allocate)
     gCounting = false;
     CHECK(gAllocs.load() == 0);
 }
+
+namespace
+{
+    /** (PH1)–(PH4) still (depth 0): the phaser's response at `hz` — (1 − m) + m·A^N / (1 − fb·A^N·e^(−jω)). */
+    double phaserAt(double fb, double mix, int stages, double center, double hz)
+    {
+        const double a = Phaser::coefficient(center, 48000.0);
+        const std::complex<double> z1 = std::polar(1.0, -kTau * hz / 48000.0);
+        const std::complex<double> A = (a + z1) / (1.0 + a * z1), An = std::pow(A, stages);
+        return std::abs((1.0 - mix) + mix * An / (1.0 - fb * An * z1));
+    }
+    Phaser still(int stages, double fb, double mix, double center = 1000.0)
+    {
+        Phaser p;
+        p.setStages(stages);
+        p.setFeedback(fb);
+        p.setMix(mix);
+        p.setCenterHz(center);
+        p.setDepthOct(0.0);
+        return p;
+    }
+}
+
+TEST(Phaser_stage_is_an_allpass)
+{
+    // (PH1): a stage passes every frequency at its level and turns a quarter-turn at its break frequency
+    const double a = Phaser::coefficient(1000.0, 48000.0);
+    double worst = 0;
+    for (double hz : {20.0, 300.0, 1000.0, 5000.0, 20000.0})
+    {
+        const std::complex<double> z1 = std::polar(1.0, -kTau * hz / 48000.0), A = (a + z1) / (1.0 + a * z1);
+        worst = std::max(worst, std::fabs(std::abs(A) - 1.0));
+    }
+    const std::complex<double> zb = std::polar(1.0, -kTau * 1000.0 / 48000.0), Ab = (a + zb) / (1.0 + a * zb);
+    CHECK(worst < 1e-12 && std::fabs(std::arg(Ab) + kTau / 4) < 1e-12);
+}
+
+TEST(Phaser_notches_where_the_phase_says)
+{
+    // (PH4)–(PH5) still: N stages, no feedback, mix ½ — a sine at each f_k = (fs/π)·atan(t·tan(π(2k+1)/(2N))) cancels
+    // (under −80 dB); at the break frequency the chain has turned whole turns (N = 4: one): 0 dB; with feedback ½ every
+    // frequency comes out as the closed form says, to 0.01 dB
+    configure48();
+    for (int stages : {4, 8})
+    {
+        const double t = std::tan(kTau / 2 * 1000.0 / 48000.0);
+        for (int k = 0; k < stages / 2; ++k)
+        {
+            const double f = 48000.0 / (kTau / 2) * std::atan(t * std::tan(kTau / 2 * (2 * k + 1) / (2.0 * stages)));
+            Phaser p = still(stages, 0.0, 0.5);
+            std::vector<Sample> L, R;
+            tones(L, R, 48000, {{f, 0.5}});
+            blocks(p, L, R);
+            const double left = db(amp(L, 24000, 24000, f) / 0.5);
+            std::printf("    %d stages, notch %d at %.1f Hz: %.1f dB\n", stages, k, f, left);
+            CHECK(left < -80.0);
+        }
+    }
+    Phaser p = still(4, 0.0, 0.5);
+    std::vector<Sample> L, R;
+    tones(L, R, 48000, {{1000.0, 0.5}});
+    blocks(p, L, R);
+    CHECK(std::fabs(db(amp(L, 24000, 24000, 1000.0) / 0.5)) < 0.001);
+    double worst = 0;
+    for (double hz : {150.0, 700.0, 1900.0, 4400.0, 12000.0})
+    {
+        Phaser q = still(6, 0.5, 0.7);
+        tones(L, R, 48000, {{hz, 0.25}});
+        blocks(q, L, R);
+        worst = std::max(worst, std::fabs(db(amp(L, 24000, 24000, hz) / 0.25) - db(phaserAt(0.5, 0.7, 6, 1000.0, hz))));
+    }
+    std::printf("    feedback ½, mix 0.7, 6 stages: off the closed form by %.4f dB\n", worst);
+    CHECK(worst < 0.01);
+}
+
+TEST(Phaser_sweeps_its_break)
+{
+    // (PH2): the break frequency is f_c·2^(depth·sin(2π(rate·n/fs + offset))) — the right channel `stereo` ahead
+    configure48();
+    Phaser p;
+    p.setCenterHz(700.0);
+    p.setDepthOct(1.5);
+    p.setRateHz(2.0);
+    p.setStereoDeg(90.0);
+    std::vector<Sample> L, R;
+    tones(L, R, 48000, {{440.0, 0.3}});
+    double worst = 0;
+    for (size_t at = 0; at < L.size(); at += 1000)
+    {
+        Sample *io[2] = {L.data() + at, R.data() + at};
+        p.process(io, 2, 1000);
+        const double n = (double)(at + 999); // the last sample's phase
+        for (int c : {0, 1})
+        {
+            const double want = 700.0 * std::exp2(1.5 * std::sin(kTau * (2.0 * n / 48000.0 + (c ? 0.25 : 0.0))));
+            worst = std::max(worst, std::fabs(p.breakHz(c) / want - 1.0));
+        }
+    }
+    CHECK(worst < 1e-9);
+}
+
+TEST(Phaser_dry_is_the_input)
+{
+    // (PH4): mix 0 — the input, to the bit
+    configure48();
+    Phaser p;
+    p.setMix(0.0);
+    std::vector<Sample> L, R;
+    tones(L, R, 4800, {{440.0, 0.5}, {3000.0, 0.2}});
+    const std::vector<Sample> X = L;
+    blocks(p, L, R);
+    CHECK(L == X);
+}
+
+TEST(Phaser_same_in_any_blocks_and_does_not_allocate)
+{
+    configure48();
+    auto run = [](int block) {
+        Phaser p;
+        p.setRateHz(3.0);
+        p.setStages(10);
+        std::vector<Sample> L, R;
+        tones(L, R, 9600, {{220.0, 0.5}, {2500.0, 0.2}});
+        blocks(p, L, R, block);
+        return L;
+    };
+    const auto a = run(1), b = run(128), c = run(777);
+    CHECK(a == b && a == c);
+    Phaser p;
+    std::vector<Sample> L, R;
+    tones(L, R, 4096, {{220.0, 0.5}});
+    Sample *io[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    p.process(io, 2, 4096);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0);
+}

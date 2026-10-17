@@ -290,6 +290,11 @@ package effects {
     +setBits / setRate / setMix / setOutputDb
     +process(io**, ch, frames) : (BC1)-(BC3) the grid, the hold
   }
+  class Phaser {
+    +setStages / setRateHz / setCenterHz / setDepthOct / setFeedback / setStereoDeg / setMix
+    +process(io**, ch, frames) : (PH1)-(PH4) all-passes swept, fed back, mixed
+    +{static} coefficient(hz, fs)
+  }
   class Overdrive
   class Chorus
   class Repeater

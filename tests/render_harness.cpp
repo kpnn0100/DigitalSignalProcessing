@@ -1213,6 +1213,34 @@ static std::vector<double> renderBitcrusher(double)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-fx-phaser-1: still (depth 0), 4 stages at 1 kHz, no feedback, mix ½ — 0.3 each of the two notches (414.7 and
+// 2397.8 Hz) and of the break frequency, 1 s through the registry's "phaser"
+static std::vector<double> renderPhaser(double)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("phaser");
+    d->setParam("depth", 0.0);
+    d->setParam("center", 1000.0);
+    d->setParam("stages", 4.0);
+    d->setParam("feedback", 0.0);
+    d->setParam("mix", 0.5);
+    const double t = std::tan(M_PI * 1000.0 / kSampleRate);
+    const double f0 = kSampleRate / M_PI * std::atan(t * std::tan(M_PI / 8)), f1 = kSampleRate / M_PI * std::atan(t * std::tan(3 * M_PI / 8));
+    std::vector<Sample> L(48000), R(48000);
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        const double x = (double)n / kSampleRate;
+        L[n] = R[n] = 0.3 * (std::sin(2 * M_PI * f0 * x) + std::sin(2 * M_PI * f1 * x) + std::sin(2 * M_PI * 1000 * x));
+    }
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // REQ-808-2: the registry's "808" on A1 (55 Hz) for a second, its defaults but no click, no drive and a long decay (8 s:
 // steady enough in a window to read its pitch)
 static std::vector<double> render808(double)
@@ -1336,6 +1364,7 @@ int main(int argc, char **argv)
     else if (scenario == "deesser") samples = renderDeEsser(arg);
     else if (scenario == "saturator") samples = renderSaturator(arg);
     else if (scenario == "bitcrusher") samples = renderBitcrusher(arg);
+    else if (scenario == "phaser") samples = renderPhaser(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

@@ -1566,6 +1566,30 @@ def check_bitcrusher_grid_and_hold(binpath):
 
 CHECKS.append(("bitcrusher_grid_and_hold", check_bitcrusher_grid_and_hold))
 
+def check_phaser_notches(binpath):
+    """REQ-fx-phaser-1 (PH5): still, 4 stages at 1 kHz, mix ½ — the two notches f_k = (fs/π)·atan(t·tan(π(2k+1)/8)),
+    computed here, are gone (under −60 dB in 16 bits); the break frequency passes at 0 dB (0.05)."""
+    t = math.tan(math.pi * 1000.0 / SR)
+    f = [SR / math.pi * math.atan(t * math.tan(math.pi * (2 * k + 1) / 8)) for k in (0, 1)]
+    y = render(binpath, "phaser", 0)[SR // 2:]
+    w = [0.5 - 0.5 * math.cos(2 * math.pi * i / len(y)) for i in range(len(y))]  # Hann: the 1 kHz kept out of the notches
+
+    def hann_amp(fk):
+        om = 2 * math.pi * fk / SR
+        re = sum(v * wi * math.cos(om * i) for i, (v, wi) in enumerate(zip(y, w)))
+        im = sum(v * wi * math.sin(om * i) for i, (v, wi) in enumerate(zip(y, w)))
+        return 2 * math.hypot(re, im) / sum(w)
+    n0, n1 = (20 * math.log10(max(hann_amp(fk), 1e-12) / 0.3) for fk in f)
+    peak = 20 * math.log10(hann_amp(1000.0) / 0.3)
+    if n0 > -60 or n1 > -60:
+        raise Failure(f"notches at {f[0]:.1f} / {f[1]:.1f} Hz only {n0:.1f} / {n1:.1f} dB")
+    if abs(peak) > 0.05:
+        raise Failure(f"the break frequency at {peak:+.3f} dB")
+    return f"notches {f[0]:.1f} Hz {n0:.1f} dB, {f[1]:.1f} Hz {n1:.1f} dB; 1 kHz {peak:+.3f} dB"
+
+
+CHECKS.append(("phaser_notches", check_phaser_notches))
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

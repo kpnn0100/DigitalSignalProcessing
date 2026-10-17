@@ -9,6 +9,7 @@
 #include "../effects/DeEsser.h"
 #include "../effects/Saturator.h"
 #include "../effects/Bitcrusher.h"
+#include "../effects/Phaser.h"
 #include "../instrument/Sampler.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
@@ -776,6 +777,21 @@ namespace arstro
             return b;
         }
 
+        // REQ-fx-phaser-1: notches swept by an LFO
+        const std::vector<Binding<Phaser>> &phaserBindings()
+        {
+            static const std::vector<Binding<Phaser>> b = {
+                {num("rate", "Rate", "Hz", 0.01, 10, 0.5, true), [](Phaser &p, double x) { p.setRateHz(x); }},
+                {num("center", "Center", "Hz", 100, 8000, 800, true), [](Phaser &p, double x) { p.setCenterHz(x); }},
+                {num("depth", "Depth", "oct", 0, 4, 2), [](Phaser &p, double x) { p.setDepthOct(x); }},
+                {num("stages", "Stages", "", 2, 12, 4, false, true), [](Phaser &p, double x) { p.setStages((int)x); }},
+                {num("feedback", "Feedback", "", -0.9, 0.9, 0.3), [](Phaser &p, double x) { p.setFeedback(x); }},
+                {num("stereo", "Stereo", "deg", 0, 180, 90), [](Phaser &p, double x) { p.setStereoDeg(x); }},
+                {num("mix", "Mix", "", 0, 1, 0.5), [](Phaser &p, double x) { p.setMix(x); }},
+            };
+            return b;
+        }
+
         // REQ-fx-gate-1: a gate and a downward expander
         const std::vector<Binding<Gate>> &gateBindings()
         {
@@ -1041,6 +1057,7 @@ namespace arstro
                 gate.takesKey = true;
                 v.push_back(gate);
             }
+            v.push_back(effectType<Phaser>("phaser", "Phaser", "Notches swept by an LFO: first-order all-passes fed back, mixed with the dry sound.", &phaserBindings)); // REQ-fx-phaser-1
             v.push_back(effectType<Saturator>("saturator", "Saturator", "A curve driven — soft, hard, tube or fold — four times oversampled, its latency reported.", &saturatorBindings)); // REQ-fx-saturator-1
             v.push_back(effectType<Bitcrusher>("bitcrusher", "Bitcrusher", "Fewer bits and a lower rate: each sample rounded to a coarser grid, held for longer.", &bitcrusherBindings)); // REQ-fx-bitcrusher-1
             v.push_back(effectType<DeEsser>("deesser", "De-esser", "Sibilance held down: a high-pass hears it, its level held at the threshold — the band alone turned down (split) or the whole sound (wide).", &deesserBindings)); // REQ-fx-deesser-1

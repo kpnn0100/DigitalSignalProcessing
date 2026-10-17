@@ -51,6 +51,7 @@
 #include "effects/DeEsser.h"
 #include "effects/Saturator.h"
 #include "effects/Bitcrusher.h"
+#include "effects/Phaser.h"
 #include "effects/Overdrive.h"
 #include "effects/Chorus.h"
 #include "effects/Repeater.h"

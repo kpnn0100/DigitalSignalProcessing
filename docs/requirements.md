@@ -676,6 +676,13 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   "bitcrusher". (BC1)–(BC3). Guarded by `Bitcrusher_rounds_to_its_grid` (the grid exactly; SNR 6.02·b + 1.76 +
   20·log10 a to 0.5 dB at 8 and 12 bits), `Bitcrusher_holds_at_its_rate`, `Bitcrusher_dry_is_the_input`,
   `Bitcrusher_does_not_allocate`, and the integration check `bitcrusher_grid_and_hold`.
+- `REQ-fx-phaser-1` — **A phaser** (source: Solaris R-FX-11, "implement all", 2026-10-17): `Phaser` — 2 … 12 first-order
+  all-passes (the bilinear transform's, a = (t − 1)/(t + 1)), their break frequency swept by a sine in log frequency
+  (centre, depth in octaves, rate; the odd channels `stereo` degrees ahead), fed back a sample on, mixed with the dry
+  sound; the registry's "phaser". (PH1)–(PH5). Guarded by `Phaser_stage_is_an_allpass`, `Phaser_notches_where_the_phase_says`
+  (still: each f_k cancels to the float floor at 4 and 8 stages; the break frequency at 0 dB; with feedback, every
+  frequency the closed form's to 0.01 dB), `Phaser_sweeps_its_break` (to 1e−9), `Phaser_dry_is_the_input`,
+  `Phaser_same_in_any_blocks_and_does_not_allocate`, and the integration check `phaser_notches`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position
