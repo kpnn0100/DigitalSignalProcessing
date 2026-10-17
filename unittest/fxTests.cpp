@@ -3,6 +3,7 @@
 #include "../src/synth_dsp.h"
 #include <atomic>
 #include <cmath>
+#include <complex>
 #include <cstdio>
 #include <vector>
 
@@ -394,4 +395,155 @@ TEST(Transient_does_not_allocate)
     t.process(io, 2, 4096);
     gCounting = false;
     CHECK(gAllocs.load() == 0);
+}
+
+namespace
+{
+    /** The de-esser's band filter at `hz` (DE1): H(e^{jω}) from Biquad::design's high-pass at `f`. */
+    std::complex<double> bandAt(double f, double hz)
+    {
+        const auto c = Biquad::design(Biquad::HighPass, f, 0.7071067811865476, 0.0, 48000.0);
+        const std::complex<double> z1 = std::polar(1.0, -kTau * hz / 48000.0), z2 = z1 * z1;
+        return ((double)c.b0 + (double)c.b1 * z1 + (double)c.b2 * z2) / (1.0 + (double)c.a1 * z1 + (double)c.a2 * z2);
+    }
+    /** (DE4) split, a steady cut: a sine at `hz` comes out |H_shelf| of itself — the RBJ high shelf at f, −cut dB. */
+    double splitAt(double f, double hz, double cutDb)
+    {
+        return std::pow(10.0, Biquad::magnitudeDb(Biquad::design(Biquad::HighShelf, f, 0.7071067811865476, -cutDb, 48000.0), hz, 48000.0) / 20.0);
+    }
+    DeEsser deesser(double f, double t, double range, bool split)
+    {
+        DeEsser d;
+        d.setFrequency(f);
+        d.setThresholdDb(t);
+        d.setRangeDb(range);
+        d.setSplit(split);
+        return d;
+    }
+}
+
+TEST(DeEsser_leaves_what_is_under_its_threshold)
+{
+    // (DE3): a voice's 1 kHz at −6 dBFS, the band at 6 kHz hearing it some 30 dB down — under −20 dB: nothing cut,
+    // the input to the bit, either mode
+    configure48();
+    for (bool split : {true, false})
+    {
+        DeEsser d = deesser(6000, -20, 12, split);
+        std::vector<Sample> L, R, L0;
+        tones(L, R, 48000, {{1000.0, 0.5}});
+        L0 = L;
+        blocks(d, L, R);
+        CHECK(L == L0 && R == L0 && d.cutDb() == 0.0);
+    }
+}
+
+TEST(DeEsser_holds_the_band_at_its_threshold)
+{
+    // (DE2)–(DE4): a 10 kHz sibilance at −12 dBFS, the band at 6 kHz, the threshold −24 dB: cut by its level over the
+    // threshold, 20·log10(0.25·|H|) + 24 — or a little less: the detector, a peak follower with a 1 ms attack, sits under
+    // a sine's peak (0.43 dB at 10 kHz; never over it); a range of
+    // 6 dB: cut 6 dB exactly, the sine out |H_shelf(−6 dB)| of itself to 0.01 dB
+    configure48();
+    const double want = 20.0 * std::log10(0.25 * std::abs(bandAt(6000, 10000))) + 24.0;
+    DeEsser d = deesser(6000, -24, 24, true);
+    std::vector<Sample> L, R;
+    tones(L, R, 48000, {{10000.0, 0.25}});
+    blocks(d, L, R);
+    const double free = d.cutDb();
+    DeEsser e = deesser(6000, -24, 6, true);
+    tones(L, R, 48000, {{10000.0, 0.25}});
+    blocks(e, L, R);
+    const double out = db(amp(L, 24000, 24000, 10000.0) / 0.25), wantOut = db(splitAt(6000, 10000, 6.0));
+    std::printf("    10 kHz at −12 dBFS over −24: cut %.2f dB (the formula %.2f); a 6 dB range: cut %.3f, out %.3f dB (want %.3f)\n", free, want, e.cutDb(), out, wantOut);
+    CHECK(free <= want + 1e-9 && free > want - 0.5);
+    CHECK(e.cutDb() == 6.0);
+    CHECK(std::fabs(out - wantOut) < 0.01);
+    // the corner moved while the cut holds at its range: the shelf moves with it
+    e.setFrequency(4000);
+    tones(L, R, 48000, {{10000.0, 0.25}});
+    blocks(e, L, R);
+    const double moved = db(amp(L, 24000, 24000, 10000.0) / 0.25), wantMoved = db(splitAt(4000, 10000, 6.0));
+    std::printf("    the corner at 4 kHz: out %.3f dB (want %.3f)\n", moved, wantMoved);
+    CHECK(std::fabs(moved - wantMoved) < 0.01 && std::fabs(moved - out) > 0.1);
+}
+
+TEST(DeEsser_split_spares_the_rest_wide_does_not)
+{
+    // (DE4)–(DE5): a voice (1 kHz) and its sibilance (10 kHz), cut 6 dB — split: each comes out |H_shelf| of itself (the
+    // voice near untouched); wide: the voice 6 dB down with it
+    configure48();
+    std::vector<Sample> L, R;
+    DeEsser s = deesser(6000, -24, 6, true);
+    tones(L, R, 48000, {{1000.0, 0.25}, {10000.0, 0.25}});
+    blocks(s, L, R);
+    const double voice = db(amp(L, 24000, 24000, 1000.0) / 0.25), wantVoice = db(splitAt(6000, 1000, 6.0));
+    DeEsser w = deesser(6000, -24, 6, false);
+    tones(L, R, 48000, {{1000.0, 0.25}, {10000.0, 0.25}});
+    blocks(w, L, R);
+    const double wide = db(amp(L, 24000, 24000, 1000.0) / 0.25), wideS = db(amp(L, 24000, 24000, 10000.0) / 0.25);
+    std::printf("    split: the voice %+.3f dB (the formula %+.3f); wide: the voice %+.3f dB, the sibilance %+.3f\n", voice, wantVoice, wide, wideS);
+    CHECK(std::fabs(voice - wantVoice) < 0.01 && std::fabs(voice) < 0.5);
+    CHECK(std::fabs(wide + 6.0) < 0.01 && std::fabs(wideS + 6.0) < 0.01);
+}
+
+TEST(DeEsser_listens_where_it_is_told)
+{
+    // (DE1): a 5 kHz tone at −12 dBFS, threshold −24 — heard by a band at 3 kHz (cut its range, 6 dB); not by one at
+    // 12 kHz (some 15 dB further down: under the threshold, untouched)
+    configure48();
+    std::vector<Sample> L, R, L0;
+    DeEsser lo = deesser(3000, -24, 6, true);
+    tones(L, R, 24000, {{5000.0, 0.25}});
+    blocks(lo, L, R);
+    DeEsser hi = deesser(12000, -24, 6, true);
+    tones(L, R, 24000, {{5000.0, 0.25}});
+    L0 = L;
+    blocks(hi, L, R);
+    CHECK(lo.cutDb() == 6.0);
+    CHECK(hi.cutDb() == 0.0 && L == L0);
+}
+
+TEST(DeEsser_is_linked)
+{
+    // (DE2): the sibilance in the right only — wide, the left (a voice alone) goes down with it, 6 dB
+    configure48();
+    DeEsser d = deesser(6000, -24, 6, false);
+    std::vector<Sample> L, R, unused;
+    tones(L, unused, 48000, {{1000.0, 0.25}});
+    tones(R, unused, 48000, {{10000.0, 0.25}});
+    blocks(d, L, R);
+    CHECK(std::fabs(db(amp(L, 24000, 24000, 1000.0) / 0.25) + 6.0) < 0.01);
+}
+
+TEST(DeEsser_engages_without_a_click)
+{
+    // (DE4): a voice (1 kHz, −6 dBFS), then a quiet sibilance comes in (10 kHz, −26 dBFS, over −40) — the shelf has run
+    // all along, so cutting starts from its own past: no step in the output larger than the input's own
+    configure48();
+    DeEsser d = deesser(6000, -40, 12, true);
+    std::vector<Sample> L(24000), R;
+    for (int i = 0; i < 24000; ++i)
+        L[(size_t)i] = 0.5 * std::sin(kTau * 1000.0 * i / 48000.0) + (i >= 12007 ? 0.05 * std::sin(kTau * 10000.0 * (i - 12007) / 48000.0) : 0.0);
+    R = L;
+    const std::vector<Sample> X = L;
+    blocks(d, L, R);
+    double in = 0, out = 0;
+    for (size_t i = 1; i < L.size(); ++i) { in = std::max(in, std::fabs(X[i] - X[i - 1])); out = std::max(out, std::fabs(L[i] - L[i - 1])); }
+    std::printf("    the largest step: in %.4f, out %.4f (cut %.1f dB)\n", in, out, d.cutDb());
+    CHECK(d.cutDb() > 0.0 && out <= in * 1.02);
+}
+
+TEST(DeEsser_does_not_allocate)
+{
+    configure48();
+    DeEsser d = deesser(6000, -40, 12, true);
+    std::vector<Sample> L, R;
+    tones(L, R, 4096, {{8000.0, 0.5}});
+    Sample *io[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    d.process(io, 2, 4096);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0 && d.cutDb() > 0.0);
 }

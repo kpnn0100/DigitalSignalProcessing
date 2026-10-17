@@ -1481,6 +1481,35 @@ def check_transient_follows_its_closed_forms(binpath):
 
 CHECKS.append(("transient_follows_its_closed_forms", check_transient_follows_its_closed_forms))
 
+def check_deesser_shelves_the_band(binpath):
+    """REQ-fx-deesser-1 (DE4)–(DE5): a voice (1 kHz) and its sibilance (10 kHz), cut its 6 dB range — split, each comes
+    out |H| of the RBJ high shelf at 6 kHz, −6 dB (the cookbook's formulas, written here), to 0.05 dB; wide, both 6 dB
+    down."""
+    def shelf_db(f0, gain_db, f, q=1 / math.sqrt(2)):
+        a = 10 ** (gain_db / 40)
+        w0 = 2 * math.pi * f0 / SR
+        cw, al = math.cos(w0), math.sin(w0) / (2 * q)
+        sq = 2 * math.sqrt(a) * al
+        b = [a * ((a + 1) + (a - 1) * cw + sq), -2 * a * ((a - 1) + (a + 1) * cw), a * ((a + 1) + (a - 1) * cw - sq)]
+        den = [(a + 1) - (a - 1) * cw + sq, 2 * ((a - 1) - (a + 1) * cw), (a + 1) - (a - 1) * cw - sq]
+        z = cmath.exp(-1j * 2 * math.pi * f / SR)
+        return 20 * math.log10(abs((b[0] + b[1] * z + b[2] * z * z) / (den[0] + den[1] * z + den[2] * z * z)))
+    split = render(binpath, "deesser", 0)[SR // 2:]
+    wide = render(binpath, "deesser", 1)[SR // 2:]
+    out = {}
+    for name, y in (("split", split), ("wide", wide)):
+        out[name] = [20 * math.log10(goertzel(y, f) / 0.25) for f in (1000.0, 10000.0)]
+    want = [shelf_db(6000.0, -6.0, f) for f in (1000.0, 10000.0)]
+    if any(abs(g - w) > 0.05 for g, w in zip(out["split"], want)):
+        raise Failure(f"split: {out['split'][0]:.3f} / {out['split'][1]:.3f} dB, the shelf says {want[0]:.3f} / {want[1]:.3f}")
+    if any(abs(g + 6.0) > 0.05 for g in out["wide"]):
+        raise Failure(f"wide: {out['wide'][0]:.3f} / {out['wide'][1]:.3f} dB, want −6")
+    return (f"split: voice {out['split'][0]:+.3f} dB, sibilance {out['split'][1]:+.3f} (the shelf {want[0]:+.3f} / {want[1]:+.3f}); "
+            f"wide: {out['wide'][0]:+.3f} / {out['wide'][1]:+.3f}")
+
+
+CHECKS.append(("deesser_shelves_the_band", check_deesser_shelves_the_band))
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

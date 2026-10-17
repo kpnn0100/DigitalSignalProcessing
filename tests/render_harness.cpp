@@ -1151,6 +1151,31 @@ static std::vector<double> renderTransient(double which)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-fx-deesser-1: a voice (1 kHz) and its sibilance (10 kHz), 0.25 each, 1 s through the registry's "deesser" at
+// 6 kHz, −24 dB, a 6 dB range (the sibilance well over it: the cut held at the range) — arg 0: split; arg 1: wide
+static std::vector<double> renderDeEsser(double wide)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("deesser");
+    d->setParam("frequency", 6000.0);
+    d->setParam("threshold", -24.0);
+    d->setParam("range", 6.0);
+    d->setParam("mode", wide);
+    std::vector<Sample> L(48000), R(48000);
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        const double t = (double)n / kSampleRate;
+        L[n] = R[n] = 0.25 * std::sin(2 * M_PI * 1000 * t) + 0.25 * std::sin(2 * M_PI * 10000 * t);
+    }
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // REQ-808-2: the registry's "808" on A1 (55 Hz) for a second, its defaults but no click, no drive and a long decay (8 s:
 // steady enough in a window to read its pitch)
 static std::vector<double> render808(double)
@@ -1271,6 +1296,7 @@ int main(int argc, char **argv)
     else if (scenario == "multiband") samples = renderMultiband(arg);
     else if (scenario == "gate") samples = renderGate(arg);
     else if (scenario == "transient") samples = renderTransient(arg);
+    else if (scenario == "deesser") samples = renderDeEsser(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

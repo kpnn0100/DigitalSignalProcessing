@@ -649,6 +649,15 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   within 1e−9 dB; −100 % the mirror; the other amount does nothing), `Transient_steady_is_untouched` (a square: 0 dB;
   a 100 Hz sine within 0.2 dB), `Transient_is_linked`, `Transient_does_not_allocate`, and the integration check
   `transient_follows_its_closed_forms` (from the WAV, to 0.02 dB).
+- `REQ-fx-deesser-1` — **A de-esser** (source: Solaris R-FX-9, "implement all", 2026-10-17): `DeEsser` — a Butterworth
+  high-pass at f hears the band; its level, linked, held at the threshold, never cut by more than the range; split: an
+  RBJ high shelf at f, its gain the cut (the sound under f left as it is); wide: the whole sound turned down; nothing
+  cut, the input to the bit; the registry's "deesser" (frequency, threshold, range, mode). (DE1)–(DE5). Guarded by
+  `DeEsser_leaves_what_is_under_its_threshold` (to the bit, either mode), `DeEsser_holds_the_band_at_its_threshold`
+  (the cut the threshold's distance from the detector's reading; at its range exactly; the shelf's response to 0.01
+  dB, and moved with its corner), `DeEsser_split_spares_the_rest_wide_does_not`, `DeEsser_listens_where_it_is_told`,
+  `DeEsser_is_linked`, `DeEsser_engages_without_a_click`, `DeEsser_does_not_allocate`, and the integration check
+  `deesser_shelves_the_band` (the cookbook's shelf, written in Python, to 0.05 dB).
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

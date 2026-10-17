@@ -274,6 +274,11 @@ package effects {
     +setAttack(pct) / setSustain(pct) / setOutputDb
     +process(io**, ch, frames) : (TS1)-(TS5) e_f against e_r (up only) and e_s (down only)
   }
+  class DeEsser {
+    +setFrequency / setThresholdDb / setRangeDb / setSplit(on)
+    +process(io**, ch, frames) : (DE1)-(DE5) HP-heard, held at T, shelved (split) or wide
+  }
+  DeEsser ..> Biquad : design() its band and its shelf
   class Overdrive
   class Chorus
   class Repeater

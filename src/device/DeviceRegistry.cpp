@@ -6,6 +6,7 @@
 #include "../effects/MultibandCompressor.h"
 #include "../effects/Gate.h"
 #include "../effects/TransientShaper.h"
+#include "../effects/DeEsser.h"
 #include "../instrument/Sampler.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
@@ -737,6 +738,18 @@ namespace arstro
             return b;
         }
 
+        // REQ-fx-deesser-1: sibilance held down
+        const std::vector<Binding<DeEsser>> &deesserBindings()
+        {
+            static const std::vector<Binding<DeEsser>> b = {
+                {num("frequency", "Frequency", "Hz", 2000, 16000, 6000, true), [](DeEsser &d, double x) { d.setFrequency(x); }},
+                {num("threshold", "Threshold", "dB", -60, 0, -30), [](DeEsser &d, double x) { d.setThresholdDb(x); }},
+                {num("range", "Range", "dB", 0, 24, 12), [](DeEsser &d, double x) { d.setRangeDb(x); }},
+                {choice("mode", "Mode", {"split", "wide"}, 0), [](DeEsser &d, double x) { d.setSplit(x < 0.5); }},
+            };
+            return b;
+        }
+
         // REQ-fx-gate-1: a gate and a downward expander
         const std::vector<Binding<Gate>> &gateBindings()
         {
@@ -1002,6 +1015,7 @@ namespace arstro
                 gate.takesKey = true;
                 v.push_back(gate);
             }
+            v.push_back(effectType<DeEsser>("deesser", "De-esser", "Sibilance held down: a high-pass hears it, its level held at the threshold — the band alone turned down (split) or the whole sound (wide).", &deesserBindings)); // REQ-fx-deesser-1
             v.push_back(effectType<TransientShaper>("transient", "Transient Shaper", "More or less attack, more or less sustain, whatever the level: a fast envelope against two slow ones.", &transientBindings)); // REQ-fx-transient-1
             v.push_back(effectType<MultibandCompressor>("multiband", "Multiband", "Three bands split by Linkwitz-Riley crossovers, each compressed alone; flat when nothing is.", &multibandBindings)); // REQ-fx-multiband-1
             v.push_back(effectType<Reverb>("reverb", "Reverb", "Feedback-delay-network reverb, decorrelated stereo.", &reverbBindings));

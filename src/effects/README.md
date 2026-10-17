@@ -329,3 +329,35 @@ At +100 % attack a sound from silence is 11.70 dB louder 10 ms in and 1.89 dB at
 is 7.03 dB less 100 ms on (`Transient_attack_shapes_the_rise`, `Transient_sustain_shapes_the_fall`, both to (TS6) within
 1e−9 dB; `transient_follows_its_closed_forms` from the WAV). (TS1)–(TS5) are `TransientShaper::process`; the
 per-sample constants are the constructor's, from the sample rate.
+
+## Math — `DeEsser.cpp` (REQ-fx-deesser-1)
+
+Sibilance held down. **Composed of:** `Biquad::design` (RBJ) for both of its filters, and (C2)'s follower form. **Why
+not a keyed `Compressor`:** the Compressor's gain multiplies its input, per channel; split, a de-esser turns down
+only the band it hears, linked across channels, and holds it at the threshold (a ratio of ∞ with a range) — so it
+owns its gain law and borrows the rest.
+
+```
+(DE1) The band:  h_c = HP(x_c),  HP = Biquad::design(HighPass, f, Q = 1/√2) — a Butterworth high-pass at f
+(DE2) Its level, linked:  ℓ = max_c |h_c|;  env = C2's follower, 1 ms up, 50 ms down
+(DE3) The cut — the band held at the threshold, never by more than the range:
+      cut = clamp(20·log10(env + 1e−9) − T, 0, range)  dB
+(DE4) split:  y_c = SH(x_c),  SH = Biquad::design(HighShelf, f, Q = 1/√2, gain = −cut) — redesigned when the cut or f
+      moves; at 0 dB the RBJ shelf is the identity (b = a) and its state is zero, so it is not run while nothing is
+      cut, its state held at zero, and a cut growing from 0 starts it from its own past
+(DE5) wide:   y_c = x_c · 10^(−cut/20)
+      cut = 0: y = x, to the bit (either mode)
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `frequency` | f | Hz 2000 … 16000 (log) — the band's corner and the shelf's | 6000 |
+| `threshold` | T | dB −60 … 0 | −30 |
+| `range` | — | dB 0 … 24 | 12 |
+| `mode` | — | split · wide | split |
+
+The detector is a peak follower with a 1 ms attack, so on a steady sine it sits a little under the peak (0.43 dB at
+10 kHz): the cut is the threshold's distance from what it reads, never more. Split, a cut of g dB takes a sound
+far above f down g dB and one at f g/2 (the shelf's midpoint) — a 10 kHz sibilance under a 6 dB cut at 6 kHz: −5.50 dB;
+a 1 kHz voice: −0.004 dB (`DeEsser_split_spares_the_rest_wide_does_not`, `deesser_shelves_the_band`). (DE1)–(DE5) are
+`DeEsser::process`; the follower's constants are the constructor's, the band's `design()`.
