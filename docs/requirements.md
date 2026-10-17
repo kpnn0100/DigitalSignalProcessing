@@ -622,6 +622,14 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   `…_does_not_allocate`.
 - `REQ-808-2` — **The registry's "808"** (same source): punch, punch time, glide, attack, decay, release, click,
   drive, tone, volume, velocity, bend range. Guarded by the registry's tests; integration `808_is_tuned`.
+- `REQ-fx-multiband-1` — **A multiband compressor** (source: Solaris R-FX-6, "implement all", 2026-10-16):
+  `MultibandCompressor` — three bands split by Linkwitz-Riley 4th-order crossovers (Biquad::design's Butterworth
+  pairs), the low band through the upper crossover's all-pass so the three sum flat; each band its own library
+  Compressor (threshold, ratio, gain), attack and release shared; an output gain; the registry's "multiband". The
+  registry runs any effect's whole-frame `process`, `reset`, key and latency where it has them (found by member). (MB1)–
+  (MB4). Guarded by `Multiband_at_ratio_one_is_flat` (40 Hz … 15 kHz within 0.0000 dB; the output gain),
+  `Multiband_compresses_only_its_band` (60 Hz cut exactly as the Compressor alone, 17.30 dB; 5 kHz untouched),
+  `Multiband_does_not_allocate`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

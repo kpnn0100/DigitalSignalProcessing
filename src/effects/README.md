@@ -225,3 +225,28 @@ size 1/37/128, a mix with 3.0 spikes driven 12 dB into −1 dBFS: never above, c
 (`Limiter_never_exceeds_its_ceiling_and_glides`); through the registry, 18 dB into −1 dBFS peaks at
 −1.000 dBFS (`limiter_ceiling`).
 
+
+## Math — `MultibandCompressor.cpp` (REQ-fx-multiband-1)
+
+Three bands, each its own `Compressor`, split where the user says. **A composition (rule 1):** the crossovers are
+`Biquad::design`'s Butterworth low- and high-passes run in pairs (a Linkwitz-Riley 4th order), the bands' dynamics
+the library's `Compressor` ((C1)–(C4)); its own: the split and the all-pass that keeps the sum flat.
+
+```
+(MB1) Linkwitz-Riley 4th order at f:  LP_f = B_lp(f)·B_lp(f),  HP_f = B_hp(f)·B_hp(f)   (B a Butterworth biquad, Q 0.7071)
+      LP_f + HP_f = AP_f  (an all-pass: |AP| = 1)                                       `MultibandCompressor::process`
+(MB2) The bands:  low = AP_f2(LP_f1 x),  mid = LP_f2(HP_f1 x),  high = HP_f2(HP_f1 x)
+      low + mid + high = AP_f2(LP_f1 x) + AP_f2(HP_f1 x) = AP_f2(AP_f1 x)  — flat in magnitude, f1 < f2
+      (AP_f2 on the low band is LP_f2 + HP_f2, run on it: the same phase the others took)
+(MB3) Each band through its own Compressor (threshold, ratio, attack, release, and its gain as makeup)
+(MB4) y = (low' + mid' + high') · output
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `low.split`, `high.split` | f1, f2 | Hz (f2 kept above f1 by a fifth) | 200, 2500 |
+| `<band>.threshold`, `.ratio`, `.gain` | T, R, makeup | dB, :1, dB | −20, 3, 0 |
+| `attack`, `release` | Ta, Tr | ms (all bands) | 10, 150 |
+| `output` | — | dB | 0 |
+
+Ratio 1 everywhere: the bands sum to an all-pass — the input's magnitude to 0.01 dB at every frequency.

@@ -259,6 +259,12 @@ package effects {
     +process(io**, ch, frames) : linked, lookahead
     +latency() / clamped()
   }
+  class MultibandCompressor {
+    +setSplits(f1, f2) / setThresholdDb|setRatio|setGainDb(band, ..)
+    +process(io**, ch, frames) : (MB1)-(MB4) LR4 bands, flat at ratio 1
+  }
+  MultibandCompressor *-- "3" Compressor
+  MultibandCompressor ..> Biquad : design() for its crossovers
   class Overdrive
   class Chorus
   class Repeater

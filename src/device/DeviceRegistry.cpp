@@ -3,6 +3,7 @@
 #include "../effects/Chorus.h"
 #include "../effects/Compressor.h"
 #include "../effects/Limiter.h"
+#include "../effects/MultibandCompressor.h"
 #include "../instrument/Sampler.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
@@ -658,27 +659,29 @@ namespace arstro
         {
         public:
             EffectDevice(const DeviceType &t, const std::vector<Binding<Proc>> &b) : Device(t), mB(b) { applyAll(); }
-            void process(Sample *const *io, int channels, int frames) override { runOf(mProc, io, channels, frames); }
-            void reset() override { resetOf(mProc); }
-            void setKey(const Sample *const *key, int channels) override { keyOf(mProc, key, channels); }
-            int latency() const override { return latencyOf(mProc); }
+            void process(Sample *const *io, int channels, int frames) override { runOf(mProc, io, channels, frames, 0); }
+            void reset() override { resetOf(mProc, 0); }
+            void setKey(const Sample *const *key, int channels) override { keyOf(mProc, key, channels, 0); }
+            int latency() const override { return latencyOf(mProc, 0); }
 
         protected:
             void apply(int i, double v) override { mB[i].set(mProc, v); }
 
         private:
-            // Each processor clears its memory its own way; one without a reset keeps its state.
-            static void resetOf(ParametricEQ &p) { p.reset(); }
-            static void resetOf(Limiter &p) { p.reset(); }
-            template <class Q> static void resetOf(Q &) {}
-            // a limiter links its channels, so it takes the whole frame; the rest run channel by channel
-            static void runOf(Limiter &p, Sample *const *io, int channels, int frames) { p.process(io, channels, frames); }
-            template <class Q> static void runOf(Q &p, Sample *const *io, int channels, int frames) { runChannels(p, io, channels, frames); }
-            static void keyOf(Compressor &p, const Sample *const *key, int channels) { p.setKey(key, channels); }
-            template <class Q> static void keyOf(Q &, const Sample *const *, int) {}
-            // REQ-device-8: only the limiter's lookahead delays its output; every other effect is latency-free
-            static int latencyOf(const Limiter &p) { return p.latency(); }
-            template <class Q> static int latencyOf(const Q &) { return 0; }
+            // What a processor has, it is used for — found by its members, not listed by type (N34: an effect that
+            // links its channels takes the whole frame; one that clears its memory resets; one with a delay says it)
+            template <class Q> static auto resetOf(Q &p, int) -> decltype(p.reset(), void()) { p.reset(); }
+            template <class Q> static void resetOf(Q &, long) {}
+            template <class Q> static auto runOf(Q &p, Sample *const *io, int channels, int frames, int) -> decltype(p.process(io, channels, frames), void())
+            {
+                p.process(io, channels, frames);
+            }
+            template <class Q> static void runOf(Q &p, Sample *const *io, int channels, int frames, long) { runChannels(p, io, channels, frames); }
+            template <class Q> static auto keyOf(Q &p, const Sample *const *key, int channels, int) -> decltype(p.setKey(key, channels), void()) { p.setKey(key, channels); }
+            template <class Q> static void keyOf(Q &, const Sample *const *, int, long) {}
+            // REQ-device-8: an effect with a lookahead says how far its output lags; the rest are latency-free
+            template <class Q> static auto latencyOf(const Q &p, int) -> decltype(p.latency(), 0) { return p.latency(); }
+            template <class Q> static int latencyOf(const Q &, long) { return 0; }
             Proc mProc;
             const std::vector<Binding<Proc>> &mB;
         };
@@ -694,6 +697,30 @@ namespace arstro
                 // appended (a parameter's index is its id in a plugin host): detect on the key, not the input
                 {choice("sidechain", "Sidechain", {"off", "on"}, 0), [](Compressor &c, double x) { c.setSidechain(x > 0.5); }},
             };
+            return b;
+        }
+
+        // REQ-fx-multiband-1: three bands, each its own compressor
+        const std::vector<Binding<MultibandCompressor>> &multibandBindings()
+        {
+            using M = MultibandCompressor;
+            static const std::vector<Binding<M>> b = [] {
+                std::vector<Binding<M>> v;
+                v.push_back({num("low.split", "Low Split", "Hz", 20, 1000, 200, true), [](M &m, double x) { m.setSplits(x, m.highSplit()); }});
+                v.push_back({num("high.split", "High Split", "Hz", 500, 12000, 2500, true), [](M &m, double x) { m.setSplits(m.lowSplit(), x); }});
+                const char *names[3] = {"low", "mid", "high"}, *labels[3] = {"Low", "Mid", "High"};
+                for (int k = 0; k < 3; ++k)
+                {
+                    const std::string n = names[k];
+                    v.push_back({num(n + ".threshold", std::string(labels[k]) + " Threshold", "dB", -60, 0, -20), [k](M &m, double x) { m.setThresholdDb(k, x); }});
+                    v.push_back({num(n + ".ratio", std::string(labels[k]) + " Ratio", ":1", 1, 20, 3, true), [k](M &m, double x) { m.setRatio(k, x); }});
+                    v.push_back({num(n + ".gain", std::string(labels[k]) + " Gain", "dB", -24, 24, 0), [k](M &m, double x) { m.setGainDb(k, x); }});
+                }
+                v.push_back({num("attack", "Attack", "ms", 0.1, 200, 10, true), [](M &m, double x) { m.setAttackMs(x); }});
+                v.push_back({num("release", "Release", "ms", 5, 2000, 150, true), [](M &m, double x) { m.setReleaseMs(x); }});
+                v.push_back({num("output", "Output", "dB", -24, 24, 0), [](M &m, double x) { m.setOutputDb(x); }});
+                return v;
+            }();
             return b;
         }
 
@@ -942,6 +969,7 @@ namespace arstro
             comp.takesKey = true;
             v.push_back(comp);
             v.push_back(effectType<ParametricEQ>("eq", "EQ", "Low cut, low shelf, three peaks, high shelf, high cut.", &eqBindings));
+            v.push_back(effectType<MultibandCompressor>("multiband", "Multiband", "Three bands split by Linkwitz-Riley crossovers, each compressed alone; flat when nothing is.", &multibandBindings)); // REQ-fx-multiband-1
             v.push_back(effectType<Reverb>("reverb", "Reverb", "Feedback-delay-network reverb, decorrelated stereo.", &reverbBindings));
             v.push_back(effectType<Repeater>("delay", "Delay", "Feedback echo, each repeat darker.", &delayBindings));
             v.push_back(effectType<Chorus>("chorus", "Chorus", "LFO-modulated short delay.", &chorusBindings));
