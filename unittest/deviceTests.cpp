@@ -570,11 +570,12 @@ TEST(Device_reports_its_latency_and_lags_by_exactly_it)
 {
     configure();
     // REQ-device-8: a device says how many samples its output lags its input — the limiter its lookahead,
-    // read again after a write moves it; every other type 0 — so a host can compensate every other path
+    // read again after a write moves it; the saturator its oversampling's; every other type 0 — so a host can
+    // compensate every other path
     for (const auto &t : DeviceRegistry::types())
     {
         auto d = DeviceRegistry::create(t.name);
-        CHECK(d->latency() == (t.name == "limiter" ? 96 : 0)); // 2 ms at 48 kHz, its default
+        CHECK(d->latency() == (t.name == "limiter" ? 96 : t.name == "saturator" ? Saturator::kLatency : 0)); // the limiter: 2 ms at 48 kHz, its default
     }
     auto lim = DeviceRegistry::create("limiter");
     CHECK(lim->setParam("lookahead", 5.0) && lim->latency() == 240);

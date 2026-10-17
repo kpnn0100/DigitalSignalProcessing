@@ -361,3 +361,67 @@ The detector is a peak follower with a 1 ms attack, so on a steady sine it sits 
 far above f down g dB and one at f g/2 (the shelf's midpoint) — a 10 kHz sibilance under a 6 dB cut at 6 kHz: −5.50 dB;
 a 1 kHz voice: −0.004 dB (`DeEsser_split_spares_the_rest_wide_does_not`, `deesser_shelves_the_band`). (DE1)–(DE5) are
 `DeEsser::process`; the follower's constants are the constructor's, the band's `design()`.
+
+## Math — `Saturator.cpp` (REQ-fx-saturator-1)
+
+A curve driven, four times oversampled. **Composed of:** the true-peak meter's interpolator (meter README (T1)–(T2),
+its `onSamples` design at F = 4) for the way up; its own kernel formula, at another length, for the way down.
+**Why not `Overdrive`:** Overdrive is tanh at the base rate — every harmonic above Nyquist folds back into the band
+(a 7 kHz sine driven 12 dB: aliases at −21 dB). Overdrive stays as it is (its sound is in songs); this is the clean one.
+
+```
+(SA1) Up:  v = drive·x  (drive = 10^(dB/20));  u[4n + p] = Σ_k h_p[k]·v[n − k],  p = 0 … 3
+      h_p = TruePeakInterpolator(4, onSamples).taps — 63 taps, centred on an upsampled point: u[4n + p] lies at
+      n − 7.75 + p/4 (p = 3: the sample x[n − 7] itself)
+(SA2) The curve, at each point:
+      soft  s = tanh(u)
+      hard  s = clamp(u, −1, 1)
+      tube  s = (tanh(u + b) − tanh b) / (1 − tanh² b),  b = 0.25  — at rest at 0, slope 1 there, not odd: even harmonics
+      fold  s = sin(π·u / 2)  — 1 at u = 1, folded back beyond
+(SA3) Every harmonic the curve makes up to 96 kHz is represented at 192 kHz; what lies between 24 and 96 kHz is
+      the way down's to remove; only what lies above 96 kHz still folds (and lands in the stopband unless near 192)
+(SA4) Down:  d[n] = Σ_m g[m]·s[4n + 3 − m],  m = 0 … 64
+      g[m] = sinc((m − 32)/4)·w[m] / Σ g,   w = Kaiser, β = 6 (T1's window)  — cut at the original Nyquist
+      centred 32 points (8 samples) back: with the way up's 7.75 − 0.75, d[n] lies at n − 15 exactly
+      (the up kernel's centre and the down kernel's are chosen so the sum is whole: latency() = 15)
+(SA5) tube only — its DC blocked:  y[n] = d[n] − d[n−1] + R·y[n−1],  R = e^(−2π·5/fs)
+(SA6) y = out · (mix·d + (1 − mix)·x[n − 15])  — the dry path delayed to match: no comb at any mix
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `drive` | — | dB 0 … 36 | 6 |
+| `curve` | — | soft · hard · tube · fold | soft |
+| `mix` | mix | 0 … 1 | 1 |
+| `output` | out | dB −24 … +12 | 0 |
+
+Each curve's harmonics are its Fourier series to 0.031 dB (hard's 3rd; the others' within 0.008 — `Saturator_harmonics_are_the_curves`; both kernels flat to
+±0.003 dB under 16 kHz — above it they roll off, as the meter's does). A 7 kHz sine at 0.8 driven 12 dB folds back
+soft −81 dB, hard −46, tube −56, fold −62, against −21, −18, −22, −2 for the same curve at the base rate
+(`Saturator_keeps_its_aliases_down`) — hard clipping's corners make harmonics that fall only as 1/h², the rest fall
+faster. (SA1)–(SA6) are `Saturator::process`; (SA2) is `Saturator::shape`; the down kernel is the constructor's.
+
+## Math — `Bitcrusher.cpp` (REQ-fx-bitcrusher-1)
+
+Fewer bits, a lower rate — on purpose, the images and the steps are the sound. **Why not composed:** nothing in the
+library rounds or holds; this is two lines of arithmetic.
+
+```
+(BC1) The grid:  q = 2^(bits − 1);  y = round(x·q) / q    — mid-tread, a step 1/q; |y − x| ≤ 1/(2q)
+      a sine at amplitude a: SNR = 6.02·bits + 1.76 + 20·log10 a dB (the error uniform over a step)
+(BC2) The hold:  φ ← φ + min(1, rate/fs) each sample; when φ ≥ 1, φ ← φ − 1 and a new value is taken (BC1 of
+      the input then), held until the next — the phase carried, so a rate that does not divide fs holds for
+      ⌊fs/rate⌋ or ⌈fs/rate⌉ samples and takes exactly `rate` values a second; at or above fs every sample its own
+(BC3) y = out · (mix·held + (1 − mix)·x)
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `bits` | bits | 1 … 24 (whole) | 8 |
+| `rate` | rate | Hz 100 … 96000 (log; at or above fs: no hold) | 96000 |
+| `mix` | mix | 0 … 1 | 1 |
+| `output` | out | dB −24 … +12 | 0 |
+
+8 bits on a sine at 0.9: SNR 49.15 dB against the formula's 49.01; 12 bits 73.13 against 73.09
+(`Bitcrusher_rounds_to_its_grid`); at 7 kHz held 6 or 7 samples, 7000 taken a second (`Bitcrusher_holds_at_its_rate`).
+(BC1)–(BC3) are `Bitcrusher::process`.

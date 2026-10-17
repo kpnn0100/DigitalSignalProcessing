@@ -279,6 +279,17 @@ package effects {
     +process(io**, ch, frames) : (DE1)-(DE5) HP-heard, held at T, shelved (split) or wide
   }
   DeEsser ..> Biquad : design() its band and its shelf
+  class Saturator {
+    +setDriveDb / setCurve(soft|hard|tube|fold) / setMix / setOutputDb
+    +process(io**, ch, frames) : (SA1)-(SA6) 4x up, the curve, down
+    +latency() : 15
+    +{static} shape(curve, u)
+  }
+  Saturator ..> TruePeakInterpolator : its taps, the way up
+  class Bitcrusher {
+    +setBits / setRate / setMix / setOutputDb
+    +process(io**, ch, frames) : (BC1)-(BC3) the grid, the hold
+  }
   class Overdrive
   class Chorus
   class Repeater

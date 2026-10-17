@@ -7,6 +7,8 @@
 #include "../effects/Gate.h"
 #include "../effects/TransientShaper.h"
 #include "../effects/DeEsser.h"
+#include "../effects/Saturator.h"
+#include "../effects/Bitcrusher.h"
 #include "../instrument/Sampler.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
@@ -750,6 +752,30 @@ namespace arstro
             return b;
         }
 
+        // REQ-fx-saturator-1: a curve driven, oversampled
+        const std::vector<Binding<Saturator>> &saturatorBindings()
+        {
+            static const std::vector<Binding<Saturator>> b = {
+                {num("drive", "Drive", "dB", 0, 36, 6), [](Saturator &s, double x) { s.setDriveDb(x); }},
+                {choice("curve", "Curve", {"soft", "hard", "tube", "fold"}, 0), [](Saturator &s, double x) { s.setCurve((int)x); }},
+                {num("mix", "Mix", "", 0, 1, 1), [](Saturator &s, double x) { s.setMix(x); }},
+                {num("output", "Output", "dB", -24, 12, 0), [](Saturator &s, double x) { s.setOutputDb(x); }},
+            };
+            return b;
+        }
+
+        // REQ-fx-bitcrusher-1: fewer bits, a lower rate
+        const std::vector<Binding<Bitcrusher>> &bitcrusherBindings()
+        {
+            static const std::vector<Binding<Bitcrusher>> b = {
+                {num("bits", "Bits", "", 1, 24, 8, false, true), [](Bitcrusher &c, double x) { c.setBits(x); }},
+                {num("rate", "Rate", "Hz", 100, 96000, 96000, true), [](Bitcrusher &c, double x) { c.setRate(x); }},
+                {num("mix", "Mix", "", 0, 1, 1), [](Bitcrusher &c, double x) { c.setMix(x); }},
+                {num("output", "Output", "dB", -24, 12, 0), [](Bitcrusher &c, double x) { c.setOutputDb(x); }},
+            };
+            return b;
+        }
+
         // REQ-fx-gate-1: a gate and a downward expander
         const std::vector<Binding<Gate>> &gateBindings()
         {
@@ -1015,6 +1041,8 @@ namespace arstro
                 gate.takesKey = true;
                 v.push_back(gate);
             }
+            v.push_back(effectType<Saturator>("saturator", "Saturator", "A curve driven — soft, hard, tube or fold — four times oversampled, its latency reported.", &saturatorBindings)); // REQ-fx-saturator-1
+            v.push_back(effectType<Bitcrusher>("bitcrusher", "Bitcrusher", "Fewer bits and a lower rate: each sample rounded to a coarser grid, held for longer.", &bitcrusherBindings)); // REQ-fx-bitcrusher-1
             v.push_back(effectType<DeEsser>("deesser", "De-esser", "Sibilance held down: a high-pass hears it, its level held at the threshold — the band alone turned down (split) or the whole sound (wide).", &deesserBindings)); // REQ-fx-deesser-1
             v.push_back(effectType<TransientShaper>("transient", "Transient Shaper", "More or less attack, more or less sustain, whatever the level: a fast envelope against two slow ones.", &transientBindings)); // REQ-fx-transient-1
             v.push_back(effectType<MultibandCompressor>("multiband", "Multiband", "Three bands split by Linkwitz-Riley crossovers, each compressed alone; flat when nothing is.", &multibandBindings)); // REQ-fx-multiband-1

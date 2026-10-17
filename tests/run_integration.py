@@ -1510,6 +1510,62 @@ def check_deesser_shelves_the_band(binpath):
 
 CHECKS.append(("deesser_shelves_the_band", check_deesser_shelves_the_band))
 
+def check_saturator_harmonics(binpath):
+    """REQ-fx-saturator-1 (SA1)–(SA4): a 1 kHz sine at 0.7 driven 6 dB through each curve — its fundamental and 3rd
+    harmonic (and the tube's 2nd) are the curve's Fourier series, summed here from the README's formulas, to 0.05 dB."""
+    k = 10 ** (6 / 20)
+    b = 0.25
+    curves = {
+        0: lambda u: math.tanh(u),
+        1: lambda u: max(-1.0, min(1.0, u)),
+        2: lambda u: (math.tanh(u + b) - math.tanh(b)) / (1 - math.tanh(b) ** 2),
+        3: lambda u: math.sin(math.pi * u / 2),
+    }
+    worst, said = 0.0, []
+    for c, f in curves.items():
+        y = render(binpath, "saturator", c)[SR // 2:]
+        for h in ((1, 2, 3) if c == 2 else (1, 3)):
+            re = im = 0.0
+            for j in range(2048):
+                th = 2 * math.pi * j / 2048
+                v = f(k * 0.7 * math.sin(th))
+                re += v * math.cos(h * th)
+                im += v * math.sin(h * th)
+            want = 2 * math.hypot(re, im) / 2048
+            got = goertzel(y, 1000.0 * h)
+            off = abs(20 * math.log10(got / want))
+            worst = max(worst, off)
+            if off > 0.05:
+                raise Failure(f"curve {c}, harmonic {h}: {20 * math.log10(got):.2f} dB, its series {20 * math.log10(want):.2f}")
+        said.append(f"{c}: 3rd {20 * math.log10(goertzel(y, 3000.0) / goertzel(y, 1000.0)):.1f} dB")
+    return "; ".join(said) + f" — off the series by {worst:.4f} dB at most"
+
+
+CHECKS.append(("saturator_harmonics", check_saturator_harmonics))
+
+
+def check_bitcrusher_grid_and_hold(binpath):
+    """REQ-fx-bitcrusher-1 (BC1)–(BC2): 6 bits at 8 kHz — every sample on the grid k/32 (to a 16-bit step), each value
+    held exactly 6 samples."""
+    y = render(binpath, "bitcrusher", 0)
+    off = max(abs(v * 32 - round(v * 32)) / 32 for v in y)
+    runs, run = [], 1
+    for i in range(1, len(y)):
+        if y[i] == y[i - 1]:
+            run += 1
+        else:
+            runs.append(run)
+            run = 1
+    inner = runs[1:]
+    if off > 1.5 / 32767:
+        raise Failure(f"off the 6-bit grid by {off * 32767:.2f} LSB")
+    if any(r % 6 for r in inner):
+        raise Failure(f"held {sorted(set(inner))} samples, not 6")
+    return f"on the grid to {off * 32767:.2f} LSB; held {sorted(set(inner))} samples"
+
+
+CHECKS.append(("bitcrusher_grid_and_hold", check_bitcrusher_grid_and_hold))
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

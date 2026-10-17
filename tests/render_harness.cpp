@@ -1176,6 +1176,43 @@ static std::vector<double> renderDeEsser(double wide)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-fx-saturator-1: a 1 kHz sine at 0.7, 1 s through the registry's "saturator", driven 6 dB (1.4: every curve
+// past its knee) — arg: the curve
+static std::vector<double> renderSaturator(double curve)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("saturator");
+    d->setParam("drive", 6.0);
+    d->setParam("curve", curve);
+    std::vector<Sample> L(48000), R(48000);
+    for (size_t n = 0; n < L.size(); ++n) L[n] = R[n] = 0.7 * std::sin(2 * M_PI * 1000 * (double)n / kSampleRate);
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
+// REQ-fx-bitcrusher-1: a 440 Hz sine at 0.9, half a second through the registry's "bitcrusher" at 6 bits, 8 kHz
+static std::vector<double> renderBitcrusher(double)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("bitcrusher");
+    d->setParam("bits", 6.0);
+    d->setParam("rate", 8000.0);
+    std::vector<Sample> L(24000), R(24000);
+    for (size_t n = 0; n < L.size(); ++n) L[n] = R[n] = 0.9 * std::sin(2 * M_PI * 440 * (double)n / kSampleRate);
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // REQ-808-2: the registry's "808" on A1 (55 Hz) for a second, its defaults but no click, no drive and a long decay (8 s:
 // steady enough in a window to read its pitch)
 static std::vector<double> render808(double)
@@ -1297,6 +1334,8 @@ int main(int argc, char **argv)
     else if (scenario == "gate") samples = renderGate(arg);
     else if (scenario == "transient") samples = renderTransient(arg);
     else if (scenario == "deesser") samples = renderDeEsser(arg);
+    else if (scenario == "saturator") samples = renderSaturator(arg);
+    else if (scenario == "bitcrusher") samples = renderBitcrusher(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

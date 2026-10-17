@@ -547,3 +547,285 @@ TEST(DeEsser_does_not_allocate)
     gCounting = false;
     CHECK(gAllocs.load() == 0 && d.cutDb() > 0.0);
 }
+
+namespace
+{
+    /** The largest in-band component that is NOT a harmonic of `hz` (an alias), in dB of the fundamental — read at
+     *  each frequency a harmonic folds to at 48 kHz, every odd and even one up to the 60th. */
+    double worstAlias(const std::vector<Sample> &y, int from, int n, double hz, double *where = nullptr)
+    {
+        const double f1 = amp(y, from, n, hz);
+        double worst = -400;
+        for (int h = 2; h <= 60; ++h)
+        {
+            double f = std::fmod(h * hz, 48000.0);
+            if (f > 24000.0) f = 48000.0 - f;
+            if (std::fabs(std::remainder(f, hz)) < 1.0 || f < 20.0 || f > 23900.0) continue; // on a harmonic: not told apart
+            const double a = db(amp(y, from, n, f) / f1);
+            if (a > worst) { worst = a; if (where) *where = f; }
+        }
+        return worst;
+    }
+}
+
+TEST(Saturator_curves_are_their_formulas)
+{
+    // (SA2): soft is tanh; hard clips at ±1; tube rests at 0 with a slope of 1 there and is not odd (even harmonics);
+    // fold is sin(πu/2) — 1 at u = 1, folded back to 0 at u = 2
+    volatile double u = 0.7; // run-time tanh both sides (a folded constant may differ by an ulp)
+    CHECK(std::fabs(Saturator::shape(Saturator::Soft, u) - std::tanh(u)) < 1e-15);
+    CHECK(Saturator::shape(Saturator::Hard, 0.7) == 0.7 && Saturator::shape(Saturator::Hard, 3.0) == 1.0 && Saturator::shape(Saturator::Hard, -3.0) == -1.0);
+    const double e = 1e-6, slope = (Saturator::shape(Saturator::Tube, e) - Saturator::shape(Saturator::Tube, -e)) / (2 * e);
+    CHECK(Saturator::shape(Saturator::Tube, 0.0) == 0.0 && std::fabs(slope - 1.0) < 1e-9);
+    CHECK(std::fabs(Saturator::shape(Saturator::Tube, 0.8) + Saturator::shape(Saturator::Tube, -0.8)) > 0.05);
+    CHECK(std::fabs(Saturator::shape(Saturator::Fold, 1.0) - 1.0) < 1e-15 && std::fabs(Saturator::shape(Saturator::Fold, 2.0)) < 1e-15);
+}
+
+TEST(Saturator_harmonics_are_the_curves)
+{
+    // (SA1)–(SA4): a 1 kHz sine at 0.8, driven 6 dB — each curve's harmonics 1 … 5 are its Fourier series (summed here
+    // over 4096 points of one cycle): the fundamental to 0.02 dB, each harmonic over −60 dB to 0.1 (both filters flat
+    // to ±0.003 dB under 16 kHz)
+    configure48();
+    const double k = std::pow(10.0, 6.0 / 20.0);
+    for (int curve = 0; curve < 4; ++curve)
+    {
+        Saturator s;
+        s.setCurve(curve);
+        s.setDriveDb(6.0);
+        std::vector<Sample> L, R;
+        tones(L, R, 48000, {{1000.0, 0.8}});
+        blocks(s, L, R);
+        double want[6] = {};
+        for (int h = 1; h <= 5; ++h)
+        {
+            double re = 0, im = 0;
+            for (int j = 0; j < 4096; ++j)
+            {
+                const double th = kTau * j / 4096.0, y = Saturator::shape(curve, k * 0.8 * std::sin(th));
+                re += y * std::cos(h * th);
+                im += y * std::sin(h * th);
+            }
+            want[h] = 2.0 * std::hypot(re, im) / 4096.0;
+        }
+        double worst = 0;
+        for (int h = 1; h <= 5; ++h)
+        {
+            if (db(want[h] / want[1]) < -60.0) continue;
+            const double got = amp(L, 24000, 24000, 1000.0 * h), off = std::fabs(db(got / want[h]));
+            worst = std::max(worst, off);
+            CHECK(off < (h == 1 ? 0.02 : 0.1));
+        }
+        std::printf("    curve %d: 2nd %.1f dB, 3rd %.1f dB of the fundamental; off its series by %.4f dB\n", curve, db(want[2] / want[1]), db(want[3] / want[1]), worst);
+    }
+}
+
+TEST(Saturator_keeps_its_aliases_down)
+{
+    // (SA1)–(SA4): a 7 kHz sine at 0.8, driven 12 dB — every harmonic above 24 kHz folds back; oversampled four times,
+    // what folds into the band is far under the same curve at the base rate's (soft −81 dB, hard −46, tube −56, fold
+    // −62, against −21, −18, −22, −2)
+    configure48();
+    const double bound[4] = {-75.0, -42.0, -50.0, -55.0};
+    for (int curve = 0; curve < 4; ++curve)
+    {
+        Saturator s;
+        s.setCurve(curve);
+        s.setDriveDb(12.0);
+        std::vector<Sample> L, R, N;
+        tones(L, R, 48000, {{7000.0, 0.8}});
+        N = L;
+        for (auto &x : N) x = Saturator::shape(curve, std::pow(10.0, 12.0 / 20.0) * x);
+        blocks(s, L, R);
+        double at = 0;
+        const double o = worstAlias(L, 24000, 24000, 7000.0, &at), naive = worstAlias(N, 24000, 24000, 7000.0);
+        std::printf("    curve %d: aliases %.1f dB (at %.0f Hz); the curve at the base rate %.1f dB\n", curve, o, at, naive);
+        CHECK(o < bound[curve] && o < naive - 25.0);
+    }
+}
+
+TEST(Saturator_is_exactly_its_latency_late)
+{
+    // (SA4), (SA6): 15 samples late, said by latency(); dry (mix 0) the input exactly that late; a quiet sine (tanh is
+    // a line there) at mix 1 the input that late to 1e−6, at mix ½ too — the two paths aligned, no comb
+    configure48();
+    Saturator d;
+    d.setMix(0.0);
+    CHECK(d.latency() == 15);
+    std::vector<Sample> L, R;
+    tones(L, R, 4800, {{1000.0, 0.5}, {7777.0, 0.2}});
+    const std::vector<Sample> X = L;
+    blocks(d, L, R);
+    bool late = true;
+    for (int n = 0; n < 4800; ++n) late &= L[(size_t)n] == (n < 15 ? 0.0 : X[(size_t)(n - 15)]);
+    CHECK(late);
+    Saturator o; // and the output gain on it, exactly
+    o.setMix(0.0);
+    o.setOutputDb(-6.0);
+    tones(L, R, 4800, {{1000.0, 0.5}, {7777.0, 0.2}});
+    blocks(o, L, R);
+    double gainOff = 0;
+    for (int n = 15; n < 4800; ++n) gainOff = std::max(gainOff, std::fabs(L[(size_t)n] - X[(size_t)(n - 15)] * std::pow(10.0, -6.0 / 20.0)));
+    CHECK(gainOff < 1e-15);
+    for (double mix : {1.0, 0.5})
+    {
+        Saturator w;
+        w.setDriveDb(0.0);
+        w.setMix(mix);
+        tones(L, R, 4800, {{1000.0, 0.001}});
+        const std::vector<Sample> Y = L;
+        blocks(w, L, R);
+        double off = 0;
+        for (int n = 200; n < 4800; ++n) off = std::max(off, std::fabs(L[(size_t)n] - Y[(size_t)(n - 15)]));
+        std::printf("    mix %.1f: a −60 dBFS sine 15 samples late to %.2g\n", mix, off);
+        CHECK(off < 1e-6);
+    }
+}
+
+TEST(Saturator_tube_is_dc_free)
+{
+    // (SA5): the tube's bias makes a DC the blocker takes away; its even harmonics stay
+    configure48();
+    Saturator s;
+    s.setCurve(Saturator::Tube);
+    s.setDriveDb(12.0);
+    std::vector<Sample> L, R;
+    tones(L, R, 48000, {{1000.0, 0.5}});
+    blocks(s, L, R);
+    double mean = 0;
+    for (int n = 24000; n < 48000; ++n) mean += L[(size_t)n];
+    mean /= 24000;
+    const double second = db(amp(L, 24000, 24000, 2000.0) / amp(L, 24000, 24000, 1000.0));
+    std::printf("    tube: mean %.2g, the 2nd harmonic %.1f dB\n", mean, second);
+    CHECK(std::fabs(mean) < 1e-4 && second > -40.0);
+}
+
+TEST(Saturator_same_in_any_blocks)
+{
+    configure48();
+    auto run = [](int block) {
+        Saturator s;
+        s.setCurve(Saturator::Tube);
+        s.setDriveDb(18.0);
+        s.setMix(0.7);
+        std::vector<Sample> L, R;
+        tones(L, R, 9600, {{440.0, 0.5}, {3100.0, 0.3}});
+        blocks(s, L, R, block);
+        return L;
+    };
+    const auto a = run(1), b = run(128), c = run(777);
+    CHECK(a == b && a == c);
+}
+
+TEST(Saturator_does_not_allocate)
+{
+    configure48();
+    Saturator s;
+    s.setCurve(Saturator::Fold);
+    std::vector<Sample> L, R;
+    tones(L, R, 4096, {{220.0, 0.5}});
+    Sample *io[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    s.process(io, 2, 4096);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0);
+}
+
+TEST(Bitcrusher_rounds_to_its_grid)
+{
+    // (BC1): 4 bits — every sample k/8, within 1/16 of its input; 8 and 12 bits — a sine's noise is its bits':
+    // SNR = 6.02·b + 1.76 + 20·log10(a) dB, to 0.5
+    configure48();
+    Bitcrusher b;
+    b.setBits(4);
+    std::vector<Sample> L, R;
+    tones(L, R, 48000, {{997.0, 0.9}});
+    const std::vector<Sample> X = L;
+    blocks(b, L, R);
+    bool grid = true, near = true;
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        grid &= L[n] * 8.0 == std::round(L[n] * 8.0);
+        near &= std::fabs(L[n] - X[n]) <= 1.0 / 16.0 + 1e-15;
+    }
+    CHECK(grid && near);
+    for (int bits : {8, 12})
+    {
+        Bitcrusher c;
+        c.setBits(bits);
+        tones(L, R, 48000, {{997.0, 0.9}});
+        blocks(c, L, R);
+        double ps = 0, pe = 0;
+        for (size_t n = 0; n < L.size(); ++n) { ps += X[n] * X[n]; pe += (L[n] - X[n]) * (L[n] - X[n]); }
+        const double snr = 10.0 * std::log10(ps / pe), want = 6.0206 * bits + 1.7609 + 20.0 * std::log10(0.9);
+        std::printf("    %d bits: SNR %.2f dB (6.02·b + 1.76 + 20·log10 a: %.2f)\n", bits, snr, want);
+        CHECK(std::fabs(snr - want) < 0.5);
+    }
+}
+
+TEST(Bitcrusher_holds_at_its_rate)
+{
+    // (BC2): at 12 kHz every value held 4 samples, 12000 taken a second; at 7 kHz held 6 or 7, 7000 taken; at or above
+    // the sample rate, every sample its own
+    configure48();
+    for (double rate : {12000.0, 7000.0, 96000.0})
+    {
+        Bitcrusher b;
+        b.setBits(24);
+        b.setRate(rate);
+        std::vector<Sample> L, R;
+        tones(L, R, 48000, {{311.0, 0.9}});
+        blocks(b, L, R);
+        int shortest = 1 << 30, longest = 0, run = 1;
+        for (size_t n = 1; n < L.size(); ++n)
+        {
+            if (L[n] == L[n - 1]) { ++run; continue; }
+            if (n > (size_t)run) { shortest = std::min(shortest, run); longest = std::max(longest, run); }
+            run = 1;
+        }
+        std::printf("    %.0f Hz: %lld taken, held %d … %d samples\n", rate, b.taken(), shortest, longest);
+        const double want = std::min(rate, 48000.0);
+        CHECK(std::llabs(b.taken() - (long long)want) <= 1);
+        if (rate == 12000.0) CHECK(shortest == 4 && longest == 4);
+        if (rate == 7000.0) CHECK(shortest == 6 && longest == 7);
+        if (rate == 96000.0) CHECK(longest == 1);
+    }
+}
+
+TEST(Bitcrusher_dry_is_the_input)
+{
+    // (BC3): mix 0 — the input, to the bit; the output gain alone, exactly
+    configure48();
+    Bitcrusher b;
+    b.setBits(3);
+    b.setRate(1000);
+    b.setMix(0.0);
+    std::vector<Sample> L, R;
+    tones(L, R, 4800, {{1000.0, 0.5}});
+    const std::vector<Sample> X = L;
+    blocks(b, L, R);
+    CHECK(L == X);
+    b.setOutputDb(-6.0);
+    L = X;
+    R = X;
+    blocks(b, L, R);
+    double off = 0;
+    for (size_t n = 0; n < L.size(); ++n) off = std::max(off, std::fabs(L[n] - X[n] * std::pow(10.0, -6.0 / 20.0)));
+    CHECK(off < 1e-15);
+}
+
+TEST(Bitcrusher_does_not_allocate)
+{
+    configure48();
+    Bitcrusher b;
+    b.setRate(5000);
+    std::vector<Sample> L, R;
+    tones(L, R, 4096, {{220.0, 0.5}});
+    Sample *io[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    b.process(io, 2, 4096);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0);
+}

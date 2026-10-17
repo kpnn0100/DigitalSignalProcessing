@@ -416,7 +416,8 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
 - `REQ-device-8` — **A device reports its latency** (source: Solaris R-MIX-17, the audit of
   2026-10-09: the master limiter's lookahead put a whole render 96 samples late). `Device::latency()` is
   the number of samples its output lags its input at its CURRENT parameters — the `limiter`'s lookahead
-  L (`Limiter::latency()`, 96 at its 2 ms default and 48 kHz), 0 for every other type — so a host can
+  L (`Limiter::latency()`, 96 at its 2 ms default and 48 kHz), the `saturator`'s oversampling (15, REQ-fx-saturator-1),
+  0 for every other type — so a host can
   delay every other path by it (plugin delay compensation). A write that moves it (`lookahead`) is seen
   by the next read. Guarded by `Device_reports_its_latency_and_lags_by_exactly_it` (every type's default,
   the limiter at 0 / 1 / 5 / 10 ms, and a click through the Device face arriving exactly `latency()`
@@ -658,6 +659,23 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   dB, and moved with its corner), `DeEsser_split_spares_the_rest_wide_does_not`, `DeEsser_listens_where_it_is_told`,
   `DeEsser_is_linked`, `DeEsser_engages_without_a_click`, `DeEsser_does_not_allocate`, and the integration check
   `deesser_shelves_the_band` (the cookbook's shelf, written in Python, to 0.05 dB).
+- `REQ-fx-saturator-1` — **A saturator, oversampled** (source: Solaris R-FX-10, "implement all", 2026-10-17):
+  `Saturator` — a curve driven (soft tanh, hard clip, tube — tanh with a bias, its rest at 0 and slope 1 there, its DC
+  blocked — or a sine folder), four times oversampled: up through the true-peak interpolator (REQ-meter-2's kernel,
+  on-samples), down through a Kaiser sinc of the same kind, the path exactly 15 samples late — `latency()` says so
+  (REQ-device-8) and the dry path is delayed to match; a mix; an output gain; the registry's "saturator". (SA1)–(SA6).
+  Guarded by `Saturator_curves_are_their_formulas`, `Saturator_harmonics_are_the_curves` (each curve's Fourier series
+  to 0.031 dB), `Saturator_keeps_its_aliases_down` (each 25 dB or more under its curve at the base rate),
+  `Saturator_is_exactly_its_latency_late` (dry: the input 15 late to the bit; the paths aligned at any mix),
+  `Saturator_tube_is_dc_free`, `Saturator_same_in_any_blocks`, `Saturator_does_not_allocate`, and the integration
+  check `saturator_harmonics` (the curves' series written in Python, to 0.05 dB). `Overdrive` (tanh at the base rate)
+  stays as it is: its sound is in songs.
+- `REQ-fx-bitcrusher-1` — **A bitcrusher** (source: Solaris R-FX-10, "implement all", 2026-10-17): `Bitcrusher` —
+  each sample rounded to 2^(bits−1) steps a side (1 … 24 bits); held for fs/rate samples, the phase carried (exactly
+  `rate` values a second); its images and steps left in, on purpose; a mix; an output gain; the registry's
+  "bitcrusher". (BC1)–(BC3). Guarded by `Bitcrusher_rounds_to_its_grid` (the grid exactly; SNR 6.02·b + 1.76 +
+  20·log10 a to 0.5 dB at 8 and 12 bits), `Bitcrusher_holds_at_its_rate`, `Bitcrusher_dry_is_the_input`,
+  `Bitcrusher_does_not_allocate`, and the integration check `bitcrusher_grid_and_hold`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position
