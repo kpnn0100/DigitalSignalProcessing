@@ -1356,6 +1356,29 @@ static std::vector<double> renderVocoder(double)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-tuner-1: the registry's "tuner" listening to a tone of `hz` (a 30-harmonic sawtooth, 1/h) for half a second —
+// its readings printed (frequency, note, cents, level); the audio written as it came out (untouched)
+static std::vector<double> renderTuner(double hz)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("tuner");
+    std::vector<Sample> L(24000), R(24000);
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        double x = 0.0;
+        for (int h = 1; h <= 30 && h * hz < 20000.0; ++h) x += 0.4 / h * std::sin(2 * M_PI * hz * h * (double)n / kSampleRate);
+        L[n] = R[n] = x;
+    }
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    std::printf("frequency=%.6f note=%.0f cents=%.6f level=%.6f\n", d->reading(0), d->reading(1), d->reading(2), d->reading(3));
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // REQ-808-2: the registry's "808" on A1 (55 Hz) for a second, its defaults but no click, no drive and a long decay (8 s:
 // steady enough in a window to read its pitch)
 static std::vector<double> render808(double)
@@ -1485,6 +1508,7 @@ int main(int argc, char **argv)
     else if (scenario == "convolution") samples = renderConvolution(arg);
     else if (scenario == "pitch") samples = renderPitch(arg);
     else if (scenario == "vocoder") samples = renderVocoder(arg);
+    else if (scenario == "tuner") samples = renderTuner(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

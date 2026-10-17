@@ -58,6 +58,15 @@ namespace arstro
     /** A choice's name or a number (clamped); false (nothing written) when it is neither. */
     bool paramFromText(const ParamSpec &spec, const std::string &text, double &value);
 
+    /** REQ-device-11: what a device MEASURES — an output, never set (a tuner's frequency). Read with
+     *  `Device::reading`; the value a host shows with this unit. */
+    struct ReadingSpec
+    {
+        std::string name;  // "frequency" — the key a host reads it by
+        std::string label; // "Frequency"
+        std::string unit;  // "Hz", "dB", "ct", "" (a number: a tuner's note is a MIDI number)
+    };
+
     enum class DeviceKind { Instrument, Effect };
 
     class Device;
@@ -90,10 +99,14 @@ namespace arstro
          *  hands it in through `Device::setDefinition`, which says the sounds it names, and hands each in through
          *  `Device::setNamedSample`. `takesSample` too: a host gives it its file the same way. */
         bool takesDefinition = false;
+        /** What it measures (REQ-device-11), in the order `Device::reading` numbers them; empty for most. */
+        std::vector<ReadingSpec> readings;
         std::function<std::unique_ptr<Device>(const DeviceType &)> create;
 
         /** −1 when there is no such parameter. */
         int paramIndex(const std::string &name) const;
+        /** −1 when there is no such reading. */
+        int readingIndex(const std::string &name) const;
     };
 
     class Device
@@ -150,6 +163,9 @@ namespace arstro
          *  limiter's L, 0 for everything else. A host delays every other path by it so all signals
          *  meet in time (plugin delay compensation). It may change with a parameter (the limiter's
          *  `lookahead`); a host reads it again after such a write. */
+        /** REQ-device-11: its reading `index` (its type's `readings`) now — written by the thread that runs it, read
+         *  from any (the device keeps it in atomics). 0 for a device that measures nothing. */
+        virtual double reading(int index) const { (void)index; return 0.0; }
         virtual int latency() const { return 0; }
 
     protected:

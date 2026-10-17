@@ -125,3 +125,35 @@ lands on a steady tone underneath a soft hit, a window early (a test showed it).
 (unittest/meterTests.cpp: four bursts found within 64 samples, none in a quiet noise floor, two closer than the gap
 counted once, a lower sensitivity ignoring a soft one) and `onsets_find_the_drums` (tests/run_integration.py: a Drum
 Machine's hits through the registry, found within 5 ms).
+
+## Math — `Tuner.cpp` (REQ-tuner-1, its readings REQ-device-11)
+
+The pitch of what passes through — the audio untouched (a meter). **Composed of:** the library `FFT` for the
+difference function's correlation. **Why YIN and not the spectrum's peak:** a peak is the LOUDEST partial — a bass's
+2nd harmonic, a voice's formant; YIN reads the PERIOD, so a sawtooth or a tone with a weak fundamental reads its
+fundamental. (de Cheveigné & Kawahara, "YIN, a fundamental frequency estimator for speech and music", JASA 2002.)
+
+```
+(Y0) x = the channels' mean, the last W = 2048 samples, looked at every 512 (a reading every 10.7 ms at 48 kHz)
+(Y1) The difference function, H = W/2:  d(τ) = Σ_{j<H} (x_j − x_{j+τ})² = e₀ + e(τ) − 2·r(τ)
+     e₀ = Σ_{j<H} x_j²,  e(τ) = Σ_{j<H} x_{j+τ}² (running sums),  r(τ) = Σ_{j<H} x_j·x_{j+τ} by the FFT (2W points,
+     no wrap): r = IFFT(conj(FFT(x[0…H) zero-padded))·FFT(x[0…W)))
+(Y2) Normalised by its running mean:  d′(0) = 1,  d′(τ) = d(τ)·τ / Σ_{k=1..τ} d(k)
+(Y3) τ = the FIRST dip of d′ under 0.15, followed down to its bottom, for τ in [fs/2000, fs/50]; none → no pitch
+(Y4) A parabola through d(τ − 1), d(τ), d(τ + 1) — of d itself (d′'s running mean leans the fit: 0.98 cents off at
+     1760 Hz against 0.06):  τ̂ = τ + ½·(d(τ−1) − d(τ+1)) / (d(τ−1) − 2d(τ) + d(τ+1))
+(Y5) level = 10·log10(Σ x²/W) dBFS; under −60 dBFS: no pitch (a whisper is not a note)
+(Y6) frequency = fs/τ̂;  s = 12·log2(frequency / reference);  note = 69 + round(s);  cents = 100·(s − round(s))
+     no pitch: frequency, note and cents 0
+```
+
+| | symbol | unit / range | default |
+|---|---|---|---|
+| parameter `reference` | reference | Hz 415 … 466 — A4 | 440 |
+| readings `frequency` · `note` · `cents` · `level` | (Y6), (Y5) | Hz · MIDI number · ct · dBFS | — |
+
+From 55 to 1760 Hz a sine reads within 0.06 cents (`Tuner_reads_a_sine_to_a_cent`); a 110 Hz sawtooth and a tone
+whose fundamental is 15 dB under its harmonics both read 110.000 Hz (`Tuner_hears_the_fundamental`); silence, noise
+and a −70 dBFS tone read no pitch (`Tuner_says_no_pitch_and_its_level`). The readings live in atomics: the audio
+thread writes them, any thread reads them (`Tuner::reading`, the Device face's `reading`). (Y0) is `Tuner::process`;
+(Y1)–(Y6) `Tuner::estimate`.

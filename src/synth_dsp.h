@@ -57,6 +57,7 @@
 #include "effects/Convolver.h"
 #include "effects/PitchShifter.h"
 #include "effects/Vocoder.h"
+#include "meter/Tuner.h"
 #include "effects/Overdrive.h"
 #include "effects/Chorus.h"
 #include "effects/Repeater.h"

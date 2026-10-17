@@ -15,6 +15,7 @@
 #include "../effects/Convolver.h"
 #include "../effects/PitchShifter.h"
 #include "../effects/Vocoder.h"
+#include "../meter/Tuner.h"
 #include "../instrument/Sampler.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
@@ -48,6 +49,13 @@ namespace arstro
     {
         for (size_t i = 0; i < params.size(); ++i)
             if (params[i].name == n) return (int)i;
+        return -1;
+    }
+
+    int DeviceType::readingIndex(const std::string &n) const
+    {
+        for (size_t i = 0; i < readings.size(); ++i)
+            if (readings[i].name == n) return (int)i;
         return -1;
     }
 
@@ -675,6 +683,7 @@ namespace arstro
             void setKey(const Sample *const *key, int channels) override { keyOf(mProc, key, channels, 0); }
             int latency() const override { return latencyOf(mProc, 0); }
             void setSample(const float *x, long long frames, int channels, double rate) override { sampleOf(mProc, x, frames, channels, rate, 0); }
+            double reading(int i) const override { return readingOf(mProc, i, 0); }
 
         protected:
             void apply(int i, double v) override { mB[i].set(mProc, v); }
@@ -697,6 +706,9 @@ namespace arstro
             // REQ-fx-convolution-1: an effect that plays a recording (an impulse response) is handed it as a sample
             template <class Q> static auto sampleOf(Q &p, const float *x, long long f, int c, double r, int) -> decltype(p.setSample(x, f, c, r), void()) { p.setSample(x, f, c, r); }
             template <class Q> static void sampleOf(Q &, const float *, long long, int, double, long) {}
+            // REQ-device-11: an effect that measures says what it measured
+            template <class Q> static auto readingOf(const Q &p, int i, int) -> decltype(p.reading(i), 0.0) { return p.reading(i); }
+            template <class Q> static double readingOf(const Q &, int, long) { return 0.0; }
             Proc mProc;
             const std::vector<Binding<Proc>> &mB;
         };
@@ -859,6 +871,15 @@ namespace arstro
                 {num("release", "Release", "ms", 5, 500, 50, true), [](Vocoder &v, double x) { v.setReleaseMs(x); }},
                 {num("mix", "Mix", "", 0, 1, 1), [](Vocoder &v, double x) { v.setMix(x); }},
                 {num("output", "Output", "dB", -24, 24, 0), [](Vocoder &v, double x) { v.setOutputDb(x); }},
+            };
+            return b;
+        }
+
+        // REQ-tuner-1: the pitch of what passes through
+        const std::vector<Binding<Tuner>> &tunerBindings()
+        {
+            static const std::vector<Binding<Tuner>> b = {
+                {num("reference", "Reference A4", "Hz", 415, 466, 440), [](Tuner &t, double x) { t.setReferenceHz(x); }},
             };
             return b;
         }
@@ -1132,6 +1153,11 @@ namespace arstro
                 DeviceType conv = effectType<Convolver>("convolution", "Convolution Reverb", "A recorded room: an impulse response (a sample) convolved with the sound, its latency reported.", &convolutionBindings); // REQ-fx-convolution-1
                 conv.takesSample = true;
                 v.push_back(conv);
+            }
+            {
+                DeviceType tuner = effectType<Tuner>("tuner", "Tuner", "The pitch of what passes through, untouched: its frequency, the nearest note and its cents.", &tunerBindings); // REQ-tuner-1
+                tuner.readings = {{"frequency", "Frequency", "Hz"}, {"note", "Note", ""}, {"cents", "Cents", "ct"}, {"level", "Level", "dB"}};
+                v.push_back(tuner);
             }
             {
                 DeviceType voc = effectType<Vocoder>("vocoder", "Vocoder", "One sound speaking through another: this strip's sound the modulator, the key (another track) the carrier, band by band.", &vocoderBindings); // REQ-fx-vocoder-1

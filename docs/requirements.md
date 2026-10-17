@@ -731,6 +731,19 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   `Vocoder_multiplies_its_two_sounds` (bilinear, to the bit), `Vocoder_speaks_in_the_carriers_pitch` (two bands off
   under the skirts' formula less 3 dB), `Vocoder_follows_the_modulators_envelope`,
   `Vocoder_same_in_any_blocks_and_does_not_allocate`, and the integration check `vocoder_speaks_through_the_carrier`.
+- `REQ-device-11` — **A device's readings** (source: Solaris R-FX-17, Round 12, 2026-10-17): a `DeviceType` lists what
+  it MEASURES — `readings` (name, label, unit), outputs never set — and `Device::reading(i)` is each one's value now,
+  kept in atomics the thread that runs it writes and any thread reads; an effect's processor that has `reading(i)` is
+  read through the registry's adapter (found by member); a device that measures nothing reads 0. Guarded by
+  `Tuner_device_reads_through_its_face`.
+- `REQ-tuner-1` — **A tuner** (source: Solaris R-FX-17, "implement all", Round 12, 2026-10-17): `Tuner` (src/meter/) —
+  YIN over a 2048-sample window every 512: the difference function by the FFT's correlation and running energies,
+  normalised by its running mean, the first dip under 0.15, a parabola through d itself; under −60 dBFS no pitch; its
+  readings frequency (Hz, 0 none), note (the nearest, MIDI), cents (−50 … +50), level (dBFS) against a `reference` A4
+  (415 … 466 Hz); the audio untouched; the registry's "tuner". (Y0)–(Y6). Guarded by `Tuner_reads_a_sine_to_a_cent`
+  (55 … 1760 Hz within 0.2 cents — 0.06 measured), `Tuner_hears_the_fundamental` (a sawtooth; a weak fundamental),
+  `Tuner_says_no_pitch_and_its_level`, `Tuner_against_its_reference`, `Tuner_passes_the_sound_untouched`,
+  `Tuner_device_reads_through_its_face`, and the integration check `tuner_names_the_note`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

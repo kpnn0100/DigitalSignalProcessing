@@ -372,6 +372,11 @@ package meter {
     (O1)-(O5): energy flux over a local median, refined to the sample
     (B1)-(B5): a smoothed log flux, autocorrelated, weighted to 120 bpm
   }
+  class Tuner {
+    +setReferenceHz
+    +process(io**, ch, frames) : (Y0) listens, untouched
+    +reading(i) : frequency, note, cents, level (atomics)
+  }
   class TruePeakInterpolator {
     +push(history, x) : the most of its points
     factor 4 (BS.1770) | 8 onSamples (the limiter)
@@ -504,6 +509,7 @@ Chorus --|> SignalProcessor
 Flanger *--> "per channel" Delay : swept, fed back (REQ-delay-1)
 Imager *--> "6" Biquad : LR4 side high-pass, mid all-pass
 Convolver ..> FFT : its partitions
+Tuner ..> FFT : (Y1) its correlation
 PitchShifter *--> "per channel" Delay : two taps (REQ-delay-1)
 Vocoder *--> "4 a band" Biquad : band-pass, modulator and carrier
 Repeater --|> SignalProcessor

@@ -1702,3 +1702,127 @@ TEST(Vocoder_same_in_any_blocks_and_does_not_allocate)
     gCounting = false;
     CHECK(gAllocs.load() == 0 && DeviceRegistry::find("vocoder")->takesKey);
 }
+
+namespace
+{
+    Tuner &listen(Tuner &t, std::vector<Sample> L)
+    {
+        std::vector<Sample> R = L;
+        blocks(t, L, R);
+        return t;
+    }
+    double centsOff(double got, double want) { return 1200.0 * std::log2(got / want); }
+}
+
+TEST(Tuner_reads_a_sine_to_a_cent)
+{
+    // (Y1)–(Y6): a sine from 55 Hz to 1760 Hz read to ±0.2 cent (the parabola on d itself: 0.06 at 1760 Hz); its note
+    // the nearest and its cents what is left
+    configure48();
+    double worst = 0;
+    for (double hz : {55.0, 82.41, 110.0, 220.0, 440.0, 445.0, 880.0, 1318.5, 1760.0})
+    {
+        Tuner t;
+        listen(t, sines(24000, {{hz, 0.5}}));
+        const double got = t.reading(Tuner::Frequency), semis = 12.0 * std::log2(hz / 440.0);
+        worst = std::max(worst, std::fabs(centsOff(got, hz)));
+        CHECK(t.reading(Tuner::Note) == 69.0 + std::round(semis));
+        CHECK(std::fabs(t.reading(Tuner::Cents) - 100.0 * (semis - std::round(semis))) < 1.0);
+    }
+    std::printf("    55 … 1760 Hz: the worst %.3f cents\n", worst);
+    CHECK(worst < 0.2);
+}
+
+TEST(Tuner_hears_the_fundamental)
+{
+    // (Y3): a 110 Hz sawtooth (30 harmonics at 1/h) and a tone whose fundamental is weak (0.05, its 2nd … 6th at 0.3) —
+    // both read 110 Hz to a cent, not an octave or a fifth off
+    configure48();
+    std::vector<std::pair<double, double>> saw, weak{{110.0, 0.05}};
+    for (int h = 1; h <= 30; ++h) saw.push_back({110.0 * h, 0.4 / h});
+    for (int h = 2; h <= 6; ++h) weak.push_back({110.0 * h, 0.3});
+    Tuner a, b;
+    listen(a, sines(24000, saw));
+    listen(b, sines(24000, weak));
+    std::printf("    saw %.3f Hz, weak fundamental %.3f Hz\n", a.reading(Tuner::Frequency), b.reading(Tuner::Frequency));
+    CHECK(std::fabs(centsOff(a.reading(Tuner::Frequency), 110.0)) < 1.0 && std::fabs(centsOff(b.reading(Tuner::Frequency), 110.0)) < 1.0);
+}
+
+TEST(Tuner_says_no_pitch_and_its_level)
+{
+    // (Y3), (Y5): silence and noise — no pitch (0); a sine at 0.5 — its level 20·log10(0.5/√2) = −9.03 dBFS (0.05)
+    // (its window's: 2048 samples are not whole cycles of 440 Hz — 0.04 dB of that)
+    configure48();
+    Tuner q, n, s;
+    listen(q, std::vector<Sample>(24000, 0.0));
+    std::vector<Sample> hiss(24000);
+    unsigned seed = 99;
+    for (auto &x : hiss) { seed = seed * 1103515245u + 12345u; x = 0.5 * ((double)(seed >> 8) / 16777216.0 - 0.5); }
+    listen(n, hiss);
+    listen(s, sines(24000, {{440.0, 0.5}}));
+    std::printf("    silence %.1f Hz, noise %.1f Hz; a 0.5 sine at %.3f dB\n", q.reading(Tuner::Frequency), n.reading(Tuner::Frequency), s.reading(Tuner::Level));
+    CHECK(q.reading(Tuner::Frequency) == 0.0 && n.reading(Tuner::Frequency) == 0.0);
+    // under −60 dBFS (a whisper): no pitch, though it is one; a tone in the right channel alone is heard (the mean)
+    Tuner w, r;
+    listen(w, sines(24000, {{440.0, 0.0003}}));
+    std::vector<Sample> Lq(24000, 0.0), Rq = sines(24000, {{440.0, 0.5}});
+    blocks(r, Lq, Rq);
+    CHECK(w.reading(Tuner::Frequency) == 0.0 && std::fabs(centsOff(r.reading(Tuner::Frequency), 440.0)) < 0.2);
+    CHECK(std::fabs(s.reading(Tuner::Level) - 20.0 * std::log10(0.5 / std::sqrt(2.0))) < 0.05);
+}
+
+TEST(Tuner_against_its_reference)
+{
+    // (Y6): A4 = 432 Hz — a 432 Hz sine is note 69, 0 cents; a 440 Hz one note 69, +31.8 cents (1200·log2(440/432))
+    configure48();
+    Tuner a, b;
+    a.setReferenceHz(432.0);
+    b.setReferenceHz(432.0);
+    listen(a, sines(24000, {{432.0, 0.5}}));
+    listen(b, sines(24000, {{440.0, 0.5}}));
+    CHECK(a.reading(Tuner::Note) == 69.0 && std::fabs(a.reading(Tuner::Cents)) < 1.0);
+    CHECK(b.reading(Tuner::Note) == 69.0 && std::fabs(b.reading(Tuner::Cents) - 1200.0 * std::log2(440.0 / 432.0)) < 1.0);
+}
+
+TEST(Tuner_passes_the_sound_untouched)
+{
+    // a meter: the audio out is the audio in, to the bit; the same readings in any blocks
+    configure48();
+    std::vector<Sample> L, R;
+    tones(L, R, 9600, {{330.0, 0.5}, {990.0, 0.1}});
+    const std::vector<Sample> X = L;
+    double got[3];
+    int k = 0;
+    for (int block : {1, 128, 777})
+    {
+        Tuner t;
+        std::vector<Sample> A = X, B = X;
+        blocks(t, A, B, block);
+        CHECK(A == X);
+        got[k++] = t.reading(Tuner::Frequency);
+    }
+    CHECK(got[0] == got[1] && got[0] == got[2] && got[0] > 0.0);
+}
+
+TEST(Tuner_device_reads_through_its_face)
+{
+    // REQ-device-11: the registry's "tuner" names its readings; through the Device face, a 440 Hz sine reads 440 —
+    // and a device that measures nothing reads 0; no allocation as it listens
+    configure48();
+    const DeviceType *t = DeviceRegistry::find("tuner");
+    CHECK(t && t->readings.size() == 4 && t->readingIndex("frequency") == 0 && t->readingIndex("cents") == 2 && t->readingIndex("pitch") == -1);
+    auto d = DeviceRegistry::create("tuner");
+    std::vector<Sample> L, R;
+    tones(L, R, 24000, {{440.0, 0.5}});
+    gAllocs = 0;
+    gCounting = true;
+    for (size_t at = 0; at < L.size(); at += 128)
+    {
+        Sample *io[2] = {L.data() + at, R.data() + at};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - at));
+    }
+    gCounting = false;
+    CHECK(gAllocs.load() == 0);
+    CHECK(std::fabs(centsOff(d->reading(0), 440.0)) < 1.0 && d->reading(1) == 69.0);
+    CHECK(DeviceRegistry::create("reverb")->reading(0) == 0.0 && DeviceRegistry::find("reverb")->readings.empty());
+}

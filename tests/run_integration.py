@@ -1693,6 +1693,29 @@ def check_vocoder_speaks_through_the_carrier(binpath):
 
 CHECKS.append(("vocoder_speaks_through_the_carrier", check_vocoder_speaks_through_the_carrier))
 
+def check_tuner_names_the_note(binpath):
+    """REQ-tuner-1 (Y6): sawtooths at 446 Hz and 98 Hz — the tuner reads each to 0.5 cent (a sine reads to 0.06; a
+    sawtooth's thirty harmonics bend the parabola's fit a little), the note and the cents the formula gives (446: A4 =
+    69, +23.45 ct; 98: G2 = 43, +0.02 ct — computed here)."""
+    said = []
+    for hz in (446.0, 98.0):
+        out = os.path.join(tempfile.gettempdir(), f"arstro_tuner_{hz}.wav")
+        r = subprocess.run([binpath, "tuner", out, str(hz)], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise Failure("render 'tuner' failed: " + r.stderr)
+        got = dict(kv.split("=") for kv in r.stdout.split())
+        f, note, cents = float(got["frequency"]), float(got["note"]), float(got["cents"])
+        s = 12 * math.log2(hz / 440.0)
+        want_note, want_cents = 69 + round(s), 100 * (s - round(s))
+        off = 1200 * math.log2(f / hz)
+        said.append(f"{hz:.0f} Hz → {f:.3f} Hz, note {note:.0f}, {cents:+.2f} ct")
+        if abs(off) > 0.5 or note != want_note or abs(cents - want_cents) > 0.5:
+            raise Failure(f"{hz} Hz read {f:.4f} Hz, note {note:.0f} {cents:+.2f} ct; want note {want_note} {want_cents:+.2f} ct")
+    return "; ".join(said)
+
+
+CHECKS.append(("tuner_names_the_note", check_tuner_names_the_note))
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:
