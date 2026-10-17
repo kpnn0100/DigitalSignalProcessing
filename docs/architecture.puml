@@ -265,6 +265,11 @@ package effects {
   }
   MultibandCompressor *-- "3" Compressor
   MultibandCompressor ..> Biquad : design() for its crossovers
+  class Gate {
+    +setThresholdDb / setRatio / setRangeDb / setAttackMs / setHoldMs / setReleaseMs
+    +setSidechain(on) / setKey(key**, ch)
+    +process(io**, ch, frames) : (GT1)-(GT5) linked, held, eased in dB
+  }
   class Overdrive
   class Chorus
   class Repeater

@@ -1392,6 +1392,63 @@ def check_808_is_tuned(binpath):
 CHECKS.append(("808_is_tuned", check_808_is_tuned))
 
 
+def check_multiband_bands(binpath):
+    """REQ-fx-multiband-1 (MB1)–(MB4): 60 Hz and 5 kHz, 0.25 each — at 1:1 the bands sum flat (each tone within
+    0.02 dB); the low band at −30 dB, 4:1, the 60 Hz is what (C1)–(C4) make of its low band, computed here from the
+    formulas (its LR4 part |LP| = 1/(1 + u⁴), u = 60/200, through the detector; the mid band's |HP| = u⁴/(1 + u⁴) in
+    phase, uncut) to 0.1 dB, and the 5 kHz untouched."""
+    flat = render(binpath, "multiband", 0)[SR // 2:]
+    squeezed = render(binpath, "multiband", 1)[SR // 2:]
+    w = len(flat) - len(flat) % 800  # whole cycles of 60 Hz and 5 kHz
+    a60, a5k = goertzel(flat[:w], 60.0), goertzel(flat[:w], 5000.0)
+    d60, d5k = 20 * math.log10(a60 / 0.25), 20 * math.log10(a5k / 0.25)
+    if abs(d60) > 0.02 or abs(d5k) > 0.02:
+        raise Failure(f"not flat at 1:1: 60 Hz {d60:+.3f} dB, 5 kHz {d5k:+.3f} dB")
+    # the low band alone through (C1)–(C4): attack 10 ms, release 150 ms (the registry's defaults)
+    u4 = (60.0 / 200.0) ** 4
+    lp, hp = 1.0 / (1.0 + u4), u4 / (1.0 + u4)
+    a, r = math.exp(-1.0 / (0.010 * SR)), math.exp(-1.0 / (0.150 * SR))
+    env, model = 0.0, []
+    for n in range(SR + SR // 2):
+        x = 0.25 * lp * math.sin(2 * math.pi * 60.0 * n / SR)
+        lvl = abs(x)
+        env = (a if lvl > env else r) * (env - lvl) + lvl
+        cut = max(0.0, 20 * math.log10(env + 1e-9) + 30.0) * 0.75
+        model.append(x * 10 ** (-cut / 20) + 0.25 * hp * math.sin(2 * math.pi * 60.0 * n / SR))
+    want = goertzel(model[SR // 2:][:w], 60.0)
+    got, kept = goertzel(squeezed[:w], 60.0), goertzel(squeezed[:w], 5000.0)
+    off, k5 = 20 * math.log10(got / want), 20 * math.log10(kept / 0.25)
+    if abs(off) > 0.1 or abs(k5) > 0.02:
+        raise Failure(f"60 Hz at {20 * math.log10(got / 0.25):.2f} dB, the formulas say {20 * math.log10(want / 0.25):.2f}; 5 kHz {k5:+.3f} dB")
+    return f"flat {d60:+.3f} / {d5k:+.3f} dB; squeezed 60 Hz {20 * math.log10(got / 0.25):.2f} dB (formulas {20 * math.log10(want / 0.25):.2f}), 5 kHz {k5:+.3f}"
+
+
+CHECKS.append(("multiband_bands", check_multiband_bands))
+
+
+def check_gate_curve(binpath):
+    """REQ-fx-gate-1 (GT1)–(GT5): a 1 kHz square at −20 dBFS, then −50 — the loud passes at 0 dB (0.05); 2:1, the
+    quiet comes out (−50 − (−40))·(2 − 1) = 10 dB lower still (0.15 dB: 33 LSB in 16 bits, a step 0.26 dB); as a gate
+    (100:1, 80 dB of range) the quiet is gone — under one 16-bit step."""
+    fund = 4 / math.pi
+    quiet = 10 ** (-50 / 20)
+    exp = render(binpath, "gate", 2)
+    gate = render(binpath, "gate", 100)
+    loud = 20 * math.log10(goertzel(exp[4800:24000], 1000.0) / (fund * 0.1))
+    tail = exp[72000:]  # 1.5 s after the fall: its release long settled
+    expd = 20 * math.log10(goertzel(tail, 1000.0) / (fund * quiet))
+    shut = max(abs(v) for v in gate[72000:])
+    if abs(loud) > 0.05:
+        raise Failure(f"the loud part moved {loud:+.3f} dB")
+    if abs(expd + 10.0) > 0.15:
+        raise Failure(f"2:1, 10 dB under: {expd:.2f} dB (want −10)")
+    if shut > 1.0 / 32767:
+        raise Failure(f"the gate leaks {shut:.6f}")
+    return f"loud {loud:+.3f} dB; 2:1 10 dB under: {expd:.2f} dB; gated peak {shut * 32767:.0f} LSB"
+
+
+CHECKS.append(("gate_curve", check_gate_curve))
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

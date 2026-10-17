@@ -629,7 +629,17 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   registry runs any effect's whole-frame `process`, `reset`, key and latency where it has them (found by member). (MB1)–
   (MB4). Guarded by `Multiband_at_ratio_one_is_flat` (40 Hz … 15 kHz within 0.0000 dB; the output gain),
   `Multiband_compresses_only_its_band` (60 Hz cut exactly as the Compressor alone, 17.30 dB; 5 kHz untouched),
-  `Multiband_does_not_allocate`.
+  `Multiband_does_not_allocate`, and the integration check `multiband_bands` (flat to 0.000 dB at 1:1; the low band
+  at 4:1 where (C1)–(C4) computed in Python put it, −12.51 dB, to 0.01).
+- `REQ-fx-gate-1` — **A gate and a downward expander** (source: Solaris R-FX-7, "implement all", 2026-10-17): `Gate`
+  — below its threshold the signal is turned down by (L − T)·(R − 1) dB, never by more than its range (ratio 100: a
+  gate; 2: a 2:1 expander); its level linked across channels (C2's detector, 1 ms / 50 ms) or a key's (keyed, it opens
+  on another track); it HOLDS open `hold` ms after the level last stood at the threshold, then closes at its release;
+  its gain smoothed in dB (attack opening, release closing); the registry's "gate" (`takesKey`). (GT1)–(GT5). Guarded
+  by `Gate_passes_the_loud_and_shuts_the_quiet` (0.000 dB above; −79.9 dB below at 80 dB of range; 2:1 10 dB under
+  → −10.000 dB; open within 0.6 dB 5 ms into a tone; a right-only tone carries the left), `Gate_holds_open_before_it_closes`,
+  `Gate_keyed_opens_on_another_track`, and the integration check `gate_curve` (a square at −20 then −50 dBFS: 2:1
+  → −10 dB in 16 bits; gated: silence).
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

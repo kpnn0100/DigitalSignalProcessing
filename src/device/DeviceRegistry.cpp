@@ -4,6 +4,7 @@
 #include "../effects/Compressor.h"
 #include "../effects/Limiter.h"
 #include "../effects/MultibandCompressor.h"
+#include "../effects/Gate.h"
 #include "../instrument/Sampler.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
@@ -724,6 +725,21 @@ namespace arstro
             return b;
         }
 
+        // REQ-fx-gate-1: a gate and a downward expander
+        const std::vector<Binding<Gate>> &gateBindings()
+        {
+            static const std::vector<Binding<Gate>> b = {
+                {num("threshold", "Threshold", "dB", -80, 0, -40), [](Gate &g, double x) { g.setThresholdDb(x); }},
+                {num("ratio", "Ratio", ":1", 1, 100, 100, true), [](Gate &g, double x) { g.setRatio(x); }},
+                {num("range", "Range", "dB", 0, 100, 80), [](Gate &g, double x) { g.setRangeDb(x); }},
+                {num("attack", "Attack", "ms", 0.01, 100, 1, true), [](Gate &g, double x) { g.setAttackMs(x); }},
+                {num("hold", "Hold", "ms", 0, 2000, 20), [](Gate &g, double x) { g.setHoldMs(x); }},
+                {num("release", "Release", "ms", 1, 5000, 100, true), [](Gate &g, double x) { g.setReleaseMs(x); }},
+                {choice("sidechain", "Sidechain", {"off", "on"}, 0), [](Gate &g, double x) { g.setSidechain(x > 0.5); }},
+            };
+            return b;
+        }
+
         const std::vector<Binding<ParametricEQ>> &eqBindings()
         {
             using E = ParametricEQ;
@@ -969,6 +985,11 @@ namespace arstro
             comp.takesKey = true;
             v.push_back(comp);
             v.push_back(effectType<ParametricEQ>("eq", "EQ", "Low cut, low shelf, three peaks, high shelf, high cut.", &eqBindings));
+            {
+                DeviceType gate = effectType<Gate>("gate", "Gate", "A gate and a downward expander: below its threshold turned down by the ratio, held open before it closes; keyed by another track if asked.", &gateBindings); // REQ-fx-gate-1
+                gate.takesKey = true;
+                v.push_back(gate);
+            }
             v.push_back(effectType<MultibandCompressor>("multiband", "Multiband", "Three bands split by Linkwitz-Riley crossovers, each compressed alone; flat when nothing is.", &multibandBindings)); // REQ-fx-multiband-1
             v.push_back(effectType<Reverb>("reverb", "Reverb", "Feedback-delay-network reverb, decorrelated stereo.", &reverbBindings));
             v.push_back(effectType<Repeater>("delay", "Delay", "Feedback echo, each repeat darker.", &delayBindings));

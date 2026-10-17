@@ -1080,6 +1080,55 @@ static std::vector<double> renderGranular(double)
     return y;
 }
 
+// REQ-fx-multiband-1: 60 Hz and 5 kHz, 0.25 each, 1.5 s through the registry's "multiband" — arg 0: every band at 1:1
+// (the bands sum flat); arg 1: the low band at −30 dB, 4:1, the rest at 1:1
+static std::vector<double> renderMultiband(double squeeze)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("multiband");
+    for (const char *band : {"low", "mid", "high"}) d->setParam(std::string(band) + ".ratio", 1.0);
+    if (squeeze > 0)
+    {
+        d->setParam("low.threshold", -30.0);
+        d->setParam("low.ratio", 4.0);
+    }
+    std::vector<Sample> L(72000), R(72000);
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        const double t = (double)n / kSampleRate;
+        L[n] = R[n] = 0.25 * std::sin(2 * M_PI * 60 * t) + 0.25 * std::sin(2 * M_PI * 5000 * t);
+    }
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
+// REQ-fx-gate-1: a 1 kHz square (its |x| steady, so its level is exact) through the registry's "gate" — ±0.1 (−20 dBFS)
+// for half a second, then ±10^(−50/20) for two; arg: the ratio (100: the gate, 2: a 2:1 expander)
+static std::vector<double> renderGate(double ratio)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("gate");
+    d->setParam("ratio", ratio);
+    std::vector<Sample> L(120000), R(120000);
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        const double a = n < 24000 ? 0.1 : std::pow(10.0, -50.0 / 20.0);
+        L[n] = R[n] = n % 48 < 24 ? a : -a;
+    }
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // REQ-808-2: the registry's "808" on A1 (55 Hz) for a second, its defaults but no click, no drive and a long decay (8 s:
 // steady enough in a window to read its pitch)
 static std::vector<double> render808(double)
@@ -1197,6 +1246,8 @@ int main(int argc, char **argv)
     else if (scenario == "multisample") samples = renderMultisample(arg);
     else if (scenario == "granular") samples = renderGranular(arg);
     else if (scenario == "808") samples = render808(arg);
+    else if (scenario == "multiband") samples = renderMultiband(arg);
+    else if (scenario == "gate") samples = renderGate(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

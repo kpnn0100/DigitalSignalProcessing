@@ -250,3 +250,35 @@ the library's `Compressor` ((C1)–(C4)); its own: the split and the all-pass th
 | `output` | — | dB | 0 |
 
 Ratio 1 everywhere: the bands sum to an all-pass — the input's magnitude to 0.01 dB at every frequency.
+
+## Math — `Gate.cpp` (REQ-fx-gate-1)
+
+A gate and a downward expander: what falls below the threshold is turned down — by the ratio, never by more than the
+range. **Why not composed (rule 1):** `Compressor` turns down what rises ABOVE its threshold, and its gain follows its
+level each sample; a gate's curve is the mirror, it HOLDS open before it closes, and it smooths its gain (a gate
+chatters if its gain follows a level). It keeps the compressor's detector form ((C2)) and its key (a keyed gate opens
+on another track).
+
+```
+(GT1) Level — linked across channels (the image never moves):  ℓ[n] = max_c |x_c[n]|  (or the key's, keyed)
+      env[n] = a·(env[n−1] − ℓ) + ℓ  if ℓ > env[n−1]  else  r·(env[n−1] − ℓ) + ℓ   (C2's form; a, r from 1 ms, 50 ms)
+(GT2) The curve:  L = 20·log10(env + 1e−9);  g* = 0 dB when L ≥ T;  else max(−range, (L − T)·(R − 1))
+      R = ratio (1 = nothing; 2 = 2:1 downward; 100 = a gate)
+(GT3) Hold — below T, g* is held at 0 dB for `hold` ms after the level last stood at T
+(GT4) Its gain, smoothed in dB:  g ← g* + α·(g − g*),  α = e^(−1/(attack·fs/1000)) opening (g* > g),
+      e^(−1/(release·fs/1000)) closing
+(GT5) y_c = x_c · 10^(g/20)
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `threshold` | T | dB −80 … 0 | −40 |
+| `ratio` | R | 1 … 100 (100: a gate) | 100 |
+| `range` | — | dB 0 … 100 | 80 |
+| `attack`, `hold`, `release` | — | ms | 1, 20, 100 |
+| `sidechain` | — | off · on (the key opens it) | off |
+
+(GT1)–(GT5) are `Gate::process`; the per-sample constants (a, r, the two α, the hold in samples) are `Gate::coeffs`,
+from the sample rate. A 2:1 expander 10 dB under its threshold turns down 10.000 dB (`Gate_passes_the_loud_and_shuts_the_quiet`,
+`gate_curve`); held 20 ms past a fall from a tone, then closed by 80·(1 − e⁻⁴) = 78.5 dB four release constants on
+(`Gate_holds_open_before_it_closes`).
