@@ -303,6 +303,12 @@ package effects {
     +setWidth(pct) / setMono(on) / setMonoHz
     +process(io**, ch, frames) : (IM1)-(IM4) mid/side, LR4 side high-pass + mid all-pass
   }
+  class Convolver {
+    +setSample(interleaved*, frames, channels, rate) : (CV1)-(CV3) allocates
+    +setMix / setLevelDb
+    +process(io**, ch, frames) : (CV4)-(CV6) partitioned overlap-save
+    +latency() : 256
+  }
   class Overdrive
   class Chorus
   class Repeater
@@ -487,6 +493,7 @@ Overdrive --|> SignalProcessor
 Chorus --|> SignalProcessor
 Flanger *--> "per channel" Delay : swept, fed back (REQ-delay-1)
 Imager *--> "6" Biquad : LR4 side high-pass, mid all-pass
+Convolver ..> FFT : its partitions
 Repeater --|> SignalProcessor
 
 ' ─────────────────────────── Synth engine ───────────────────────────

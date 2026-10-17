@@ -1642,6 +1642,24 @@ def check_imager_mid_side(binpath):
 
 CHECKS.append(("imager_mid_side", check_imager_mid_side))
 
+def check_convolution_echo(binpath):
+    """REQ-fx-convolution-1 (CV2), (CV6): a response of an impulse and half of one 100 ms on, made unit energy
+    (÷ √1.25); a click of 0.8 at 0.1 s — heard 256 samples late at 0.8/√1.25, and again 4800 later at half that; the
+    rest silent (to a 16-bit step)."""
+    y = render(binpath, "convolution", 0)
+    g = 1 / math.sqrt(1.25)
+    first, echo = 4800 + 256, 4800 + 256 + 4800
+    a, b = y[first], y[echo]
+    rest = max(abs(v) for i, v in enumerate(y) if i not in (first, echo))
+    if abs(a - 0.8 * g) > 1.5 / 32767 or abs(b - 0.4 * g) > 1.5 / 32767:
+        raise Failure(f"the click {a:.5f} at {first}, the echo {b:.5f} at {echo}; want {0.8 * g:.5f}, {0.4 * g:.5f}")
+    if rest > 1.5 / 32767:
+        raise Failure(f"something else sounds: {rest:.5f}")
+    return f"the click {a:.4f} at sample {first}, its echo {b:.4f} at {echo} (0.8 and 0.4 ÷ √1.25); elsewhere silent"
+
+
+CHECKS.append(("convolution_echo", check_convolution_echo))
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

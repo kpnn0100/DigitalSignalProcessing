@@ -1265,3 +1265,147 @@ TEST(Imager_same_in_any_blocks_and_does_not_allocate)
     gCounting = false;
     CHECK(gAllocs.load() == 0);
 }
+
+namespace
+{
+    std::vector<float> noise(size_t n, unsigned seed, double a = 0.5)
+    {
+        std::vector<float> v(n);
+        for (auto &x : v) { seed = seed * 1103515245u + 12345u; x = (float)(a * ((double)(seed >> 8) / 16777216.0 - 0.5) * 2.0); }
+        return v;
+    }
+}
+
+TEST(Convolver_is_the_convolution)
+{
+    // (CV1)–(CV6): a stereo response of 3000 taps (unit energy made), a noise through it — every sample is the direct
+    // sum Σ h_n[k]·x[n − 256 − k], each channel its own response, to 1e−9; latency() 256
+    configure48();
+    const int taps = 3000, n = 12000;
+    const auto hl = noise(taps, 7), hr = noise(taps, 11);
+    std::vector<float> ir((size_t)taps * 2);
+    for (int i = 0; i < taps; ++i) { ir[(size_t)(2 * i)] = hl[(size_t)i]; ir[(size_t)(2 * i + 1)] = hr[(size_t)i]; }
+    Convolver cv;
+    cv.setSample(ir.data(), taps, 2, 48000.0);
+    cv.setMix(1.0);
+    CHECK(cv.latency() == 256 && cv.responseFrames() == taps);
+    const auto xl = noise(n, 3), xr = noise(n, 5);
+    std::vector<Sample> L(xl.begin(), xl.end()), R(xr.begin(), xr.end());
+    blocks(cv, L, R, 100);
+    double el = 0, er = 0;
+    for (float v : hl) el += (double)v * v;
+    for (float v : hr) er += (double)v * v;
+    const double g = 1.0 / std::sqrt(std::max(el, er)); // the louder channel's energy made 1
+    double worst = 0;
+    for (int i = 256; i < n; i += 7)
+    {
+        double wl = 0, wr = 0;
+        for (int k = 0; k < taps && i - 256 - k >= 0; ++k)
+        {
+            wl += g * hl[(size_t)k] * xl[(size_t)(i - 256 - k)];
+            wr += g * hr[(size_t)k] * xr[(size_t)(i - 256 - k)];
+        }
+        worst = std::max({worst, std::fabs(L[(size_t)i] - wl), std::fabs(R[(size_t)i] - wr)});
+    }
+    std::printf("    3000 taps, stereo: off the direct sum by %.2g\n", worst);
+    CHECK(worst < 1e-9);
+}
+
+TEST(Convolver_dry_and_without_a_response)
+{
+    // (CV6): mix 0 — the input exactly 256 samples late; no response — the wet silent, the dry (1 − mix) of the input,
+    // 256 late
+    configure48();
+    std::vector<Sample> L, R;
+    tones(L, R, 4800, {{440.0, 0.5}, {3000.0, 0.2}});
+    const std::vector<Sample> X = L;
+    const auto ir = noise(500, 9);
+    Convolver d;
+    d.setSample(ir.data(), 500, 1, 48000.0);
+    d.setMix(0.0);
+    blocks(d, L, R);
+    bool late = true;
+    for (int i = 0; i < 4800; ++i) late &= L[(size_t)i] == (i < 256 ? 0.0 : X[(size_t)(i - 256)]);
+    CHECK(late);
+    Convolver none;
+    L = X;
+    R = X;
+    blocks(none, L, R);
+    double off = 0;
+    for (int i = 256; i < 4800; ++i) off = std::max(off, std::fabs(L[(size_t)i] - 0.7 * X[(size_t)(i - 256)]));
+    CHECK(off < 1e-15 && none.responseFrames() == 0);
+}
+
+TEST(Convolver_reads_its_response_at_its_rate)
+{
+    // (CV1): a response recorded at 24 kHz — one impulse at its sample 100 — heard at 48 kHz at sample 200 (resampled,
+    // band-limited); a mono response serves both channels; one longer than 10 s cut there
+    configure48();
+    std::vector<float> ir(400, 0.0f);
+    ir[100] = 1.0f;
+    Convolver cv;
+    cv.setSample(ir.data(), 400, 1, 24000.0);
+    cv.setMix(1.0);
+    std::vector<Sample> L(2048, 0.0), R(2048, 0.0);
+    L[0] = R[0] = 1.0;
+    blocks(cv, L, R);
+    size_t at = 0;
+    for (size_t i = 0; i < L.size(); ++i) if (std::fabs(L[i]) > std::fabs(L[at])) at = i;
+    std::printf("    a 24 kHz impulse at 100: heard at %zu (256 + 200), %zu frames at 48 kHz\n", at, (size_t)cv.responseFrames());
+    CHECK(at == 456 && cv.responseFrames() == 800 && L == R);
+    std::vector<float> longest((size_t)(11 * 48000), 0.0f);
+    longest[0] = 1.0f;
+    Convolver big;
+    big.setSample(longest.data(), (long long)longest.size(), 1, 48000.0);
+    CHECK(big.responseFrames() == 480000);
+}
+
+TEST(Convolver_same_in_any_blocks_and_does_not_allocate)
+{
+    configure48();
+    const auto ir = noise(5000, 21);
+    auto run = [&](int block) {
+        Convolver cv;
+        cv.setSample(ir.data(), 2500, 2, 48000.0);
+        std::vector<Sample> L, R;
+        tones(L, R, 9600, {{220.0, 0.5}, {2500.0, 0.2}});
+        blocks(cv, L, R, block);
+        return L;
+    };
+    const auto a = run(1), b = run(128), c = run(777);
+    CHECK(a == b && a == c);
+    Convolver cv;
+    cv.setSample(ir.data(), 5000, 1, 48000.0);
+    std::vector<Sample> L, R;
+    tones(L, R, 4096, {{220.0, 0.5}});
+    Sample *io[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    cv.process(io, 2, 4096);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0);
+}
+
+TEST(Convolution_device_takes_its_response)
+{
+    // REQ-fx-convolution-1 through the registry: "convolution" takes a sample — a response of one impulse (unit energy
+    // already) at mix 1 is the input exactly 256 samples late, through the Device face
+    configure48();
+    const DeviceType *t = DeviceRegistry::find("convolution");
+    CHECK(t && t->takesSample && t->kind == DeviceKind::Effect);
+    auto d = DeviceRegistry::create("convolution");
+    const float ir[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+    d->setSample(ir, 4, 1, 48000.0);
+    CHECK(d->setParam("mix", 1.0));
+    std::vector<Sample> L, R;
+    tones(L, R, 4800, {{440.0, 0.5}});
+    const std::vector<Sample> X = L;
+    for (size_t at = 0; at < L.size(); at += 128)
+    {
+        Sample *io[2] = {L.data() + at, R.data() + at};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - at));
+    }
+    double off = 0;
+    for (int i = 256; i < 4800; ++i) off = std::max(off, std::fabs(L[(size_t)i] - X[(size_t)(i - 256)]));
+    CHECK(off < 1e-12 && d->latency() == 256);
+}

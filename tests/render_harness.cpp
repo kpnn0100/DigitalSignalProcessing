@@ -1292,6 +1292,28 @@ static std::vector<double> renderImager(double right)
     return std::vector<double>(y.begin(), y.end());
 }
 
+// REQ-fx-convolution-1: the registry's "convolution", mix 1, given a mono response — an impulse, then 0.5 of one
+// 100 ms later (an echo) — and one click at 0.1 s; 0.5 s out
+static std::vector<double> renderConvolution(double)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("convolution");
+    d->setParam("mix", 1.0);
+    std::vector<float> ir(4801, 0.0f);
+    ir[0] = 1.0f;
+    ir[4800] = 0.5f;
+    d->setSample(ir.data(), (long long)ir.size(), 1, kSampleRate);
+    std::vector<Sample> L(24000, 0.0), R(24000, 0.0);
+    L[4800] = R[4800] = 0.8;
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // REQ-808-2: the registry's "808" on A1 (55 Hz) for a second, its defaults but no click, no drive and a long decay (8 s:
 // steady enough in a window to read its pitch)
 static std::vector<double> render808(double)
@@ -1418,6 +1440,7 @@ int main(int argc, char **argv)
     else if (scenario == "phaser") samples = renderPhaser(arg);
     else if (scenario == "flanger") samples = renderFlanger(arg);
     else if (scenario == "imager") samples = renderImager(arg);
+    else if (scenario == "convolution") samples = renderConvolution(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

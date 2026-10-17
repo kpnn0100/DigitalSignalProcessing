@@ -417,7 +417,7 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   2026-10-09: the master limiter's lookahead put a whole render 96 samples late). `Device::latency()` is
   the number of samples its output lags its input at its CURRENT parameters — the `limiter`'s lookahead
   L (`Limiter::latency()`, 96 at its 2 ms default and 48 kHz), the `saturator`'s oversampling (15, REQ-fx-saturator-1),
-  0 for every other type — so a host can
+  the `convolution`'s partition (256, REQ-fx-convolution-1), 0 for every other type — so a host can
   delay every other path by it (plugin delay compensation). A write that moves it (`lookahead`) is seen
   by the next read. Guarded by `Device_reports_its_latency_and_lags_by_exactly_it` (every type's default,
   the limiter at 0 / 1 / 5 / 10 ms, and a click through the Device face arriving exactly `latency()`
@@ -703,6 +703,16 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   `Imager_width_scales_the_side` (width 0 exactly (L + R)/2; 200 % the side doubled to 1e−15),
   `Imager_mono_below_its_frequency` (the side |HP|² to 0.01 dB, the mid whole; a hard-left tone stays left, −118 dB),
   `Imager_same_in_any_blocks_and_does_not_allocate`, and the integration check `imager_mid_side`.
+- `REQ-fx-convolution-1` — **A convolution reverb** (source: Solaris R-FX-14, "implement all", 2026-10-17): `Convolver` —
+  an impulse response handed in as a sample (`Device::setSample`; the registry's adapter now passes it to an effect
+  that has `setSample`, found by member; the type `takesSample`), resampled to the engine's rate, cut at 10 s, made
+  unit energy; convolved by uniform partitioned overlap-save (256-sample partitions, the library FFT): the wet exactly
+  256 samples late, `latency()` says so (REQ-device-8), the dry delayed to match; a mono response for both channels,
+  a stereo one each its own; a mix and a wet level; the registry's "convolution". (CV1)–(CV6). Guarded by
+  `Convolver_is_the_convolution` (the direct sum to 1e−9), `Convolver_dry_and_without_a_response`,
+  `Convolver_reads_its_response_at_its_rate` (24 kHz resampled; the 10 s cut), `Convolver_same_in_any_blocks_and_does_
+  not_allocate`, `Convolution_device_takes_its_response` (through the Device face), and the integration check
+  `convolution_echo`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

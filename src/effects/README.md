@@ -514,3 +514,33 @@ A 50 Hz tone in the left alone, mono below 120 Hz: its side −30.68 dB (two sec
 whole; at 3 kHz the side kept and a hard-left tone still hard left (the right −118 dB)
 (`Imager_mono_below_its_frequency`). Each stereo pair (0, 1), (2, 3) … runs on the Biquads' own channel = its index,
 within the configured channel count; a lone last channel passes untouched. (IM1)–(IM4) are `Imager::process`.
+
+## Math — `Convolver.cpp` (REQ-fx-convolution-1)
+
+A recorded room: the sound convolved with an impulse response. **Composed of:** the library `FFT` (spectral/,
+(F1)–(F2)) and `resample` (spectral/TimeStretch.h, (R1)–(R3)); the partitioned convolution itself is the new part.
+
+```
+(CV1) The response h_c (a sample the host decoded: frames × channels at its rate) — each channel resampled to fs
+      (step = rate/fs), cut at 10 s; a mono response serves both channels, a stereo one each its own
+(CV2) Unit energy:  h ← h / √(max_c Σ_n h_c[n]²)  — a response's own loudness does not set the wet level
+(CV3) Partitions of B = 256:  H_p[k] = FFT_2B(h[pB … pB + B − 1], zero-padded)[k],  p = 0 … P − 1,  P = ⌈len/B⌉
+      — a real signal's spectrum: k = 0 … B kept, the rest its conjugate mirror
+(CV4) Every B inputs:  X_j = FFT_2B(the last 2B inputs),  kept in a ring of P (the frequency-domain delay line)
+(CV5) Y = Σ_p H_p · X_(j − p);   y = IFFT_2B(Y)  (the mirror filled first)
+(CV6) Overlap-save: y[B … 2B − 1] are the B outputs for the block just in — heard during the next B samples:
+      wet[n] = Σ_k h[k]·x[n − B − k], exactly B late; the dry path a ring of B, so
+      out[n] = mix·level·wet[n] + (1 − mix)·x[n − B];   latency() = B
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| the response | h | a sample (`setSample`; Solaris: `--sample` / `<dv>.sample`) | none: the wet silent |
+| `mix` | mix | 0 … 1 | 0.3 |
+| `level` | level | dB −24 … +12 (the wet's) | 0 |
+
+Cost: per B inputs, one 2B FFT in, P·(B + 1) complex multiply-adds, one 2B FFT out — about P complex MACs a sample
+(a 3 s response at 48 kHz: 563). A stereo response of 3000 taps convolved with noise is the direct sum to 4e−15
+(`Convolver_is_the_convolution`); a 24 kHz impulse at its sample 100 is heard at 256 + 200 (`Convolver_reads_its_
+response_at_its_rate`). (CV1)–(CV3) are `Convolver::setSample` (it allocates: a host calls it before playing),
+(CV4)–(CV5) `Convolver::block`, (CV6) `Convolver::process`.

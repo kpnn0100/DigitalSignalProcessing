@@ -12,6 +12,7 @@
 #include "../effects/Phaser.h"
 #include "../effects/Flanger.h"
 #include "../effects/Imager.h"
+#include "../effects/Convolver.h"
 #include "../instrument/Sampler.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
@@ -671,6 +672,7 @@ namespace arstro
             void reset() override { resetOf(mProc, 0); }
             void setKey(const Sample *const *key, int channels) override { keyOf(mProc, key, channels, 0); }
             int latency() const override { return latencyOf(mProc, 0); }
+            void setSample(const float *x, long long frames, int channels, double rate) override { sampleOf(mProc, x, frames, channels, rate, 0); }
 
         protected:
             void apply(int i, double v) override { mB[i].set(mProc, v); }
@@ -690,6 +692,9 @@ namespace arstro
             // REQ-device-8: an effect with a lookahead says how far its output lags; the rest are latency-free
             template <class Q> static auto latencyOf(const Q &p, int) -> decltype(p.latency(), 0) { return p.latency(); }
             template <class Q> static int latencyOf(const Q &, long) { return 0; }
+            // REQ-fx-convolution-1: an effect that plays a recording (an impulse response) is handed it as a sample
+            template <class Q> static auto sampleOf(Q &p, const float *x, long long f, int c, double r, int) -> decltype(p.setSample(x, f, c, r), void()) { p.setSample(x, f, c, r); }
+            template <class Q> static void sampleOf(Q &, const float *, long long, int, double, long) {}
             Proc mProc;
             const std::vector<Binding<Proc>> &mB;
         };
@@ -815,6 +820,16 @@ namespace arstro
                 {num("width", "Width", "%", 0, 200, 100), [](Imager &m, double x) { m.setWidth(x); }},
                 {choice("mono", "Mono Bass", {"off", "on"}, 0), [](Imager &m, double x) { m.setMono(x > 0.5); }},
                 {num("frequency", "Mono Below", "Hz", 40, 500, 120, true), [](Imager &m, double x) { m.setMonoHz(x); }},
+            };
+            return b;
+        }
+
+        // REQ-fx-convolution-1: a recorded room
+        const std::vector<Binding<Convolver>> &convolutionBindings()
+        {
+            static const std::vector<Binding<Convolver>> b = {
+                {num("mix", "Mix", "", 0, 1, 0.3), [](Convolver &c, double x) { c.setMix(x); }},
+                {num("level", "Level", "dB", -24, 12, 0), [](Convolver &c, double x) { c.setLevelDb(x); }},
             };
             return b;
         }
@@ -1083,6 +1098,11 @@ namespace arstro
                 DeviceType gate = effectType<Gate>("gate", "Gate", "A gate and a downward expander: below its threshold turned down by the ratio, held open before it closes; keyed by another track if asked.", &gateBindings); // REQ-fx-gate-1
                 gate.takesKey = true;
                 v.push_back(gate);
+            }
+            {
+                DeviceType conv = effectType<Convolver>("convolution", "Convolution Reverb", "A recorded room: an impulse response (a sample) convolved with the sound, its latency reported.", &convolutionBindings); // REQ-fx-convolution-1
+                conv.takesSample = true;
+                v.push_back(conv);
             }
             v.push_back(effectType<Imager>("imager", "Imager", "Wider or narrower, and mono below a frequency: mid and side, the side scaled, its lows taken away.", &imagerBindings)); // REQ-fx-imager-1
             v.push_back(effectType<Flanger>("flanger", "Flanger", "A short delay swept by an LFO and fed back: a comb whose teeth sweep.", &flangerBindings)); // REQ-fx-flanger-1
