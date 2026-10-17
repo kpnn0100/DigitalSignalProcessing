@@ -1147,3 +1147,121 @@ TEST(Flanger_same_in_any_blocks_and_does_not_allocate)
     gCounting = false;
     CHECK(gAllocs.load() == 0);
 }
+
+namespace
+{
+    /** A Butterworth section's response at `hz` (Biquad::design at 48 kHz). */
+    std::complex<double> sectionAt(Biquad::Type t, double f, double hz)
+    {
+        const auto c = Biquad::design(t, f, 0.70710678118654752, 0.0, 48000.0);
+        const std::complex<double> z1 = std::polar(1.0, -kTau * hz / 48000.0), z2 = z1 * z1;
+        return ((double)c.b0 + (double)c.b1 * z1 + (double)c.b2 * z2) / (1.0 + (double)c.a1 * z1 + (double)c.a2 * z2);
+    }
+    /** Mid and side amplitudes of a stereo pair at `hz`. */
+    std::pair<double, double> midSide(const std::vector<Sample> &L, const std::vector<Sample> &R, int from, int n, double hz)
+    {
+        std::vector<Sample> M(L.size()), S(L.size());
+        for (size_t i = 0; i < L.size(); ++i) { M[i] = 0.5 * (L[i] + R[i]); S[i] = 0.5 * (L[i] - R[i]); }
+        return {amp(M, from, n, hz), amp(S, from, n, hz)};
+    }
+}
+
+TEST(Imager_at_its_defaults_is_the_input)
+{
+    // (IM4): width 100 %, mono off — the input, to the bit
+    configure48();
+    Imager m;
+    std::vector<Sample> L, R, unused;
+    tones(L, unused, 4800, {{300.0, 0.5}});
+    tones(R, unused, 4800, {{700.0, 0.4}});
+    const std::vector<Sample> L0 = L, R0 = R;
+    blocks(m, L, R);
+    CHECK(L == L0 && R == R0);
+}
+
+TEST(Imager_width_scales_the_side)
+{
+    // (IM1), (IM3)–(IM4): width 0 — both sides (L + R)/2 exactly; 200 % — the side doubled, the mid kept (to 1e−15)
+    configure48();
+    std::vector<Sample> L, R, unused;
+    tones(L, unused, 4800, {{300.0, 0.5}});
+    tones(R, unused, 4800, {{700.0, 0.4}});
+    const std::vector<Sample> L0 = L, R0 = R;
+    Imager narrow;
+    narrow.setWidth(0.0);
+    blocks(narrow, L, R);
+    bool mono = true;
+    for (size_t i = 0; i < L.size(); ++i) mono &= L[i] == R[i] && L[i] == (Sample)(0.5 * ((double)L0[i] + (double)R0[i]));
+    CHECK(mono);
+    L = L0;
+    R = R0;
+    Imager wide;
+    wide.setWidth(200.0);
+    blocks(wide, L, R);
+    double off = 0;
+    for (size_t i = 0; i < L.size(); ++i)
+    {
+        off = std::max(off, std::fabs((L[i] - R[i]) - 2.0 * (L0[i] - R0[i])));
+        off = std::max(off, std::fabs((L[i] + R[i]) - (L0[i] + R0[i])));
+    }
+    CHECK(off < 1e-15);
+}
+
+TEST(Imager_mono_below_its_frequency)
+{
+    // (IM2): mono below 120 Hz — a 50 Hz tone in the left only: its side comes out |HP(50)|² of itself (two Butterworth
+    // high-passes: −30 dB), its mid whole (the all-pass); a 3 kHz one keeps its side (|HP(3 k)|² ≈ 1); both to 0.01 dB
+    configure48();
+    for (double hz : {50.0, 3000.0})
+    {
+        Imager m;
+        m.setMono(true);
+        m.setMonoHz(120.0);
+        std::vector<Sample> L, R, unused;
+        tones(L, unused, 48000, {{hz, 0.5}});
+        R.assign(L.size(), 0.0);
+        blocks(m, L, R);
+        const auto ms = midSide(L, R, 24000, 24000, hz);
+        const double hp = std::norm(sectionAt(Biquad::HighPass, 120.0, hz)); // |H|² — two sections
+        const double sideDb = db(ms.second / 0.25), wantSide = db(hp), midDb = db(ms.first / 0.25);
+        std::printf("    %.0f Hz in the left: side %.2f dB (want %.2f), mid %.3f dB\n", hz, sideDb, wantSide, midDb);
+        CHECK(std::fabs(sideDb - wantSide) < 0.01 && std::fabs(midDb) < 0.01);
+    }
+    // the mid's all-pass and the side's high-pass agree in phase above the frequency: a 3 kHz tone hard left stays left
+    Imager m;
+    m.setMono(true);
+    std::vector<Sample> L, R, unused;
+    tones(L, unused, 48000, {{3000.0, 0.5}});
+    R.assign(L.size(), 0.0);
+    blocks(m, L, R);
+    const double leak = db(amp(R, 24000, 24000, 3000.0) / 0.5);
+    std::printf("    3 kHz hard left, mono below 120 Hz: the right at %.1f dB\n", leak);
+    CHECK(leak < -60.0);
+}
+
+TEST(Imager_same_in_any_blocks_and_does_not_allocate)
+{
+    configure48();
+    auto run = [](int block) {
+        Imager m;
+        m.setMono(true);
+        m.setWidth(150.0);
+        std::vector<Sample> L, R, unused;
+        tones(L, unused, 9600, {{60.0, 0.5}, {2500.0, 0.2}});
+        tones(R, unused, 9600, {{90.0, 0.3}});
+        blocks(m, L, R, block);
+        return L;
+    };
+    const auto a = run(1), b = run(128), c = run(777);
+    CHECK(a == b && a == c);
+    Imager m;
+    m.setMono(true);
+    std::vector<Sample> L, R;
+    tones(L, R, 4096, {{220.0, 0.5}});
+    Sample *io[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    m.process(io, 2, 4096);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0);
+}

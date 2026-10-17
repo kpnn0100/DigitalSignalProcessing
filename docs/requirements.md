@@ -695,6 +695,14 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   floor; with feedback the comb's closed form to 0.01 dB), `Flanger_sweeps_its_delay` (to 1e−9),
   `Flanger_fed_back_hard_stays_bounded`, `Flanger_dry_is_the_input`, `Flanger_same_in_any_blocks_and_does_not_allocate`,
   and the integration check `flanger_comb`.
+- `REQ-fx-imager-1` — **A stereo imager** (source: Solaris R-FX-13, "implement all", 2026-10-17): `Imager` — each stereo
+  pair as mid and side; the side scaled by the width (0 … 200 %: mono … doubled); mono below a frequency (on/off):
+  the side through a Linkwitz-Riley high-pass and the mid through the matching all-pass (library Biquads, the
+  multiband's crossover), so above it the image is the width's and below it mono; at 100 % with mono off, the input
+  to the bit; the registry's "imager". (IM1)–(IM4). Guarded by `Imager_at_its_defaults_is_the_input`,
+  `Imager_width_scales_the_side` (width 0 exactly (L + R)/2; 200 % the side doubled to 1e−15),
+  `Imager_mono_below_its_frequency` (the side |HP|² to 0.01 dB, the mid whole; a hard-left tone stays left, −118 dB),
+  `Imager_same_in_any_blocks_and_does_not_allocate`, and the integration check `imager_mid_side`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

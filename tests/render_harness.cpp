@@ -1266,6 +1266,32 @@ static std::vector<double> renderFlanger(double)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-fx-imager-1: the registry's "imager", mono below 120 Hz, width 150 % — 0.5 of 50 Hz and 0.3 of 2 kHz in the left,
+// 0.2 of 2 kHz in the right, 1 s; arg 0: the left out, arg 1: the right
+static std::vector<double> renderImager(double right)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("imager");
+    d->setParam("mono", 1.0);
+    d->setParam("frequency", 120.0);
+    d->setParam("width", 150.0);
+    std::vector<Sample> L(48000), R(48000);
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        const double t = (double)n / kSampleRate;
+        L[n] = 0.5 * std::sin(2 * M_PI * 50 * t) + 0.3 * std::sin(2 * M_PI * 2000 * t);
+        R[n] = 0.2 * std::sin(2 * M_PI * 2000 * t);
+    }
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    const auto &y = right > 0 ? R : L;
+    return std::vector<double>(y.begin(), y.end());
+}
+
 // REQ-808-2: the registry's "808" on A1 (55 Hz) for a second, its defaults but no click, no drive and a long decay (8 s:
 // steady enough in a window to read its pitch)
 static std::vector<double> render808(double)
@@ -1391,6 +1417,7 @@ int main(int argc, char **argv)
     else if (scenario == "bitcrusher") samples = renderBitcrusher(arg);
     else if (scenario == "phaser") samples = renderPhaser(arg);
     else if (scenario == "flanger") samples = renderFlanger(arg);
+    else if (scenario == "imager") samples = renderImager(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

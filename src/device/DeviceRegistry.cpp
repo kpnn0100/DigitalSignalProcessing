@@ -11,6 +11,7 @@
 #include "../effects/Bitcrusher.h"
 #include "../effects/Phaser.h"
 #include "../effects/Flanger.h"
+#include "../effects/Imager.h"
 #include "../instrument/Sampler.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
@@ -807,6 +808,17 @@ namespace arstro
             return b;
         }
 
+        // REQ-fx-imager-1: wider or narrower, mono below a frequency
+        const std::vector<Binding<Imager>> &imagerBindings()
+        {
+            static const std::vector<Binding<Imager>> b = {
+                {num("width", "Width", "%", 0, 200, 100), [](Imager &m, double x) { m.setWidth(x); }},
+                {choice("mono", "Mono Bass", {"off", "on"}, 0), [](Imager &m, double x) { m.setMono(x > 0.5); }},
+                {num("frequency", "Mono Below", "Hz", 40, 500, 120, true), [](Imager &m, double x) { m.setMonoHz(x); }},
+            };
+            return b;
+        }
+
         // REQ-fx-gate-1: a gate and a downward expander
         const std::vector<Binding<Gate>> &gateBindings()
         {
@@ -1072,6 +1084,7 @@ namespace arstro
                 gate.takesKey = true;
                 v.push_back(gate);
             }
+            v.push_back(effectType<Imager>("imager", "Imager", "Wider or narrower, and mono below a frequency: mid and side, the side scaled, its lows taken away.", &imagerBindings)); // REQ-fx-imager-1
             v.push_back(effectType<Flanger>("flanger", "Flanger", "A short delay swept by an LFO and fed back: a comb whose teeth sweep.", &flangerBindings)); // REQ-fx-flanger-1
             v.push_back(effectType<Phaser>("phaser", "Phaser", "Notches swept by an LFO: first-order all-passes fed back, mixed with the dry sound.", &phaserBindings)); // REQ-fx-phaser-1
             v.push_back(effectType<Saturator>("saturator", "Saturator", "A curve driven — soft, hard, tube or fold — four times oversampled, its latency reported.", &saturatorBindings)); // REQ-fx-saturator-1

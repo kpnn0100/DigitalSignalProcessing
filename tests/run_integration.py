@@ -1609,6 +1609,39 @@ def check_flanger_comb(binpath):
 
 CHECKS.append(("flanger_comb", check_flanger_comb))
 
+def check_imager_mid_side(binpath):
+    """REQ-fx-imager-1 (IM1)–(IM4): mono below 120 Hz, width 150 % — 50 Hz in the left only: its side the Linkwitz-Riley
+    high-pass's |HP|² (the cookbook's Butterworth, written here) times 1.5, its mid whole; 2 kHz, 0.3 left and 0.2 right:
+    its mid 0.25, its side 1.5 × 0.05 (the all-pass leaves the two in phase: the side read in phase with the mid's sign).
+    Each to 0.05 dB."""
+    def hp_sq(f0, f, q=1 / math.sqrt(2)):
+        w0 = 2 * math.pi * f0 / SR
+        cw, al = math.cos(w0), math.sin(w0) / (2 * q)
+        b = [(1 + cw) / 2, -(1 + cw), (1 + cw) / 2]
+        a = [1 + al, -2 * cw, 1 - al]
+        z = cmath.exp(-1j * 2 * math.pi * f / SR)
+        return abs((b[0] + b[1] * z + b[2] * z * z) / (a[0] + a[1] * z + a[2] * z * z)) ** 2
+    L = render(binpath, "imager", 0)[SR // 2:]
+    R = render(binpath, "imager", 1)[SR // 2:]
+    M = [(l + r) / 2 for l, r in zip(L, R)]
+    S = [(l - r) / 2 for l, r in zip(L, R)]
+    checks = [
+        ("50 Hz side", goertzel(S, 50.0), 0.25 * hp_sq(120.0, 50.0) * 1.5),
+        ("50 Hz mid", goertzel(M, 50.0), 0.25),
+        ("2 kHz mid", goertzel(M, 2000.0), 0.25),
+        ("2 kHz side", goertzel(S, 2000.0), 0.05 * hp_sq(120.0, 2000.0) * 1.5),
+    ]
+    said = []
+    for name, got, want in checks:
+        off = 20 * math.log10(got / want)
+        said.append(f"{name} {20 * math.log10(got):.2f} dB")
+        if abs(off) > 0.05:
+            raise Failure(f"{name}: {20 * math.log10(got):.3f} dB, want {20 * math.log10(want):.3f}")
+    return "; ".join(said)
+
+
+CHECKS.append(("imager_mid_side", check_imager_mid_side))
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

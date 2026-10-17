@@ -299,6 +299,10 @@ package effects {
     +setDelayMs / setDepthMs / setRateHz / setFeedback / setStereoDeg / setMix
     +process(io**, ch, frames) : (FL1)-(FL3) a Delay swept, fed back, mixed
   }
+  class Imager {
+    +setWidth(pct) / setMono(on) / setMonoHz
+    +process(io**, ch, frames) : (IM1)-(IM4) mid/side, LR4 side high-pass + mid all-pass
+  }
   class Overdrive
   class Chorus
   class Repeater
@@ -482,6 +486,7 @@ Compressor --|> SignalProcessor
 Overdrive --|> SignalProcessor
 Chorus --|> SignalProcessor
 Flanger *--> "per channel" Delay : swept, fed back (REQ-delay-1)
+Imager *--> "6" Biquad : LR4 side high-pass, mid all-pass
 Repeater --|> SignalProcessor
 
 ' ─────────────────────────── Synth engine ───────────────────────────

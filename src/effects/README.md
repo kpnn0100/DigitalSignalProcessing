@@ -489,3 +489,28 @@ Still at 1 ms, a sine at 500, 1500 and 2500 Hz cancels to the float floor; with 
 frequency is (FL4) to 0.0000 dB (`Flanger_is_a_comb_where_it_stands`); the sweep is (FL1) to 3e−10
 (`Flanger_sweeps_its_delay`); at feedback ±0.95, swept fast through its shortest delays, a 0.25 noise peaks at 1.25
 (`Flanger_fed_back_hard_stays_bounded`). (FL1)–(FL3) are `Flanger::process`.
+
+## Math — `Imager.cpp` (REQ-fx-imager-1)
+
+Wider or narrower, and mono below a frequency. **Composed of:** library `Biquad`s (Butterworth sections, two to a
+Linkwitz-Riley filter — the multiband's crossover, (MB1)–(MB2)) on the mid and side of each stereo pair.
+
+```
+(IM1) Mid and side:  m = (L + R)/2,  s = (L − R)/2
+(IM2) Mono below f (on):  s ← HP_f(HP_f(s))          — a Linkwitz-Riley high-pass: |H|² of one Butterworth section
+                          m ← LP_f(LP_f(m)) + HP_f(HP_f(m))   — the matching all-pass (|·| = 1), so above f the mid
+                          and the side keep the same phase and the image stays where it was
+(IM3) Width:  s ← w·s,   w = width / 100   (0: mono; 1: as it is; 2: the side doubled)
+(IM4) L = m + s,  R = m − s;   width 100 % with mono off: the input, to the bit (not recomputed)
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `width` | w·100 | % 0 … 200 | 100 |
+| `mono` | — | off · on | off |
+| `frequency` | f | Hz 40 … 500 (log) | 120 |
+
+A 50 Hz tone in the left alone, mono below 120 Hz: its side −30.68 dB (two sections' |H|², exactly), its mid
+whole; at 3 kHz the side kept and a hard-left tone still hard left (the right −118 dB)
+(`Imager_mono_below_its_frequency`). Each stereo pair (0, 1), (2, 3) … runs on the Biquads' own channel = its index,
+within the configured channel count; a lone last channel passes untouched. (IM1)–(IM4) are `Imager::process`.
