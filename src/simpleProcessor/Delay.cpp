@@ -45,13 +45,13 @@ Sample Delay::process(Sample in, int /*channel*/)
 }
 Sample Delay::read(Sample delay)
 {
-        Sample index1 = floor(delay-1);
-        Sample index2 = floor(delay);
-        Sample ratio = 1 - ((delay) - index1);
-        Sample sample1 = delayBuffer[int(index1)];
-        Sample sample2 = delayBuffer[int(index2)] ;
-        Sample outSample = sample1 * ratio + sample2 * (1 - ratio);
-        return outSample;
+        // between the samples ⌊delay⌋ and ⌊delay⌋ + 1 back in the buffer (its 0 the newest written), weighted 1 − f
+        // and f: interpolated, its gain |(1 − f) + f·e^(−jω)| ≤ 1. It used to carry the line through ⌊delay⌋ − 1 and
+        // ⌊delay⌋ on past the newer one — extrapolation, up to 1 + 2f toward Nyquist (Solaris D-18). A whole delay
+        // reads the one sample it always did.
+        const int index = int(floor(delay));
+        const Sample f = delay - index;
+        return delayBuffer[index] * (1 - f) + delayBuffer[index + 1] * f;
 }
 Sample Delay::getCurrentDelay()
 {

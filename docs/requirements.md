@@ -623,6 +623,11 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   `…_does_not_allocate`.
 - `REQ-808-2` — **The registry's "808"** (same source): punch, punch time, glide, attack, decay, release, click,
   drive, tone, volume, velocity, bend range. Guarded by the registry's tests; integration `808_is_tuned`.
+- `REQ-delay-1` — **A fractional delay interpolates** (source: Solaris D-18, found building the flanger, 2026-10-17):
+  `Delay::read(D)` before a write, D = i + f, is (1 − f)·b[i] + f·b[i + 1] — between the samples D + 1 and D + 2 back,
+  its gain |(1 − f) + f·e^(−jω)| never above 1; a whole D reads the sample it always did. src/simpleProcessor/README.md
+  (DL1)–(DL3). **AMENDS** what the code did (extrapolation past the newer sample, |H| up to 1 + 2f): the `chorus` and
+  the `delay` lose the treble it added. Guarded by `Delay_reads_between_samples`.
 - `REQ-fx-multiband-1` — **A multiband compressor** (source: Solaris R-FX-6, "implement all", 2026-10-16):
   `MultibandCompressor` — three bands split by Linkwitz-Riley 4th-order crossovers (Biquad::design's Butterworth
   pairs), the low band through the upper crossover's all-pass so the three sum flat; each band its own library

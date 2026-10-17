@@ -967,3 +967,43 @@ TEST(Phaser_same_in_any_blocks_and_does_not_allocate)
     gCounting = false;
     CHECK(gAllocs.load() == 0);
 }
+
+TEST(Delay_reads_between_samples)
+{
+    // D-18 (Solaris DEFECTS): read(D + f) before a write lies between the samples D + 1 and D + 2 back —
+    // (1 − f)·x[n−1−D] + f·x[n−2−D], interpolated, never past the newer one; at a whole D, x[n−1−D] as always.
+    // Its gain at ω is |(1 − f) + f·e^(−jω)| ≤ 1: a 20 kHz sine at f = ½ comes out |cos(ω/2)| of itself
+    configure48();
+    for (double D : {10.0, 10.25, 10.5, 10.75, 37.9})
+    {
+        Delay d;
+        d.setSmoothEnable(false);
+        d.setMaxDelay(256);
+        d.prepare();
+        std::vector<double> x(2000), y(2000);
+        for (int n = 0; n < 2000; ++n) x[(size_t)n] = std::sin(0.37 * n) + 0.5 * std::sin(2.9 * n + 1.0);
+        for (int n = 0; n < 2000; ++n)
+        {
+            y[(size_t)n] = d.read(D);
+            d.write(x[(size_t)n]);
+        }
+        const int i = (int)std::floor(D);
+        const double f = D - i;
+        double worst = 0;
+        for (int n = 300; n < 2000; ++n) worst = std::max(worst, std::fabs(y[(size_t)n] - ((1 - f) * x[(size_t)(n - 1 - i)] + f * x[(size_t)(n - 2 - i)])));
+        CHECK(worst < 1e-12);
+    }
+    Delay d;
+    d.setSmoothEnable(false);
+    d.setMaxDelay(256);
+    d.prepare();
+    std::vector<Sample> y(48000);
+    for (int n = 0; n < 48000; ++n)
+    {
+        y[(size_t)n] = d.read(20.5);
+        d.write(std::sin(kTau * 20000.0 * n / 48000.0));
+    }
+    const double g = amp(y, 24000, 24000, 20000.0), want = std::fabs(std::cos(kTau / 2 * 20000.0 / 48000.0));
+    std::printf("    a 20 kHz sine through a delay of 20.5 samples: %.2f dB (interpolation's %.2f)\n", db(g), db(want));
+    CHECK(std::fabs(db(g) - db(want)) < 0.01);
+}

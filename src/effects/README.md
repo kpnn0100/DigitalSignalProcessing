@@ -65,7 +65,7 @@ enum PropertyIndex {
 };
 ```
 
-- ♻️ Reuses `simpleProcessor/Delay` (already does interpolated, modulatable delay — the
+- ♻️ Reuses `simpleProcessor/Delay` (interpolated — REQ-delay-1, linear between samples since D-18 — modulatable delay — the
   README calls out its Doppler capability). The LFO modulates the delay's read position.
 - **Per-channel LFO phase** (channel-aware base) gives true stereo chorus width with one
   instance — exactly the kind of "different chain per channel" the base now supports.
