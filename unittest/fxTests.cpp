@@ -1555,3 +1555,150 @@ TEST(PitchShifter_same_in_any_blocks_and_does_not_allocate)
     gCounting = false;
     CHECK(gAllocs.load() == 0);
 }
+
+namespace
+{
+    /** Run a vocoder over a modulator (both channels) with a carrier as its key, in blocks of 128. */
+    std::vector<Sample> vocode(Vocoder &v, std::vector<Sample> mod, const std::vector<Sample> &car)
+    {
+        std::vector<Sample> R = mod;
+        for (size_t at = 0; at < mod.size(); at += 128)
+        {
+            const int n = (int)std::min<size_t>(128, mod.size() - at);
+            const Sample *key[1] = {car.data() + at};
+            v.setKey(key, 1);
+            Sample *io[2] = {mod.data() + at, R.data() + at};
+            v.process(io, 2, n);
+        }
+        return mod;
+    }
+    std::vector<Sample> sines(int frames, const std::vector<std::pair<double, double>> &t)
+    {
+        std::vector<Sample> L, R;
+        tones(L, R, frames, t);
+        return L;
+    }
+}
+
+TEST(Vocoder_without_a_key_is_silent)
+{
+    // (VO4)–(VO5): no carrier, mix 1 — nothing, exactly
+    configure48();
+    Vocoder v;
+    std::vector<Sample> L, R;
+    tones(L, R, 4800, {{440.0, 0.5}});
+    blocks(v, L, R);
+    double most = 0;
+    for (Sample x : L) most = std::max(most, (double)std::fabs(x));
+    CHECK(most == 0.0);
+    // (VO5): mix 0 — the input, to the bit; mix ½ — half the vocoded and half the input
+    const auto mod = sines(4800, {{700.0, 0.4}}), car = sines(4800, {{690.0, 0.3}});
+    Vocoder dry, full, half;
+    dry.setMix(0.0);
+    half.setMix(0.5);
+    const auto y0 = vocode(dry, mod, car), y1 = vocode(full, mod, car), yh = vocode(half, mod, car);
+    double off = 0;
+    for (size_t i = 0; i < mod.size(); ++i) off = std::max(off, std::fabs(yh[i] - (0.5 * y1[i] + 0.5 * mod[i])));
+    CHECK(y0 == mod && off < 1e-15);
+}
+
+TEST(Vocoder_bands_are_log_spaced)
+{
+    // (VO1): centre b = lo·(hi/lo)^((b + ½)/N)
+    configure48();
+    Vocoder v;
+    v.setBands(12);
+    v.setLowHz(200);
+    v.setHighHz(6400);
+    double worst = 0;
+    for (int b = 0; b < 12; ++b) worst = std::max(worst, std::fabs(v.centerHz(b) / (200.0 * std::pow(32.0, (b + 0.5) / 12.0)) - 1.0));
+    CHECK(worst < 1e-12 && v.bands() == 12);
+}
+
+TEST(Vocoder_multiplies_its_two_sounds)
+{
+    // (VO2)–(VO4): the filters are linear and the follower homogeneous (env(k·x) = k·env(x)), so the output is bilinear —
+    // the modulator doubled doubles it, the carrier doubled doubles it, to 1e−12 of its peak
+    configure48();
+    const auto mod = sines(24000, {{700.0, 0.3}, {2100.0, 0.2}}), car = sines(24000, {{110.0, 0.2}, {690.0, 0.2}, {2050.0, 0.2}});
+    auto twice = [](std::vector<Sample> x) { for (auto &v : x) v *= 2.0; return x; };
+    Vocoder a, b, c;
+    const auto y = vocode(a, mod, car), ym = vocode(b, twice(mod), car), yc = vocode(c, mod, twice(car));
+    double peak = 0, offM = 0, offC = 0;
+    for (size_t i = 0; i < y.size(); ++i)
+    {
+        peak = std::max(peak, (double)std::fabs(y[i]));
+        offM = std::max(offM, std::fabs(ym[i] - 2.0 * y[i]));
+        offC = std::max(offC, std::fabs(yc[i] - 2.0 * y[i]));
+    }
+    std::printf("    peak %.4f; doubled modulator off by %.2g, doubled carrier off by %.2g\n", peak, offM, offC);
+    CHECK(peak > 0.01 && offM < 1e-12 * peak && offC < 1e-12 * peak);
+}
+
+TEST(Vocoder_speaks_in_the_carriers_pitch)
+{
+    // (VO2)–(VO4): a modulator at 1 kHz alone; a carrier of tones at every band's centre — out comes the carrier's tone
+    // in the modulator's band; two bands off, under it by what two sections give there (each 1/√(1 + Q²(r² − r⁻²)²):
+    // 25 dB at 16 bands from 100 Hz to 8 kHz) less 3 dB for the follower's ripple; none of the modulator's own 1 kHz
+    configure48();
+    Vocoder v;
+    int k = 0;
+    for (int b = 0; b < v.bands(); ++b) if (std::fabs(std::log(v.centerHz(b) / 1000.0)) < std::fabs(std::log(v.centerHz(k) / 1000.0))) k = b;
+    std::vector<std::pair<double, double>> parts;
+    for (int b = 0; b < v.bands(); ++b) parts.push_back({v.centerHz(b), 0.1});
+    const auto y = vocode(v, sines(48000, {{1000.0, 0.5}}), sines(48000, parts));
+    const double there = amp(y, 24000, 24000, v.centerHz(k));
+    double others = 0;
+    for (int b = 0; b < v.bands(); ++b) if (std::abs(b - k) >= 2) others = std::max(others, amp(y, 24000, 24000, v.centerHz(b)));
+    const double own = amp(y, 24000, 24000, 1000.0);
+    const double r = std::pow(80.0, 1.0 / 16.0), q = std::sqrt(r) / (r - 1.0), x = r * r - 1.0 / (r * r);
+    const double skirt = -2.0 * db(1.0 / std::sqrt(1.0 + q * q * x * x)); // two sections, two bands off
+    std::printf("    band %d (%.0f Hz): %.4f; two bands off at most %.1f dB under (the skirts: %.1f); the modulator's 1 kHz %.1f dB under\n", k,
+                v.centerHz(k), there, db(there / others), skirt, db(there / own));
+    CHECK(db(there / others) > skirt - 3.0 && db(there / own) > 30.0);
+}
+
+TEST(Vocoder_follows_the_modulators_envelope)
+{
+    // (VO3): the modulator stops — the output falls with the release (50 ms): 250 ms on (five release constants), under
+    // −40 dB of where it was
+    configure48();
+    Vocoder v;
+    auto mod = sines(48000, {{1000.0, 0.5}});
+    for (size_t i = 24000; i < mod.size(); ++i) mod[i] = 0.0;
+    const auto y = vocode(v, mod, sines(48000, {{990.0, 0.3}}));
+    const double before = amp(y, 19200, 4800, 990.0), after = amp(y, 36000, 4800, 990.0);
+    std::printf("    at 990 Hz: %.4f while it speaks, %.1f dB 250 ms after it stops\n", before, db(after / before));
+    CHECK(before > 0.01 && db(after / before) < -40.0);
+}
+
+TEST(Vocoder_same_in_any_blocks_and_does_not_allocate)
+{
+    configure48();
+    const auto mod = sines(9600, {{300.0, 0.4}}), car = sines(9600, {{220.0, 0.3}, {330.0, 0.3}});
+    auto run = [&](int block) {
+        Vocoder v;
+        std::vector<Sample> L = mod, R = mod;
+        for (size_t at = 0; at < L.size(); at += (size_t)block)
+        {
+            const int n = (int)std::min<size_t>((size_t)block, L.size() - at);
+            const Sample *key[1] = {car.data() + at};
+            v.setKey(key, 1);
+            Sample *io[2] = {L.data() + at, R.data() + at};
+            v.process(io, 2, n);
+        }
+        return L;
+    };
+    const auto a = run(1), b = run(128), c = run(777);
+    CHECK(a == b && a == c);
+    Vocoder v;
+    std::vector<Sample> L = mod, R = mod;
+    const Sample *key[1] = {car.data()};
+    v.setKey(key, 1);
+    Sample *io[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    v.process(io, 2, 4096);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0 && DeviceRegistry::find("vocoder")->takesKey);
+}

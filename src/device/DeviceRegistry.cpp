@@ -14,6 +14,7 @@
 #include "../effects/Imager.h"
 #include "../effects/Convolver.h"
 #include "../effects/PitchShifter.h"
+#include "../effects/Vocoder.h"
 #include "../instrument/Sampler.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
@@ -847,6 +848,21 @@ namespace arstro
             return b;
         }
 
+        // REQ-fx-vocoder-1: one sound speaking through another (the key the carrier)
+        const std::vector<Binding<Vocoder>> &vocoderBindings()
+        {
+            static const std::vector<Binding<Vocoder>> b = {
+                {num("bands", "Bands", "", 4, 32, 16, false, true), [](Vocoder &v, double x) { v.setBands((int)x); }},
+                {num("low", "Low", "Hz", 50, 500, 100, true), [](Vocoder &v, double x) { v.setLowHz(x); }},
+                {num("high", "High", "Hz", 2000, 12000, 8000, true), [](Vocoder &v, double x) { v.setHighHz(x); }},
+                {num("attack", "Attack", "ms", 0.5, 50, 5, true), [](Vocoder &v, double x) { v.setAttackMs(x); }},
+                {num("release", "Release", "ms", 5, 500, 50, true), [](Vocoder &v, double x) { v.setReleaseMs(x); }},
+                {num("mix", "Mix", "", 0, 1, 1), [](Vocoder &v, double x) { v.setMix(x); }},
+                {num("output", "Output", "dB", -24, 24, 0), [](Vocoder &v, double x) { v.setOutputDb(x); }},
+            };
+            return b;
+        }
+
         // REQ-fx-gate-1: a gate and a downward expander
         const std::vector<Binding<Gate>> &gateBindings()
         {
@@ -1116,6 +1132,11 @@ namespace arstro
                 DeviceType conv = effectType<Convolver>("convolution", "Convolution Reverb", "A recorded room: an impulse response (a sample) convolved with the sound, its latency reported.", &convolutionBindings); // REQ-fx-convolution-1
                 conv.takesSample = true;
                 v.push_back(conv);
+            }
+            {
+                DeviceType voc = effectType<Vocoder>("vocoder", "Vocoder", "One sound speaking through another: this strip's sound the modulator, the key (another track) the carrier, band by band.", &vocoderBindings); // REQ-fx-vocoder-1
+                voc.takesKey = true;
+                v.push_back(voc);
             }
             v.push_back(effectType<PitchShifter>("pitch", "Pitch Shifter", "A sound moved up or down, its length kept: two taps sweeping a delay line, crossfaded; its latency reported.", &pitchBindings)); // REQ-fx-pitch-1
             v.push_back(effectType<Imager>("imager", "Imager", "Wider or narrower, and mono below a frequency: mid and side, the side scaled, its lows taken away.", &imagerBindings)); // REQ-fx-imager-1

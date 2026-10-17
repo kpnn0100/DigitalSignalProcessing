@@ -1676,6 +1676,23 @@ def check_pitch_moves_a_tone(binpath):
 
 CHECKS.append(("pitch_moves_a_tone", check_pitch_moves_a_tone))
 
+def check_vocoder_speaks_through_the_carrier(binpath):
+    """REQ-fx-vocoder-1 (VO2)–(VO4): a 1 kHz modulator through a 110 Hz sawtooth carrier (the key) — while it sounds,
+    the saw's harmonic in the modulator's band (990 Hz) stands 20 dB over its harmonics far from it (110, 4400 Hz);
+    after it stops, its last 25 ms (4.5 … 5 release constants on: e^−4.5 = −39 dB) are 35 dB down."""
+    y = render(binpath, "vocoder", 0)
+    on = y[6000:12000]
+    near = goertzel(on, 990.0)
+    far = max(goertzel(on, 110.0), goertzel(on, 4400.0))
+    quiet = max(abs(v) for v in y[24000 - 1200:24000])
+    loud = max(abs(v) for v in on)
+    if 20 * math.log10(near / far) < 20 or 20 * math.log10(max(quiet, 1e-9) / loud) > -35:
+        raise Failure(f"990 Hz {20 * math.log10(near):.1f} dB, far {20 * math.log10(far):.1f}; after {20 * math.log10(max(quiet, 1e-9) / loud):.1f} dB")
+    return f"990 Hz {20 * math.log10(near / far):.1f} dB over 110 / 4400 Hz; stopped: {20 * math.log10(max(quiet, 1e-9) / loud):.1f} dB"
+
+
+CHECKS.append(("vocoder_speaks_through_the_carrier", check_vocoder_speaks_through_the_carrier))
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

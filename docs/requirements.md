@@ -722,6 +722,15 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   (REQ-stretch-2) is offline. Guarded by `PitchShifter_moves_a_tone`, `PitchShifter_sweeps_its_taps`,
   `PitchShifter_unshifted_is_the_input_late`, `PitchShifter_crossfades_without_a_click`,
   `PitchShifter_same_in_any_blocks_and_does_not_allocate`, and the integration check `pitch_moves_a_tone`.
+- `REQ-fx-vocoder-1` — **A vocoder** (source: Solaris R-FX-16, "implement all", 2026-10-17): `Vocoder` — a channel
+  vocoder: N log-spaced bands (4 … 32), each two RBJ band-pass sections (library Biquads); the strip's own sound the
+  modulator, its band envelopes by (C2)'s follower; the KEY the carrier (`setKey`, the type `takesKey` — routed as the
+  compressor's sidechain), band-passed alike, each band times the modulator's envelope there, summed; no key, silence;
+  a mix with the modulator and an output gain; the registry's "vocoder". (VO1)–(VO5). Guarded by
+  `Vocoder_without_a_key_is_silent` (and mix 0 the input to the bit; mix ½ exact), `Vocoder_bands_are_log_spaced`,
+  `Vocoder_multiplies_its_two_sounds` (bilinear, to the bit), `Vocoder_speaks_in_the_carriers_pitch` (two bands off
+  under the skirts' formula less 3 dB), `Vocoder_follows_the_modulators_envelope`,
+  `Vocoder_same_in_any_blocks_and_does_not_allocate`, and the integration check `vocoder_speaks_through_the_carrier`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

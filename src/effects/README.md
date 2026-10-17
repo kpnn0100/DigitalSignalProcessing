@@ -578,3 +578,35 @@ A 440 Hz sine moved +12, −12, +7 st keeps all its power within the window's si
 own slope (`PitchShifter_crossfades_without_a_click`); unshifted it is the input L late to the bit (as the delay line
 keeps it: arstroFlush, |x| < 1e−15 → 0), even after a shift was turned off (`PitchShifter_unshifted_is_the_input_late`).
 (PS2)–(PS5) are `PitchShifter::process`; (PS1) `setWindowMs` and `ratio`.
+
+## Math — `Vocoder.cpp` (REQ-fx-vocoder-1)
+
+One sound speaking through another — a channel vocoder. **Composed of:** library `Biquad`s (the RBJ band-pass,
+constant 0 dB peak, two sections a band) and (C2)'s follower. The strip's own sound is the MODULATOR (a voice); the
+KEY — another track, as the compressor's sidechain — is the CARRIER (a synth).
+
+```
+(VO1) N bands from lo to hi, log-spaced:  f_b = lo·(hi/lo)^((b + ½)/N);   r = (hi/lo)^(1/N),  Q = √r / (r − 1)
+      (a band's width, edge to edge, as a section's Q)
+(VO2) Each band, each path:  BP_b = two band-pass sections at f_b, Q  — so two bands off a tone is under it by
+      2·20·log10(1/√(1 + Q²(r² − r⁻²)²)) dB (25.4 at 16 bands, 100 Hz … 8 kHz)
+(VO3) The modulator's envelope in each band:  e_b ← (C2)(|BP_b(m)|),  attack and release (ms)
+(VO4) y = Σ_b BP_b(k) · e_b      — k the carrier (the key's channel c, or its last); no key: k = 0, y = 0
+(VO5) out = mix·out_gain·y + (1 − mix)·m
+      Bilinear: the filters are linear and the follower homogeneous (e(λ·x) = λ·e(x)), so doubling the modulator or
+      the carrier doubles y — exactly
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `bands` | N | 4 … 32 (whole) | 16 |
+| `low`, `high` | lo, hi | Hz 50 … 500, 2000 … 12000 (log) | 100, 8000 |
+| `attack`, `release` | — | ms 0.5 … 50, 5 … 500 (log) | 5, 50 |
+| `mix` | mix | 0 … 1 (0: the modulator as it is) | 1 |
+| `output` | out_gain | dB −24 … +24 | 0 |
+
+A modulator at 1 kHz with a carrier of tones at every band's centre: out comes the carrier's tone in the 1026 Hz band;
+two bands off 23.5 dB under it (the skirts' 25.4 less the follower's ripple); the modulator's own 1 kHz 38.5 dB under
+(`Vocoder_speaks_in_the_carriers_pitch`); doubling either sound doubles the output to the bit
+(`Vocoder_multiplies_its_two_sounds`); 250 ms after the voice stops, 50 dB down (`Vocoder_follows_the_modulators_envelope`).
+(VO1) is `centerHz` / `design`; (VO2)–(VO5) `Vocoder::process`.

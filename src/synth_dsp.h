@@ -56,6 +56,7 @@
 #include "effects/Imager.h"
 #include "effects/Convolver.h"
 #include "effects/PitchShifter.h"
+#include "effects/Vocoder.h"
 #include "effects/Overdrive.h"
 #include "effects/Chorus.h"
 #include "effects/Repeater.h"

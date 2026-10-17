@@ -1331,6 +1331,31 @@ static std::vector<double> renderPitch(double semitones)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-fx-vocoder-1: the registry's "vocoder" — the modulator a 1 kHz tone on for 0.25 s, off for 0.25 s; the carrier
+// (its key) a 110 Hz sawtooth (its harmonics every 110 Hz), 0.5 s
+static std::vector<double> renderVocoder(double)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("vocoder");
+    std::vector<Sample> L(24000), R(24000), K(24000);
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        const double t = (double)n / kSampleRate;
+        L[n] = R[n] = n < 12000 ? 0.5 * std::sin(2 * M_PI * 1000 * t) : 0.0;
+        K[n] = 0.3 * (2.0 * (110.0 * t - std::floor(110.0 * t + 0.5)));
+    }
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        const int n = (int)std::min<size_t>(128, L.size() - pos);
+        const Sample *key[1] = {K.data() + pos};
+        d->setKey(key, 1);
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, n);
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // REQ-808-2: the registry's "808" on A1 (55 Hz) for a second, its defaults but no click, no drive and a long decay (8 s:
 // steady enough in a window to read its pitch)
 static std::vector<double> render808(double)
@@ -1459,6 +1484,7 @@ int main(int argc, char **argv)
     else if (scenario == "imager") samples = renderImager(arg);
     else if (scenario == "convolution") samples = renderConvolution(arg);
     else if (scenario == "pitch") samples = renderPitch(arg);
+    else if (scenario == "vocoder") samples = renderVocoder(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

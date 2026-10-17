@@ -314,6 +314,11 @@ package effects {
     +process(io**, ch, frames) : (PS2)-(PS5) two taps sweeping a Delay, crossfaded
     +latency() : 1 + W/2
   }
+  class Vocoder {
+    +setBands / setLowHz / setHighHz / setAttackMs / setReleaseMs / setMix / setOutputDb
+    +setKey(key**, ch) : the carrier
+    +process(io**, ch, frames) : (VO1)-(VO5) band envelopes of the input times the key's bands
+  }
   class Overdrive
   class Chorus
   class Repeater
@@ -500,6 +505,7 @@ Flanger *--> "per channel" Delay : swept, fed back (REQ-delay-1)
 Imager *--> "6" Biquad : LR4 side high-pass, mid all-pass
 Convolver ..> FFT : its partitions
 PitchShifter *--> "per channel" Delay : two taps (REQ-delay-1)
+Vocoder *--> "4 a band" Biquad : band-pass, modulator and carrier
 Repeater --|> SignalProcessor
 
 ' ─────────────────────────── Synth engine ───────────────────────────
