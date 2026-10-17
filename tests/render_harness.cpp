@@ -41,6 +41,11 @@
  *                         silent voice, arg=1 the OFF-pitch (233.08Hz) one
  */
 #include "../src/synth_dsp.h"
+#include "../src/analysis/Chords.h"
+#include "../src/analysis/Separate.h"
+#include "../src/analysis/Transcribe.h"
+#include <algorithm>
+#include <tuple>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -833,6 +838,87 @@ static std::vector<double> renderStretched(double ratio, double semitones)
 
 // REQ-onset-1: a Drum Machine's kick, snare, hat and kick at known samples through the registry, its onsets found by
 // `detectOnsets` and written as clicks (0.5 where one was found, else silence) for run_integration.py to place
+// REQ-analysis-1/2: a held 440 Hz tone with a click every quarter second, split — `which` 0: the harmonic half, 1: the
+// percussive (run_integration.py hears the tone in the one and the clicks in the other)
+static std::vector<double> renderSeparate(double which)
+{
+    const long long n = 2 * kSampleRate;
+    std::vector<float> x((size_t)n);
+    for (long long i = 0; i < n; ++i) x[(size_t)i] = (float)(0.3 * std::sin(2.0 * M_PI * 440.0 * i / kSampleRate));
+    for (long long at = 6000; at < n; at += 12000)
+        for (int j = 0; j < 96; ++j) x[(size_t)(at + j)] += (float)(0.8 * std::exp(-j / 12.0) * (j % 2 ? -1.0 : 1.0));
+    const Separation sep = separateHarmonicPercussive({x}, kSampleRate);
+    const auto &half = which < 0.5 ? sep.harmonic[0] : sep.percussive[0];
+    return std::vector<double>(half.begin(), half.end());
+}
+
+/** The Basic Synth through the registry — one saw — playing `notes` — (note, start s, end s) — for `seconds`; mono. */
+static std::vector<float> playSynth(const std::vector<std::tuple<int, double, double>> &notes, double seconds)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("synth");
+    // one saw, still, articulated: the default patch's second oscillator sounds an octave under (its period IS the lower
+    // octave), its vibrato would wander the pitch, and a 250 ms release would lay one note's tail under the next — two
+    // pitches at once, whose common period is a note neither is (a monophonic line is played so that does not happen)
+    d->setParam("osc2.level", 0.0);
+    d->setParam("vibrato.depth", 0.0);
+    d->setParam("amp.release", 20.0);
+    const long long total = (long long)(seconds * kSampleRate);
+    std::vector<std::pair<long long, std::pair<int, bool>>> events; // at, (note, on)
+    for (const auto &[note, t0, t1] : notes)
+    {
+        events.push_back({(long long)(t0 * kSampleRate), {note, true}});
+        events.push_back({(long long)(t1 * kSampleRate), {note, false}});
+    }
+    std::sort(events.begin(), events.end(), [](const auto &a, const auto &b) { return a.first < b.first || (a.first == b.first && !a.second.second && b.second.second); });
+    std::vector<Sample> L((size_t)total, 0.0), R((size_t)total, 0.0);
+    size_t next = 0;
+    for (long long pos = 0; pos < total;)
+    {
+        while (next < events.size() && events[next].first <= pos)
+        {
+            if (events[next].second.second) d->noteOn(events[next].second.first, 110);
+            else d->noteOff(events[next].second.first);
+            ++next;
+        }
+        const long long until = std::min(total, next < events.size() ? events[next].first : total);
+        const int k = (int)std::max<long long>(1, std::min<long long>(128, until - pos));
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, k);
+        pos += k;
+    }
+    std::vector<float> mono((size_t)total);
+    for (long long i = 0; i < total; ++i) mono[(size_t)i] = (float)(0.5 * (L[(size_t)i] + R[(size_t)i]));
+    return mono;
+}
+
+// REQ-analysis-3: the Basic Synth (one saw) playing A4, C5 twice, E5, 50 ms apart — transcribed; the notes found printed
+// (notes=<pitch>@<start>…), the playing written
+static std::vector<double> renderTranscribe()
+{
+    const auto x = playSynth({{69, 0.10, 0.55}, {72, 0.60, 1.05}, {72, 1.10, 1.55}, {76, 1.60, 2.05}}, 2.4);
+    std::printf("notes=");
+    for (const auto &n : transcribe(x.data(), (long long)x.size(), kSampleRate)) std::printf("%d@%.4f,", n.pitch, n.start);
+    std::printf("\n");
+    return std::vector<double>(x.begin(), x.end());
+}
+
+// REQ-analysis-4: the Basic Synth (one saw) playing C, Am, F, G — a second each — over half-second beats; the chords found printed
+// (chords=<name>@<start>…), the playing written
+static std::vector<double> renderChords()
+{
+    const auto x = playSynth({{60, 0, 1}, {64, 0, 1}, {67, 0, 1}, {57, 1, 2}, {60, 1, 2}, {64, 1, 2}, {53, 2, 3}, {57, 2, 3}, {60, 2, 3},
+                              {55, 3, 4}, {59, 3, 4}, {62, 3, 4}},
+                             4.0);
+    std::vector<double> beats;
+    for (int b = 0; b <= 8; ++b) beats.push_back(b * 0.5);
+    std::printf("chords=");
+    for (const auto &c : detectChords(x.data(), (long long)x.size(), kSampleRate, beats)) std::printf("%s@%.3f,", c.name.c_str(), c.start);
+    std::printf("\n");
+    return std::vector<double>(x.begin(), x.end());
+}
+
 static std::vector<double> renderOnsets()
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -1486,6 +1572,9 @@ int main(int argc, char **argv)
     else if (scenario == "sampler") samples = renderSampler(arg);
     else if (scenario == "sampler_slices") samples = renderSamplerSlices(arg);
     else if (scenario == "onsets") samples = renderOnsets();
+    else if (scenario == "separate") samples = renderSeparate(arg);
+    else if (scenario == "transcribe") samples = renderTranscribe();
+    else if (scenario == "chords") samples = renderChords();
     else if (scenario == "stretch") samples = renderStretched(arg, 0.0);
     else if (scenario == "tempo") samples = renderTempo(arg);
     else if (scenario == "pitch") samples = renderStretched(1.0, arg);

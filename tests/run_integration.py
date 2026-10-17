@@ -1123,6 +1123,57 @@ def check_tempo_of_a_drum_groove(binpath):
     return " ".join(said)
 
 
+def check_separation_hears_tone_and_clicks(binpath):
+    """REQ-analysis-2, (H1)-(H4): a 440 Hz tone with a click every quarter second, split - the harmonic half reads
+    440 Hz between the clicks and keeps their peaks under the tone's (+15 %); the percussive half has 90 % of its energy
+    within 4 ms of a click."""
+    h = render(binpath, "separate", 0)
+    p = render(binpath, "separate", 1)
+    clicks = list(range(6000, 2 * SR, 12000))
+    mid = h[6000 + 3000: 6000 + 9000]
+    freq = rising_zero_crossings(mid) / (len(mid) / SR)
+    if abs(freq / 440.0 - 1.0) > 0.002:
+        raise Failure(f"the harmonic half reads {freq:.2f} Hz")
+    peak = max(max(abs(v) for v in h[c - 96: c + 192]) for c in clicks)
+    if peak > 0.3 * 1.15:
+        raise Failure(f"the harmonic half keeps a click: peak {peak:.3f}")
+    near = set()
+    for c in clicks:
+        near.update(range(c - int(0.004 * SR), c + int(0.004 * SR)))
+    total = sum(v * v for v in p) or 1e-30
+    inside = sum(p[i] * p[i] for i in near if i < len(p))
+    if inside / total < 0.9:
+        raise Failure(f"the percussive half: {100 * inside / total:.1f} % of its energy at the clicks")
+    return f"{freq:.2f} Hz, click peak {peak:.3f}, percussive {100 * inside / total:.1f} % at the clicks"
+
+
+def check_transcription_of_a_synth_melody(binpath):
+    """REQ-analysis-3, (T1)-(T6): the Basic Synth (one saw, a short release) playing A4, C5, C5, E5 50 ms apart - four
+    notes, their pitches, each start within 10 ms."""
+    out = os.path.join(tempfile.gettempdir(), "arstro_transcribe.wav")
+    r = subprocess.run([binpath, "transcribe", out], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Failure("render 'transcribe' failed: " + r.stderr)
+    found = [(int(a), float(b)) for a, b in (n.split("@") for n in r.stdout.split("notes=")[1].split()[0].split(",") if n)]
+    want = [(69, 0.10), (72, 0.60), (72, 1.10), (76, 1.60)]
+    if len(found) != len(want) or any(fp != wp or abs(fs - ws) > 0.010 for (fp, fs), (wp, ws) in zip(found, want)):
+        raise Failure(f"found {found}, want {want}")
+    return " ".join(f"{p}@{s:.3f}" for p, s in found)
+
+
+def check_chords_of_a_synth_progression(binpath):
+    """REQ-analysis-4, (C1)-(C6): the Basic Synth (one saw) playing C, Am, F, G a second each - those four, at their seconds."""
+    out = os.path.join(tempfile.gettempdir(), "arstro_chords.wav")
+    r = subprocess.run([binpath, "chords", out], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Failure("render 'chords' failed: " + r.stderr)
+    found = [(a, float(b)) for a, b in (c.split("@") for c in r.stdout.split("chords=")[1].split()[0].split(",") if c)]
+    want = [("C", 0.0), ("Am", 1.0), ("F", 2.0), ("G", 3.0)]
+    if found != want:
+        raise Failure(f"found {found}, want {want}")
+    return " ".join(f"{n}@{s:g}" for n, s in found)
+
+
 CHECKS = [
     ("gain_doubles_amplitude", check_gain),
     ("oscillator_frequency", check_oscillator_frequency),
@@ -1164,6 +1215,9 @@ CHECKS = [
     ("stretch_keeps_the_pitch", check_stretch_keeps_the_pitch),
     ("pitch_moves_the_length_stays", check_pitch_moves_the_length_stays),
     ("tempo_of_a_drum_groove", check_tempo_of_a_drum_groove),
+    ("separation_hears_tone_and_clicks", check_separation_hears_tone_and_clicks),
+    ("transcription_of_a_synth_melody", check_transcription_of_a_synth_melody),
+    ("chords_of_a_synth_progression", check_chords_of_a_synth_progression),
 ]
 
 

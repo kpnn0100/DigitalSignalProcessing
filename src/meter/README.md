@@ -128,6 +128,10 @@ Machine's hits through the registry, found within 5 ms).
 
 ## Math — `Tuner.cpp` (REQ-tuner-1, its readings REQ-device-11)
 
+(Y1)…(Y4) — the period search — live in `Yin.cpp` (`Yin::period`), lifted out of the tuner so the transcriber
+(src/analysis/, REQ-analysis-3) shares one copy; `Tuner::estimate` keeps (Y0), (Y5) and (Y6) and calls it. The
+arithmetic is the same, line for line (the tuner's tests unchanged and green).
+
 The pitch of what passes through — the audio untouched (a meter). **Composed of:** the library `FFT` for the
 difference function's correlation. **Why YIN and not the spectrum's peak:** a peak is the LOUDEST partial — a bass's
 2nd harmonic, a voice's formant; YIN reads the PERIOD, so a sawtooth or a tone with a weak fundamental reads its

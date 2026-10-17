@@ -743,7 +743,28 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   (415 … 466 Hz); the audio untouched; the registry's "tuner". (Y0)–(Y6). Guarded by `Tuner_reads_a_sine_to_a_cent`
   (55 … 1760 Hz within 0.2 cents — 0.06 measured), `Tuner_hears_the_fundamental` (a sawtooth; a weak fundamental),
   `Tuner_says_no_pitch_and_its_level`, `Tuner_against_its_reference`, `Tuner_passes_the_sound_untouched`,
-  `Tuner_device_reads_through_its_face`, and the integration check `tuner_names_the_note`.
+  `Tuner_device_reads_through_its_face`, and the integration check `tuner_names_the_note`. (Y1)–(Y4) live in `meter/Yin` since
+  2026-10-17, shared with REQ-analysis-3 — the same arithmetic, the tests unchanged.
+- `REQ-analysis-1` — **An exact STFT** (source: Solaris R-ASSIST-1, "implement all", Round 22, 2026-10-17):
+  `stft` / `istft` (src/analysis/Stft.h) — periodic Hann frames of N (a power of two) every N/4, centred on the first
+  sample; the inverse windows again and divides by the windows' squares at each sample, so an untouched spectrum gives
+  the sound back to rounding at any length; `fftSizeFor(rate, seconds)` the nearest power of two. (S1)–(S4). Guarded by
+  `Stft_gives_the_sound_back`.
+- `REQ-analysis-2` — **Harmonic / percussive separation** (same source): `separateHarmonicPercussive`
+  (src/analysis/Separate.h) — the channels' sum's magnitude spectrogram median-filtered along time (17 frames) and
+  frequency (17 bins), Wiener masks (p = 2) from the two applied to every channel; the halves sum back to the sound and
+  the channels split alike. (H1)–(H4). Guarded by `Separation_splits_a_tone_from_its_hits` and the integration
+  `separation_hears_tone_and_clicks`.
+- `REQ-analysis-3` — **Monophonic transcription** (same source): `transcribe` (src/analysis/Transcribe.h) — YIN (the
+  tuner's estimator, lifted into `meter/Yin` and shared — REQ-tuner-1 unchanged) every W/8 over a W ≈ 43 ms window, a
+  −50 dBFS gate, the nearest semitone, a five-frame median, runs of a pitch at least 60 ms, split at the library's onsets
+  (REQ-onset-1) and started at them; velocity from the loudest frame. (T1)–(T6). Guarded by `Yin_finds_a_period`,
+  `Transcription_finds_a_melody` and the integration `transcription_of_a_synth_melody`.
+- `REQ-analysis-4` — **Chords** (same source): `detectChords` (src/analysis/Chords.h) — a chromagram (110 Hz–4 kHz, a
+  bin's power to its nearest pitch class by a triangle a semitone wide) averaged over the beats the caller gives, cosine
+  against the 24 major and minor triads, "N" under 0.6 or in silence, a Viterbi path that pays 0.1 a change, equal beats
+  merged; `chordName`. (C1)–(C6). Guarded by `Chords_of_a_progression` and the integration
+  `chords_of_a_synth_progression`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

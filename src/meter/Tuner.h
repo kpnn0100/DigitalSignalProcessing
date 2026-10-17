@@ -8,7 +8,7 @@
  */
 #pragma once
 #include "../base/Sample.h"
-#include "../spectral/FFT.h"
+#include "Yin.h"
 #include <atomic>
 #include <complex>
 #include <vector>
@@ -34,9 +34,8 @@ namespace arstro
         std::vector<double> mRing; // the last kWindow samples, oldest at mAt
         int mAt = 0, mSince = 0;
         long long mHeard = 0;
-        FFT mFft;
-        std::vector<std::complex<double>> mA, mB; // (Y1) work
-        std::vector<double> mX, mRaw, mD, mPrefix; // the window in order; d(τ); d′(τ); running energies
+        Yin mYin;                  // (Y1)…(Y4), shared with the transcriber (REQ-analysis-3)
+        std::vector<double> mX;    // the window in order
         std::atomic<double> mOut[kReadings];
     };
 }

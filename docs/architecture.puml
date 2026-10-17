@@ -323,6 +323,39 @@ package effects {
   class Chorus
   class Repeater
 }
+package meter {
+  class Yin {
+    +Yin(window)
+    +period(x, rate, minHz, maxHz, threshold, dip) : double
+  }
+  class Tuner
+  Tuner *-- Yin : (Y1)…(Y4)
+}
+
+package analysis <<REQ-analysis-1…4>> {
+  class Spectrogram {
+    +fftSize : int
+    +hop : int
+    +frames : long long
+    +bins : complex[][]
+  }
+  class Separation {
+    +harmonic : float[][]
+    +percussive : float[][]
+  }
+  class TranscribedNote {
+    +start, end : double
+    +pitch, velocity : int
+  }
+  class ChordSpan {
+    +start, end : double
+    +name : string
+  }
+  note "stft / istft · separateHarmonicPercussive · transcribe · detectChords:\nfree functions over a whole sound — they use FFT, Yin, detectOnsets" as AnalysisNote
+}
+Separation ..> Spectrogram
+TranscribedNote ..> Yin
+
 package output {
   class OutputBlock
   class Dither {
