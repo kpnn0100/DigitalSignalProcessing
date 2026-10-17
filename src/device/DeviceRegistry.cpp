@@ -12,6 +12,7 @@
 #include "../instrument/FMSynth.h"
 #include "../instrument/MultiSampler.h"
 #include "../instrument/GranularSampler.h"
+#include "../instrument/Bass808.h"
 #include "../instrument/Piano.h"
 #include "../instrument/DrumMachine.h"
 #include "../reverb/Reverb.h"
@@ -350,6 +351,55 @@ namespace arstro
         private:
             FMSynth mSynth;
             FMSynth::Params mP;
+        };
+
+        // ── the 808 (REQ-808-2): a tuned bass drum ──
+
+        const std::vector<Binding<Bass808::Params>> &bass808Bindings()
+        {
+            using P = Bass808::Params;
+            static const std::vector<Binding<P>> b = [] {
+                const P d;
+                std::vector<Binding<P>> v;
+                v.push_back({num("punch", "Punch", "st", 0, 36, d.punch), [](P &p, double x) { p.punch = x; }});
+                v.push_back({num("punch.time", "Punch Time", "ms", 1, 200, d.punchTime, true), [](P &p, double x) { p.punchTime = x; }});
+                v.push_back({num("glide", "Glide", "ms", 0, 1000, d.glide), [](P &p, double x) { p.glide = x; }});
+                v.push_back({num("amp.attack", "Attack", "ms", 0, 50, d.attack), [](P &p, double x) { p.attack = x; }});
+                v.push_back({num("amp.decay", "Decay", "ms", 20, 8000, d.decay, true), [](P &p, double x) { p.decay = x; }});
+                v.push_back({num("amp.release", "Release", "ms", 1, 2000, d.release, true), [](P &p, double x) { p.release = x; }});
+                v.push_back({num("click", "Click", "", 0, 1, d.click), [](P &p, double x) { p.click = x; }});
+                v.push_back({num("drive", "Drive", "", 0, 1, d.drive), [](P &p, double x) { p.drive = x; }});
+                v.push_back({num("tone", "Tone", "Hz", 200, 20000, d.tone, true), [](P &p, double x) { p.tone = x; }});
+                v.push_back({num("volume", "Volume", "dB", -60, 12, d.volumeDb), [](P &p, double x) { p.volumeDb = x; }});
+                v.push_back({num("velocity", "Velocity", "", 0, 1, d.velocity), [](P &p, double x) { p.velocity = x; }});
+                v.push_back({num("voice.bend", "Bend Range", "st", 0, 24, d.bendRange, false, true), [](P &p, double x) { p.bendRange = x; }});
+                return v;
+            }();
+            return b;
+        }
+
+        class Bass808Device : public Device
+        {
+        public:
+            explicit Bass808Device(const DeviceType &t) : Device(t), mP(m808.params()) { applyAll(); }
+            void process(Sample *const *io, int channels, int frames) override { m808.render(io, channels, frames); }
+            void noteOn(int n, int v) override { m808.noteOn(n, v); }
+            void noteOff(int n) override { m808.noteOff(n); }
+            void allNotesOff() override { m808.allNotesOff(); }
+            void pitchBend(double a) override { m808.pitchBend(a); }
+            void reset() override { m808.reset(); }
+            int activeVoices() const override { return m808.activeVoices(); }
+
+        protected:
+            void apply(int i, double v) override
+            {
+                bass808Bindings()[i].set(mP, v);
+                m808.setParams(mP);
+            }
+
+        private:
+            Bass808 m808;
+            Bass808::Params mP;
         };
 
         // ── the granular sampler (REQ-granular-2): a sound as a cloud of grains ──
@@ -848,6 +898,15 @@ namespace arstro
                 std::sort(drums.notePrefixes.begin(), drums.notePrefixes.end());
             }
             v.push_back(drums);
+
+            DeviceType b808; // REQ-808-2
+            b808.name = "808"; b808.label = "808"; b808.kind = DeviceKind::Instrument;
+            b808.summary = "A tuned bass drum: the note's pitch punched down to at each attack, gliding between held notes; "
+                           "a long decay, a click, drive and a tone; one voice.";
+            b808.params = specsOf(bass808Bindings());
+            b808.groupLabels = {{"punch", "Punch"}, {"amp", "Amplifier"}, {"", "Tone & Output"}, {"voice", "Voice"}};
+            b808.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<Bass808Device>(self); };
+            v.push_back(b808);
 
             DeviceType granular; // REQ-granular-2
             granular.name = "granular"; granular.label = "Granular"; granular.kind = DeviceKind::Instrument;

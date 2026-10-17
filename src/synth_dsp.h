@@ -59,6 +59,7 @@
 #include "instrument/Sfz.h"
 #include "instrument/MultiSampler.h"
 #include "instrument/GranularSampler.h"
+#include "instrument/Bass808.h"
 
 // Every instrument and effect behind one face, every parameter described once — see device/README.md
 #include "device/Device.h"

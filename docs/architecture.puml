@@ -143,6 +143,15 @@ package instrument {
   }
   FMSynth ..|> Instrument
   FMSynth *-- "64" ADSREnvelope : 16 voices x 4 operators
+  class Bass808 {
+    +setParams(punch, punchTime, glide, decay, click, drive, tone)  -- mono
+    -(B1) a punch down to the note, a linear glide; (B4) tanh drive normalised; ends at its exact sample
+  }
+  Bass808 ..|> Instrument
+  Bass808 *-- Phasor
+  Bass808 *-- DecayEnvelope
+  Bass808 *-- Noise : the click
+  Bass808 ..> Biquad : design() for its tone
   class GranularSampler {
     +setSample(frames) / setParams(size, density, position, scan, spray, pitch, spread)
     -(G1) a grain every fs/density from the note; (G3) Hann; (G4) the overlap divided out

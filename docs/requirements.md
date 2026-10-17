@@ -611,6 +611,17 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
 - `REQ-granular-2` — **The registry's "granular"** (same source): size, density, position, scan, spray, pitch, pitch
   spray, spread, root, its ADSR, volume, velocity; `takesSample`. Guarded by the registry's tests; integration
   `granular_plays_its_pitch`.
+- `REQ-808-1` — **A tuned bass drum** (source: Solaris R-INST-11, "implement all", 2026-10-16): `Bass808` — one voice,
+  its pitch the note, a punch above it falling to 1 % over its time, a linear glide between held notes (legato: no
+  new attack; back to the key under on release), a damped decay (DecayEnvelope, a T60) choked over a release on let go,
+  a click (seeded noise, 1.5 ms), a normalised tanh drive (0: linear), a low-pass tone; each hit from phase 0; the voice
+  ends at its exact sample. A composition (Phasor, DecayEnvelope, Noise, Biquad::design). (B1)–(B6). Guarded by
+  `Bass808_is_tuned_and_punched` (45 → 33.12 at 40 ms; 55 Hz), `…_glides_between_held_notes` (36.50 halfway),
+  `…_decays_and_drives` (−60.0 dB at 900 ms; undriven a sine, driven its 3rd 0.33; its peak 1.0 either way),
+  `…_clicks_the_same_and_renders_the_same_however_chopped` (blocks of 1, 128, 777; a re-hit identical),
+  `…_does_not_allocate`.
+- `REQ-808-2` — **The registry's "808"** (same source): punch, punch time, glide, attack, decay, release, click,
+  drive, tone, volume, velocity, bend range. Guarded by the registry's tests; integration `808_is_tuned`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

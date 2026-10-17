@@ -7,6 +7,7 @@
 | `DrumMachine` | ten synthesized pads on the General MIDI drum notes | REQ-drum-1…5 |
 | `Piano` | the physical piano (`physical/PianoEngine`) as an instrument, 16 voices | REQ-inst-piano-1 |
 | `FMSynth` | four sine operators by phase modulation — eight algorithms, a feedback operator, an ADSR each; 16 voices | REQ-fm-1…3 |
+| `Bass808` | a tuned bass drum — a sine's pitch punched down to the note, gliding between notes, a click, drive and tone; mono | REQ-808-1…2 |
 | `GranularSampler` | a recorded sound as a cloud of short grains — size, density, position (and its scan), spray of place, pitch and pan; 16 voices | REQ-granular-1…2 |
 | `Sfz` · `MultiSampler` | a multi-sample instrument read from SFZ text: regions by key, velocity, round robin and chance; loops, one-shots, choke groups; 32 voices | REQ-multisample-1…3 |
 
@@ -392,3 +393,38 @@ never a clock.
 
 **Limits, said:** a grain read faster than its sound's rate is not band-limited; a grain's draws come from a counter
 per voice — the same note on the same sample sprays the same way every render.
+
+## Bass808 — Math (REQ-808-1…2)
+
+The 808's bass drum played as an instrument: its pitch the NOTE (a bassline), a short downward punch at each attack,
+a long decay, sliding between held notes, saturated. **A composition (rule 1):** `Phasor` (the sine's phase),
+`DecayEnvelope` (the damped decay and its choke), `Noise` (the click), `Biquad::design` (the tone's low-pass, run as a
+transposed-direct-form-II section here — the meters' way); the glide is BasicSynth's (Y8), linear in semitones over a
+constant time. What is its own: the punch, the drive's normalisation, and the mono voice's legato.
+
+```
+(B1) Pitch — Bass808::render, t samples since the attack:
+     p(t) = g(t) + P · exp(−t/τ),  τ = T_p·fs/4.6  (the punch at 1 % of its depth after T_p)
+     g(t) the glide: from the last pitch to the note, linear in semitones over T_g (0: at once)
+     f(t) = 440·2^((p(t) + b − 69)/12)   (b the bend);  φ ← φ + f/fs  (Phasor, from 0 at every attack);  x = sin 2πφ
+(B2) Amplitude — DecayEnvelope: attack A ms, decay D ms to −60 dB (its (D1)–(D2)); a note-off chokes it over R ms;
+     the voice ends at the very sample the envelope does (−80 dB, its (D3)), the tone's memory cleared
+(B3) Click — c(t) = C · n(t) · exp(−t/(0.0015·fs)),  n the library's Noise (a fixed seed: the same click every hit)
+(B4) Drive — y = tanh(k·(x·e + c)) / tanh(k),  k = 0.01 + 20·dr  (dr = 0: y = x·e + c to 0.003 %; 1: near a square)
+(B5) Tone — a low-pass at F Hz, Q 0.707 (Biquad::design), then the level: vol · (1 − v_s + v_s·vel)
+(B6) Mono — one voice: a note while another is held glides there (legato: no new attack, no new punch); a note with
+     none held is an attack; releasing the top key goes back to the one under it (gliding)
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `punch`, `punch.time` | P, T_p | semitones 0 … 36, ms 1 … 200 | 12, 40 |
+| `glide` | T_g | ms 0 … 1000 | 60 |
+| `amp.attack`, `amp.decay`, `amp.release` | A, D, R | ms | 1, 900, 60 |
+| `click` | C | 0 … 1 | 0.2 |
+| `drive` | dr | 0 … 1 | 0.25 |
+| `tone` | F | Hz 200 … 20000 | 4000 |
+| `volume`, `velocity`, `voice.bend` | vol, v_s, b | dB, 0 … 1, semitones | −6, 0.4, 2 |
+
+**Limits, said:** mono (an 808 bassline is); the drive is not oversampled — at high drive its harmonics fold above
+about 4 kHz (the tone's low-pass is there for them).

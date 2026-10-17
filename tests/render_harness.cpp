@@ -1080,6 +1080,30 @@ static std::vector<double> renderGranular(double)
     return y;
 }
 
+// REQ-808-2: the registry's "808" on A1 (55 Hz) for a second, its defaults but no click, no drive and a long decay (8 s:
+// steady enough in a window to read its pitch)
+static std::vector<double> render808(double)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("808");
+    d->setParam("click", 0.0);
+    d->setParam("drive", 0.0);
+    d->setParam("amp.decay", 8000.0);
+    d->noteOn(33, 127);
+    std::vector<double> y;
+    std::vector<Sample> L(128), R(128);
+    while ((int)y.size() < kSampleRate)
+    {
+        std::fill(L.begin(), L.end(), 0.0);
+        std::fill(R.begin(), R.end(), 0.0);
+        Sample *io[2] = {L.data(), R.data()};
+        d->process(io, 2, 128);
+        y.insert(y.end(), L.begin(), L.end());
+    }
+    return y;
+}
+
 static std::vector<double> renderMeters()
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -1172,6 +1196,7 @@ int main(int argc, char **argv)
     else if (scenario == "fm") samples = renderFm(arg);
     else if (scenario == "multisample") samples = renderMultisample(arg);
     else if (scenario == "granular") samples = renderGranular(arg);
+    else if (scenario == "808") samples = render808(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

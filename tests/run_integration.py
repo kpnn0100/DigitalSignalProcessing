@@ -1375,6 +1375,23 @@ def check_granular_plays_its_pitch(binpath):
 CHECKS.append(("granular_plays_its_pitch", check_granular_plays_its_pitch))
 
 
+def check_808_is_tuned(binpath):
+    """REQ-808-2: the registry's 808 on A1 — after its punch it sounds at 55 Hz (50 and 60 Hz far under), louder at its
+    start than near its end (its 8 s decay: some 5.6 dB over 0.75 s)."""
+    y = render(binpath, "808", 0)
+    w = y[9600:9600 + 19200]  # 0.2 … 0.6 s: 22 whole cycles of 55 Hz
+    on, lo, hi = goertzel(w, 55.0), goertzel(w, 50.0), goertzel(w, 60.0)
+    if on < 10 * max(lo, hi):
+        raise Failure(f"not at 55 Hz: {on:.4f} against {lo:.4f} / {hi:.4f}")
+    start, end = rms(y[2400:7200]), rms(y[SR - 9600:SR - 4800])
+    if not end < start * 0.7:
+        raise Failure(f"no decay: {start:.4f} then {end:.4f}")
+    return f"55 Hz {on:.3f} (50/60 Hz {lo:.4f}/{hi:.4f}); rms {start:.3f} → {end:.3f}"
+
+
+CHECKS.append(("808_is_tuned", check_808_is_tuned))
+
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:
