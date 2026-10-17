@@ -309,6 +309,11 @@ package effects {
     +process(io**, ch, frames) : (CV4)-(CV6) partitioned overlap-save
     +latency() : 256
   }
+  class PitchShifter {
+    +setSemitones / setCents / setWindowMs / setMix
+    +process(io**, ch, frames) : (PS2)-(PS5) two taps sweeping a Delay, crossfaded
+    +latency() : 1 + W/2
+  }
   class Overdrive
   class Chorus
   class Repeater
@@ -494,6 +499,7 @@ Chorus --|> SignalProcessor
 Flanger *--> "per channel" Delay : swept, fed back (REQ-delay-1)
 Imager *--> "6" Biquad : LR4 side high-pass, mid all-pass
 Convolver ..> FFT : its partitions
+PitchShifter *--> "per channel" Delay : two taps (REQ-delay-1)
 Repeater --|> SignalProcessor
 
 ' ─────────────────────────── Synth engine ───────────────────────────

@@ -1409,3 +1409,149 @@ TEST(Convolution_device_takes_its_response)
     for (int i = 256; i < 4800; ++i) off = std::max(off, std::fabs(L[(size_t)i] - X[(size_t)(i - 256)]));
     CHECK(off < 1e-12 && d->latency() == 256);
 }
+
+namespace
+{
+    /** The share of a signal's power within ±band Hz of `hz`, by a Hann-windowed DFT over [from, from + n). */
+    double powerNear(const std::vector<Sample> &y, int from, int n, double hz, double band)
+    {
+        double near = 0, all = 0;
+        const double df = 48000.0 / n;
+        for (int k = 1; k < n / 2; ++k)
+        {
+            const double f = k * df;
+            if (f > 20000.0) break;
+            double re = 0, im = 0;
+            for (int i = 0; i < n; ++i)
+            {
+                const double w = 0.5 - 0.5 * std::cos(kTau * i / n), a = kTau * k * i / n;
+                re += w * y[(size_t)(from + i)] * std::cos(a);
+                im += w * y[(size_t)(from + i)] * std::sin(a);
+            }
+            const double p = re * re + im * im;
+            all += p;
+            if (std::fabs(f - hz) <= band) near += p;
+        }
+        return near / all;
+    }
+}
+
+TEST(PitchShifter_moves_a_tone)
+{
+    // (PS1)–(PS4): a 440 Hz sine, 40 ms window — +12 st: its power gathers at 880 Hz (within the window's sidebands,
+    // ±2/T, T = W/|1 − r|), −12 st at 220, +7 st at 659.3; next to none left at 440
+    configure48();
+    for (double st : {12.0, -12.0, 7.0})
+    {
+        PitchShifter p;
+        p.setSemitones(st);
+        std::vector<Sample> L, R;
+        tones(L, R, 48000, {{440.0, 0.5}});
+        blocks(p, L, R);
+        const double r = std::exp2(st / 12.0), to = 440.0 * r, side = 2.0 * std::fabs(1.0 - r) / 0.040;
+        const double there = powerNear(L, 24000, 8192, to, side + 12.0), left = powerNear(L, 24000, 8192, 440.0, 12.0);
+        std::printf("    %+.0f st: %.1f %% of the power within %.0f Hz of %.1f Hz; %.2f %% left at 440\n", st, 100 * there, side + 12.0, to, 100 * left);
+        CHECK(there > 0.9 && left < 0.01);
+    }
+}
+
+TEST(PitchShifter_sweeps_its_taps)
+{
+    // (PS2): φ moves (1 − r)/W a sample — +5 st with a 40 ms window (W = 1920) after 1000 samples is frac(1000·(1 − r)/W)
+    configure48();
+    PitchShifter p;
+    p.setSemitones(5.0);
+    std::vector<Sample> L(1000, 0.0), R(1000, 0.0);
+    blocks(p, L, R);
+    const double r = std::exp2(5.0 / 12.0), want = 1000.0 * (1.0 - r) / 1920.0;
+    CHECK(std::fabs(p.phase() - (want - std::floor(want))) < 1e-9 && p.latency() == 961);
+}
+
+TEST(PitchShifter_unshifted_is_the_input_late)
+{
+    // (PS4)–(PS5): at no shift the output is the input latency() samples late, to the bit — as the delay line keeps
+    // it (arstroFlush: under 1e−15, 0) — at any mix; a window of 10 ms: latency 241
+    configure48();
+    for (double mix : {1.0, 0.4})
+    {
+        PitchShifter p;
+        p.setMix(mix);
+        std::vector<Sample> L, R;
+        tones(L, R, 4800, {{440.0, 0.5}, {3000.0, 0.2}});
+        const std::vector<Sample> X = L;
+        blocks(p, L, R);
+        bool late = true;
+        for (int i = 0; i < 4800; ++i)
+        {
+            const double d = i < 961 ? 0.0 : arstroFlush(X[(size_t)(i - 961)]);
+            late &= L[(size_t)i] == (Sample)(mix * d + (1.0 - mix) * d);
+        }
+        CHECK(late);
+    }
+    // shifted, then shifted no more: the window's phase is left mid-way, yet the output is the input late again,
+    // exactly — not the two taps frozen where they stood (a comb)
+    PitchShifter b;
+    b.setSemitones(5.0);
+    std::vector<Sample> L, R;
+    tones(L, R, 3000, {{440.0, 0.5}});
+    blocks(b, L, R);
+    b.setSemitones(0.0);
+    tones(L, R, 4800, {{440.0, 0.5}, {3000.0, 0.2}});
+    const std::vector<Sample> X = L;
+    blocks(b, L, R);
+    bool back = b.phase() > 0.01;
+    for (int i = 961; i < 4800; ++i) back &= L[(size_t)i] == arstroFlush(X[(size_t)(i - 961)]);
+    CHECK(back);
+    PitchShifter s;
+    s.setWindowMs(10.0);
+    CHECK(s.latency() == 241);
+}
+
+TEST(PitchShifter_crossfades_without_a_click)
+{
+    // (PS3): the two weights sum to 1 — a steady level comes out that level (DC 0.5, +7 st, to 1e−12); the taps half a
+    // window apart, each jumping back only at its weight's zero — a sine shifted has no step larger than 3× its own slope
+    configure48();
+    PitchShifter p;
+    p.setSemitones(7.0);
+    std::vector<Sample> L(24000, 0.5), R(24000, 0.5);
+    blocks(p, L, R);
+    double off = 0;
+    for (int i = 4000; i < 24000; ++i) off = std::max(off, std::fabs(L[(size_t)i] - 0.5));
+    PitchShifter q;
+    q.setSemitones(7.0);
+    std::vector<Sample> M, N;
+    tones(M, N, 48000, {{220.0, 0.5}});
+    blocks(q, M, N);
+    double step = 0;
+    for (int i = 2001; i < 48000; ++i) step = std::max(step, std::fabs(M[(size_t)i] - M[(size_t)(i - 1)]));
+    const double slope = 0.5 * kTau * 220.0 * std::exp2(7.0 / 12.0) / 48000.0;
+    std::printf("    DC through +7 st: off by %.2g; a 220 Hz sine's largest step %.4f (its shifted slope %.4f)\n", off, step, slope);
+    CHECK(off < 1e-12 && step < 3.0 * slope);
+}
+
+TEST(PitchShifter_same_in_any_blocks_and_does_not_allocate)
+{
+    configure48();
+    auto run = [](int block) {
+        PitchShifter p;
+        p.setSemitones(-5);
+        p.setCents(30);
+        std::vector<Sample> L, R;
+        tones(L, R, 9600, {{220.0, 0.5}, {2500.0, 0.2}});
+        blocks(p, L, R, block);
+        return L;
+    };
+    const auto a = run(1), b = run(128), c = run(777);
+    CHECK(a == b && a == c);
+    PitchShifter p;
+    p.setSemitones(3);
+    std::vector<Sample> L, R;
+    tones(L, R, 4096, {{220.0, 0.5}});
+    Sample *io[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    p.process(io, 2, 4096);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0);
+}

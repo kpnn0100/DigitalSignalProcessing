@@ -1660,6 +1660,22 @@ def check_convolution_echo(binpath):
 
 CHECKS.append(("convolution_echo", check_convolution_echo))
 
+def check_pitch_moves_a_tone(binpath):
+    """REQ-fx-pitch-1 (PS1)–(PS3): a 440 Hz sine moved +7 and −5 semitones — its strongest frequency, read from zero
+    crossings over the last half second, is 440·2^(st/12) to 0.5 % (a crossing more or less is 2 Hz); 0 st: 440."""
+    said = []
+    for st in (7, -5, 0):
+        y = render(binpath, "pitch", st)[SR // 2:]
+        want = 440.0 * 2 ** (st / 12)
+        got = rising_zero_crossings(y) / (len(y) / SR)
+        said.append(f"{st:+d} st {got:.1f} Hz (want {want:.1f})")
+        if abs(got / want - 1) > 0.005:
+            raise Failure(f"{st:+d} st: {got:.2f} Hz, want {want:.2f}")
+    return "; ".join(said)
+
+
+CHECKS.append(("pitch_moves_a_tone", check_pitch_moves_a_tone))
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

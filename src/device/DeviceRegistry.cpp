@@ -13,6 +13,7 @@
 #include "../effects/Flanger.h"
 #include "../effects/Imager.h"
 #include "../effects/Convolver.h"
+#include "../effects/PitchShifter.h"
 #include "../instrument/Sampler.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
@@ -834,6 +835,18 @@ namespace arstro
             return b;
         }
 
+        // REQ-fx-pitch-1: a sound moved up or down, its length kept
+        const std::vector<Binding<PitchShifter>> &pitchBindings()
+        {
+            static const std::vector<Binding<PitchShifter>> b = {
+                {num("semitones", "Semitones", "st", -24, 24, 0, false, true), [](PitchShifter &p, double x) { p.setSemitones(x); }},
+                {num("cents", "Cents", "ct", -100, 100, 0), [](PitchShifter &p, double x) { p.setCents(x); }},
+                {num("window", "Window", "ms", 10, 100, 40, true), [](PitchShifter &p, double x) { p.setWindowMs(x); }},
+                {num("mix", "Mix", "", 0, 1, 1), [](PitchShifter &p, double x) { p.setMix(x); }},
+            };
+            return b;
+        }
+
         // REQ-fx-gate-1: a gate and a downward expander
         const std::vector<Binding<Gate>> &gateBindings()
         {
@@ -1104,6 +1117,7 @@ namespace arstro
                 conv.takesSample = true;
                 v.push_back(conv);
             }
+            v.push_back(effectType<PitchShifter>("pitch", "Pitch Shifter", "A sound moved up or down, its length kept: two taps sweeping a delay line, crossfaded; its latency reported.", &pitchBindings)); // REQ-fx-pitch-1
             v.push_back(effectType<Imager>("imager", "Imager", "Wider or narrower, and mono below a frequency: mid and side, the side scaled, its lows taken away.", &imagerBindings)); // REQ-fx-imager-1
             v.push_back(effectType<Flanger>("flanger", "Flanger", "A short delay swept by an LFO and fed back: a comb whose teeth sweep.", &flangerBindings)); // REQ-fx-flanger-1
             v.push_back(effectType<Phaser>("phaser", "Phaser", "Notches swept by an LFO: first-order all-passes fed back, mixed with the dry sound.", &phaserBindings)); // REQ-fx-phaser-1

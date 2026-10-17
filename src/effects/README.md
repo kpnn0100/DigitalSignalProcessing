@@ -544,3 +544,37 @@ Cost: per B inputs, one 2B FFT in, P·(B + 1) complex multiply-adds, one 2B FFT 
 (`Convolver_is_the_convolution`); a 24 kHz impulse at its sample 100 is heard at 256 + 200 (`Convolver_reads_its_
 response_at_its_rate`). (CV1)–(CV3) are `Convolver::setSample` (it allocates: a host calls it before playing),
 (CV4)–(CV5) `Convolver::block`, (CV6) `Convolver::process`.
+
+## Math — `PitchShifter.cpp` (REQ-fx-pitch-1)
+
+A sound moved up or down, its length kept, in real time. **Composed of:** one library `Delay` per channel
+(interpolated, REQ-delay-1) read by two taps. **Why not the phase vocoder** (spectral/TimeStretch, (P1)–(P8)): it
+works on a whole recording, offline; a strip's effect must run a block at a time with a bounded delay. This is the
+classic two-tap delay-line shifter: cheap, a fixed latency, and its own colour — two copies of the tone half a window
+apart beat against each other (a gentle tremolo at 1/T), which is the sound of this kind of shifter.
+
+```
+(PS1) r = 2^((semitones + cents/100)/12);  W = the window in samples, made even (its half whole)
+(PS2) The sweep:  y[n] = x[n − d(n)] has frequency f·(1 − d′), so a delay moving d′ = 1 − r a sample shifts by r;
+      φ ← frac(φ + (1 − r)/W) each sample  (r > 1: φ falls; r < 1: it rises)
+(PS3) Two taps half a window apart:  d_a = 1 + W·φ,  d_b = 1 + W·frac(φ + ½)
+      weights  w_a = sin²(πφ),  w_b = cos²(πφ) = 1 − w_a  — each tap jumps (0 ↔ W) only where its weight is 0, and
+      the two sum to 1 (a steady level passes as it is)
+      wet = w_a·x[n − d_a] + w_b·x[n − d_b]     (read(d − 1) before the write is d back)
+(PS4) At no shift (r = 1 exactly) the wet is the input L = 1 + W/2 late — the taps' mean delay — exactly, wherever φ
+      was left; latency() = L, and the dry path is that late too
+(PS5) y = mix·wet + (1 − mix)·x[n − L]
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `semitones` | — | st −24 … +24 (whole) | 0 |
+| `cents` | — | ct −100 … +100 | 0 |
+| `window` | W | ms 10 … 100 (log) — longer: smoother, more latency | 40 (latency 961 at 48 kHz) |
+| `mix` | mix | 0 … 1 | 1 |
+
+A 440 Hz sine moved +12, −12, +7 st keeps all its power within the window's sidebands (±2/T, T = W/|1 − r|) of 880,
+220, 659.3 Hz, none at 440 (`PitchShifter_moves_a_tone`); DC passes exactly and a shifted sine has no step past its
+own slope (`PitchShifter_crossfades_without_a_click`); unshifted it is the input L late to the bit (as the delay line
+keeps it: arstroFlush, |x| < 1e−15 → 0), even after a shift was turned off (`PitchShifter_unshifted_is_the_input_late`).
+(PS2)–(PS5) are `PitchShifter::process`; (PS1) `setWindowMs` and `ratio`.

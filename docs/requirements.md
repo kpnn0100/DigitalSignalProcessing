@@ -417,7 +417,8 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   2026-10-09: the master limiter's lookahead put a whole render 96 samples late). `Device::latency()` is
   the number of samples its output lags its input at its CURRENT parameters — the `limiter`'s lookahead
   L (`Limiter::latency()`, 96 at its 2 ms default and 48 kHz), the `saturator`'s oversampling (15, REQ-fx-saturator-1),
-  the `convolution`'s partition (256, REQ-fx-convolution-1), 0 for every other type — so a host can
+  the `convolution`'s partition (256, REQ-fx-convolution-1), the `pitch` shifter's taps' mean delay (1 + half its
+  window, REQ-fx-pitch-1), 0 for every other type — so a host can
   delay every other path by it (plugin delay compensation). A write that moves it (`lookahead`) is seen
   by the next read. Guarded by `Device_reports_its_latency_and_lags_by_exactly_it` (every type's default,
   the limiter at 0 / 1 / 5 / 10 ms, and a click through the Device face arriving exactly `latency()`
@@ -713,6 +714,14 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   `Convolver_reads_its_response_at_its_rate` (24 kHz resampled; the 10 s cut), `Convolver_same_in_any_blocks_and_does_
   not_allocate`, `Convolution_device_takes_its_response` (through the Device face), and the integration check
   `convolution_echo`.
+- `REQ-fx-pitch-1` — **A pitch shifter** (source: Solaris R-FX-15, "implement all", 2026-10-17): `PitchShifter` — two
+  taps on one library `Delay` per channel, their delays sweeping a window at 1 − r samples a sample (r = 2^((st +
+  ct/100)/12)), half a window apart, crossfaded sin²/cos² (each jumps only at its weight's zero; the two sum to 1);
+  latency() 1 + W/2 (the taps' mean delay, REQ-device-8), the dry delayed to match; at no shift the input that late,
+  exactly; the registry's "pitch" (semitones, cents, window, mix). (PS1)–(PS5). Real time — the phase vocoder
+  (REQ-stretch-2) is offline. Guarded by `PitchShifter_moves_a_tone`, `PitchShifter_sweeps_its_taps`,
+  `PitchShifter_unshifted_is_the_input_late`, `PitchShifter_crossfades_without_a_click`,
+  `PitchShifter_same_in_any_blocks_and_does_not_allocate`, and the integration check `pitch_moves_a_tone`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

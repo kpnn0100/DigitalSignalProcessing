@@ -570,12 +570,13 @@ TEST(Device_reports_its_latency_and_lags_by_exactly_it)
 {
     configure();
     // REQ-device-8: a device says how many samples its output lags its input — the limiter its lookahead,
-    // read again after a write moves it; the saturator its oversampling's; the convolution its partition; every other
-    // type 0 — so a host can compensate every other path
+    // read again after a write moves it; the saturator its oversampling's; the convolution its partition; the pitch
+    // shifter its taps' mean delay; every other type 0 — so a host can compensate every other path
     for (const auto &t : DeviceRegistry::types())
     {
         auto d = DeviceRegistry::create(t.name);
-        const int want = t.name == "limiter" ? 96 : t.name == "saturator" ? Saturator::kLatency : t.name == "convolution" ? Convolver::kBlock : 0;
+        const int want = t.name == "limiter" ? 96 : t.name == "saturator" ? Saturator::kLatency : t.name == "convolution" ? Convolver::kBlock
+                       : t.name == "pitch" ? 961 : 0; // the pitch shifter: 1 + half its 40 ms window
         CHECK(d->latency() == want); // the limiter: 2 ms at 48 kHz, its default
     }
     auto lim = DeviceRegistry::create("limiter");

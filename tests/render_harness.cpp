@@ -1314,6 +1314,23 @@ static std::vector<double> renderConvolution(double)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-fx-pitch-1: a 440 Hz sine, 1 s, through the registry's "pitch" — arg: the semitones
+static std::vector<double> renderPitch(double semitones)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("pitch");
+    d->setParam("semitones", semitones);
+    std::vector<Sample> L(48000), R(48000);
+    for (size_t n = 0; n < L.size(); ++n) L[n] = R[n] = 0.5 * std::sin(2 * M_PI * 440 * (double)n / kSampleRate);
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // REQ-808-2: the registry's "808" on A1 (55 Hz) for a second, its defaults but no click, no drive and a long decay (8 s:
 // steady enough in a window to read its pitch)
 static std::vector<double> render808(double)
@@ -1441,6 +1458,7 @@ int main(int argc, char **argv)
     else if (scenario == "flanger") samples = renderFlanger(arg);
     else if (scenario == "imager") samples = renderImager(arg);
     else if (scenario == "convolution") samples = renderConvolution(arg);
+    else if (scenario == "pitch") samples = renderPitch(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);
