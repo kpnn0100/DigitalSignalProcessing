@@ -11,6 +11,7 @@
 #include "../instrument/BasicSynth.h"
 #include "../instrument/FMSynth.h"
 #include "../instrument/MultiSampler.h"
+#include "../instrument/GranularSampler.h"
 #include "../instrument/Piano.h"
 #include "../instrument/DrumMachine.h"
 #include "../reverb/Reverb.h"
@@ -349,6 +350,59 @@ namespace arstro
         private:
             FMSynth mSynth;
             FMSynth::Params mP;
+        };
+
+        // ── the granular sampler (REQ-granular-2): a sound as a cloud of grains ──
+
+        const std::vector<Binding<GranularSampler::Params>> &granularBindings()
+        {
+            using P = GranularSampler::Params;
+            static const std::vector<Binding<P>> b = [] {
+                const P d;
+                std::vector<Binding<P>> v;
+                v.push_back({num("grain.size", "Size", "ms", 5, 500, d.size, true), [](P &p, double x) { p.size = x; }});
+                v.push_back({num("grain.density", "Density", "/s", 1, 200, d.density, true), [](P &p, double x) { p.density = x; }});
+                v.push_back({num("grain.position", "Position", "", 0, 1, d.position), [](P &p, double x) { p.position = x; }});
+                v.push_back({num("grain.scan", "Scan", "/s", -1, 1, d.scan), [](P &p, double x) { p.scan = x; }});
+                v.push_back({num("grain.spray", "Spray", "", 0, 1, d.spray), [](P &p, double x) { p.spray = x; }});
+                v.push_back({num("grain.pitch", "Pitch", "st", -24, 24, d.pitch), [](P &p, double x) { p.pitch = x; }});
+                v.push_back({num("grain.pspray", "Pitch Spray", "ct", 0, 100, d.pspray), [](P &p, double x) { p.pspray = x; }});
+                v.push_back({num("grain.spread", "Spread", "", 0, 1, d.spread), [](P &p, double x) { p.spread = x; }});
+                v.push_back({num("root", "Root", "", 0, 127, d.root, false, true), [](P &p, double x) { p.root = (int)x; }});
+                v.push_back({num("amp.attack", "Attack", "ms", 0, 10000, d.attack, true), [](P &p, double x) { p.attack = x; }});
+                v.push_back({num("amp.decay", "Decay", "ms", 0, 10000, d.decay, true), [](P &p, double x) { p.decay = x; }});
+                v.push_back({num("amp.sustain", "Sustain", "", 0, 1, d.sustain), [](P &p, double x) { p.sustain = x; }});
+                v.push_back({num("amp.release", "Release", "ms", 0, 10000, d.release, true), [](P &p, double x) { p.release = x; }});
+                v.push_back({num("volume", "Volume", "dB", -60, 12, d.volumeDb), [](P &p, double x) { p.volumeDb = x; }});
+                v.push_back({num("velocity", "Velocity", "", 0, 1, d.velocity), [](P &p, double x) { p.velocity = x; }});
+                return v;
+            }();
+            return b;
+        }
+
+        class GranularDevice : public Device
+        {
+        public:
+            explicit GranularDevice(const DeviceType &t) : Device(t), mP(mGrains.params()) { applyAll(); }
+            void process(Sample *const *io, int channels, int frames) override { mGrains.render(io, channels, frames); }
+            void noteOn(int n, int v) override { mGrains.noteOn(n, v); }
+            void noteOff(int n) override { mGrains.noteOff(n); }
+            void allNotesOff() override { mGrains.allNotesOff(); }
+            void pitchBend(double a) override { mGrains.pitchBend(a); }
+            void reset() override { mGrains.reset(); }
+            int activeVoices() const override { return mGrains.activeVoices(); }
+            void setSample(const float *x, long long frames, int channels, double rate) override { mGrains.setSample(x, frames, channels, rate); }
+
+        protected:
+            void apply(int i, double v) override
+            {
+                granularBindings()[i].set(mP, v);
+                mGrains.setParams(mP);
+            }
+
+        private:
+            GranularSampler mGrains;
+            GranularSampler::Params mP;
         };
 
         // ── the multi-sample instrument (REQ-multisample-3): an SFZ's regions and the sounds they name ──
@@ -794,6 +848,16 @@ namespace arstro
                 std::sort(drums.notePrefixes.begin(), drums.notePrefixes.end());
             }
             v.push_back(drums);
+
+            DeviceType granular; // REQ-granular-2
+            granular.name = "granular"; granular.label = "Granular"; granular.kind = DeviceKind::Instrument;
+            granular.summary = "A recorded sound as a cloud of short grains — their size, density and place (scanned, sprayed), "
+                               "pitched by the note, sprayed in pitch and pan; an envelope; 16 voices.";
+            granular.params = specsOf(granularBindings());
+            granular.takesSample = true;
+            granular.groupLabels = {{"grain", "Grains"}, {"amp", "Amplifier"}, {"", "Output"}};
+            granular.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<GranularDevice>(self); };
+            v.push_back(granular);
 
             DeviceType multi; // REQ-multisample-3
             multi.name = "multisample"; multi.label = "Multi-sample"; multi.kind = DeviceKind::Instrument;

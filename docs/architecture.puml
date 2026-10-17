@@ -143,6 +143,11 @@ package instrument {
   }
   FMSynth ..|> Instrument
   FMSynth *-- "64" ADSREnvelope : 16 voices x 4 operators
+  class GranularSampler {
+    +setSample(frames) / setParams(size, density, position, scan, spray, pitch, spread)
+    -(G1) a grain every fs/density from the note; (G3) Hann; (G4) the overlap divided out
+  }
+  GranularSampler ..|> Instrument
   class MultiSampler {
     +setDefinition(SfzInstrument) / setSound(name, frames)  -- the host's, at build
     -(Z2) regions by key, velocity, round robin, chance; (Z4) loops; (Z6) choke

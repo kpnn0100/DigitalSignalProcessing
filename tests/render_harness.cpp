@@ -1046,6 +1046,40 @@ static std::vector<double> renderMultisample(double)
     return y;
 }
 
+// REQ-granular-2: the registry's "granular" given a second of 440 Hz, rooted at A4, no spray — A4 for a second, then a
+// fifth above it (E5) for a second
+static std::vector<double> renderGranular(double)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("granular");
+    std::vector<float> x((size_t)kSampleRate);
+    for (size_t i = 0; i < x.size(); ++i) x[i] = (float)(0.5 * std::sin(2 * M_PI * 440.0 * (double)i / kSampleRate));
+    d->setSample(x.data(), (long long)x.size(), 1, kSampleRate);
+    d->setParam("root", 69);
+    d->setParam("grain.spray", 0.0);
+    d->setParam("grain.pspray", 0.0);
+    d->setParam("grain.size", 200.0);
+    d->setParam("grain.density", 10.0);
+    std::vector<double> y;
+    std::vector<Sample> L(128), R(128);
+    for (int note : {69, 76})
+    {
+        d->allNotesOff();
+        d->reset();
+        d->noteOn(note, 127);
+        for (int b = 0; b < kSampleRate / 128; ++b)
+        {
+            std::fill(L.begin(), L.end(), 0.0);
+            std::fill(R.begin(), R.end(), 0.0);
+            Sample *io[2] = {L.data(), R.data()};
+            d->process(io, 2, 128);
+            y.insert(y.end(), L.begin(), L.end());
+        }
+    }
+    return y;
+}
+
 static std::vector<double> renderMeters()
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -1137,6 +1171,7 @@ int main(int argc, char **argv)
     else if (scenario == "wavetable") samples = renderWavetable(arg);
     else if (scenario == "fm") samples = renderFm(arg);
     else if (scenario == "multisample") samples = renderMultisample(arg);
+    else if (scenario == "granular") samples = renderGranular(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

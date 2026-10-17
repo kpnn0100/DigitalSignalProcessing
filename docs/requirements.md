@@ -600,6 +600,17 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   `Device::setDefinition` / `setNamedSample` (`takesDefinition`; the library never opens a file); volume, velocity
   sense, bend range. Guarded by `MultiSampler_through_the_registry` (the names it asks for, its problems, no
   allocation once given); integration `multisample_chooses_by_velocity`.
+- `REQ-granular-1` — **A sound as a cloud of grains** (source: Solaris R-INST-10, "implement all", 2026-10-16):
+  `GranularSampler` — a voice starts a grain every fs/density samples from its note (the same however chopped), each
+  read from the position (scanned over time, sprayed) at the note's pitch against its root (sprayed in cents, the
+  sound's rate counted), Hann-windowed, panned by spread; the cloud divided by its overlap's mean; an ADSR; spray drawn
+  from a counter. (G1)–(G5). Guarded by `Granular_starts_grains_on_its_schedule` (25 in a second; blocks of 1, 128,
+  777 identical), `…_pitch_and_place`, `…_cloud_is_near_its_level_and_never_clicks` (a steady sound's mean 0.500 at
+  2.4 and 12 overlapping; the first sample 0), `…_spray_is_the_same_every_render`, `…_counts_its_sounds_rate`,
+  `…_does_not_allocate`.
+- `REQ-granular-2` — **The registry's "granular"** (same source): size, density, position, scan, spray, pitch, pitch
+  spray, spread, root, its ADSR, volume, velocity; `takesSample`. Guarded by the registry's tests; integration
+  `granular_plays_its_pitch`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

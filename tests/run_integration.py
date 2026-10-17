@@ -1358,6 +1358,23 @@ def check_multisample_chooses_by_velocity(binpath):
 CHECKS.append(("multisample_chooses_by_velocity", check_multisample_chooses_by_velocity))
 
 
+def check_granular_plays_its_pitch(binpath):
+    """REQ-granular-2: a cloud of a 440 Hz sound rooted at A4 — A4 is 440 Hz, E5 its fifth (659.26 Hz), each with the
+    other's pitch far under it."""
+    y = render(binpath, "granular", 0)
+    a4, e5 = y[4800:4800 + 38400], y[SR + 4800:SR + 4800 + 38400]
+    fifth = 440.0 * 2 ** (7 / 12)
+    on1, off1, on2, off2 = goertzel(a4, 440.0), goertzel(a4, fifth), goertzel(e5, fifth), goertzel(e5, 440.0)
+    if on1 < 0.1 or on2 < 0.1:
+        raise Failure(f"silent: A4 {on1:.3f}, E5 {on2:.3f}")
+    if off1 > on1 * 0.02 or off2 > on2 * 0.02:
+        raise Failure(f"pitches mixed: {off1:.4f} / {off2:.4f}")
+    return f"A4 at 440 Hz {on1:.3f}, E5 at {fifth:.2f} Hz {on2:.3f}"
+
+
+CHECKS.append(("granular_plays_its_pitch", check_granular_plays_its_pitch))
+
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

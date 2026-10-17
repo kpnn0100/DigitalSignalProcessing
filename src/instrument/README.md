@@ -7,6 +7,7 @@
 | `DrumMachine` | ten synthesized pads on the General MIDI drum notes | REQ-drum-1…5 |
 | `Piano` | the physical piano (`physical/PianoEngine`) as an instrument, 16 voices | REQ-inst-piano-1 |
 | `FMSynth` | four sine operators by phase modulation — eight algorithms, a feedback operator, an ADSR each; 16 voices | REQ-fm-1…3 |
+| `GranularSampler` | a recorded sound as a cloud of short grains — size, density, position (and its scan), spray of place, pitch and pan; 16 voices | REQ-granular-1…2 |
 | `Sfz` · `MultiSampler` | a multi-sample instrument read from SFZ text: regions by key, velocity, round robin and chance; loops, one-shots, choke groups; 32 voices | REQ-multisample-1…3 |
 
 The first host is the Solaris DAW (`apps/solaris` in the umbrella), whose rule is that **all of its
@@ -352,3 +353,42 @@ HOST reads the SFZ's text and decodes the sounds it names (`sfzSounds`), and han
 **Limits, said:** an unknown opcode is kept as a problem (said), not an error; trigger=release, crossfades
 (xfin/xfout), filters and LFOs are not read yet; a sound read faster than its rate (pitched up) is not band-limited
 — Catmull-Rom's images fall where the sound has little (a multi-sample's regions are a few keys wide).
+
+## GranularSampler — Math (REQ-granular-1…2)
+
+A recorded sound played as a CLOUD: many short windowed slices (grains), each read from a place in the sound at the
+note's pitch, overlapping. **Why not composed (rule 1):** `Sampler` reads one sound start to end; a grain cloud reads
+many short spans at once, each started on a schedule and windowed. What it reuses: `ADSREnvelope` (a voice's), the
+Catmull-Rom read (Wavetable (W3)), the suite's balance pan, and a counter-based draw (MultiSampler (Z2)) for spray —
+never a clock.
+
+```
+(G1) Schedule — GranularSampler::render: a voice starts a grain every D = fs/density samples, counted from its note
+     (sample k₀ = 0, D, 2D, …) — the same however a host chops time; at most kGrains (48) at once, the oldest dropped
+(G2) A grain j of a voice on note n, from its sound of L frames at rate r:
+     place  p_j = clamp(position + scan·t_j + spray·u_j, 0, 1) · L       t_j its start, s;  u_j ∈ [−1, 1] a draw
+     step   s_j = 2^((n − root + pitch + pspray·u'_j/100)/12) · r / fs   pspray in cents
+     pan    q_j = spread · u''_j                                          (the suite's balance: L·min(1, 1 − q), R·min(1, 1 + q))
+     length G = size·fs/1000 samples
+(G3) Its sound at its k-th sample (k < G):  x(p_j + k·s_j) · w(k),  w(k) = ½(1 − cos(2πk/G))  (Hann: no click at either end)
+     x read by Catmull-Rom; past the sound's ends, silence
+(G4) The cloud:  y = Σ_j grain_j · g,  g = 1/max(1, ½·density·size/1000)   — the overlap's mean, so a cloud of a
+     steady sound plays near its level however dense (Hann's mean is ½)
+(G5) The voice:  y · e(t) · vol · (1 − v_s + v_s·vel),  e an ADSR
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `size` | — | ms, 5 … 500 | 80 |
+| `density` | — | grains a second, 1 … 200 | 30 |
+| `position` | — | 0 … 1 of the sound | 0.3 |
+| `scan` | — | sounds a second moved through (−1 … 1) | 0 |
+| `spray` | — | 0 … 1 of the sound | 0.05 |
+| `pitch`, `pspray` | — | semitones −24 … 24, cents 0 … 100 | 0, 5 |
+| `spread` | — | 0 … 1 | 0.5 |
+| `root` | — | the key that plays the sound as recorded | 60 |
+| `attack/decay/sustain/release` | e | ms, ms, 0…1, ms | 50/0/1/300 |
+| `volume`, `velocity` | vol, v_s | dB, 0…1 | −6, 0.5 |
+
+**Limits, said:** a grain read faster than its sound's rate is not band-limited; a grain's draws come from a counter
+per voice — the same note on the same sample sprays the same way every render.
