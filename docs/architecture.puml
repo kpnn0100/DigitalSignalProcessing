@@ -295,6 +295,10 @@ package effects {
     +process(io**, ch, frames) : (PH1)-(PH4) all-passes swept, fed back, mixed
     +{static} coefficient(hz, fs)
   }
+  class Flanger {
+    +setDelayMs / setDepthMs / setRateHz / setFeedback / setStereoDeg / setMix
+    +process(io**, ch, frames) : (FL1)-(FL3) a Delay swept, fed back, mixed
+  }
   class Overdrive
   class Chorus
   class Repeater
@@ -477,6 +481,7 @@ Reverb --|> SignalProcessor
 Compressor --|> SignalProcessor
 Overdrive --|> SignalProcessor
 Chorus --|> SignalProcessor
+Flanger *--> "per channel" Delay : swept, fed back (REQ-delay-1)
 Repeater --|> SignalProcessor
 
 ' ─────────────────────────── Synth engine ───────────────────────────

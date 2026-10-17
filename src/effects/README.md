@@ -457,3 +457,35 @@ Linkwitz-Riley biquads, the reverb's diffusion an FDN); the stage is one line, s
 
 Still, a sine at each f_k cancels to the float floor (4 and 8 stages); with feedback ½ and mix 0.7 every frequency
 is (PH5) to 0.0000 dB (`Phaser_notches_where_the_phase_says`); the sweep is (PH2) to 1e−9 (`Phaser_sweeps_its_break`).
+
+## Math — `Flanger.cpp` (REQ-fx-flanger-1)
+
+A short delay swept and fed back. **Composed of:** one library `Delay` per channel (interpolated between samples —
+REQ-delay-1, which this effect's building found wrong, Solaris D-18) and a raised-cosine LFO — the chorus's shape
+with a shorter delay and feedback.
+
+```
+(FL1) The sweep — a raised cosine from `delay` to `delay + depth`, the odd channels `stereo` ahead:
+      D = max(1, (delay + depth·(1 − cos 2π(φ + offset))/2)·fs/1000) samples,  φ ← φ + rate/fs each sample
+(FL2) The line, fed back:  d[n] = s[n − D]  (read(D − 1) before the write: REQ-delay-1's D + 1 back, one fewer)
+      s[n] = x[n] + fb·d[n]   (written)
+(FL3) Mixed:  y = (1 − mix)·x + mix·d
+(FL4) Still at a whole D:  H(e^jω) = (1 − mix) + mix·e^(−jωD) / (1 − fb·e^(−jωD))
+      fb = 0, mix ½: |cos(ωD/2)| — notches at (2k + 1)·fs/(2D), the comb's teeth; feedback deepens and sharpens them
+      (fb > 0: peaks at k·fs/D; fb < 0: the teeth move half a step)
+      Bounded: |e^(−jωD)·L(ω)| ≤ 1 for the interpolating line L, so with |fb| < 1 the loop never gains, whatever D does
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `delay` | delay | ms 0.05 … 10 (log) | 1 |
+| `depth` | depth | ms 0 … 10 | 3 |
+| `rate` | rate | Hz 0.01 … 10 (log) | 0.25 |
+| `feedback` | fb | −0.95 … 0.95 | 0.5 |
+| `stereo` | offset·360 | degrees 0 … 180 | 90 |
+| `mix` | mix | 0 … 1 | 0.5 |
+
+Still at 1 ms, a sine at 500, 1500 and 2500 Hz cancels to the float floor; with feedback 0.7 and mix 0.6 every
+frequency is (FL4) to 0.0000 dB (`Flanger_is_a_comb_where_it_stands`); the sweep is (FL1) to 3e−10
+(`Flanger_sweeps_its_delay`); at feedback ±0.95, swept fast through its shortest delays, a 0.25 noise peaks at 1.25
+(`Flanger_fed_back_hard_stays_bounded`). (FL1)–(FL3) are `Flanger::process`.

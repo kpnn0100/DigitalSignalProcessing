@@ -1241,6 +1241,31 @@ static std::vector<double> renderPhaser(double)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-fx-flanger-1: still (depth 0) at 1 ms through the registry's "flanger", feedback 0.6, mix ½ — 0.2 each of
+// 300, 500 (a notch's neighbourhood), 1000 (a peak) and 1700 Hz, 1 s
+static std::vector<double> renderFlanger(double)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("flanger");
+    d->setParam("delay", 1.0);
+    d->setParam("depth", 0.0);
+    d->setParam("feedback", 0.6);
+    d->setParam("mix", 0.5);
+    std::vector<Sample> L(48000), R(48000);
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        const double t = (double)n / kSampleRate;
+        L[n] = R[n] = 0.2 * (std::sin(2 * M_PI * 300 * t) + std::sin(2 * M_PI * 500 * t) + std::sin(2 * M_PI * 1000 * t) + std::sin(2 * M_PI * 1700 * t));
+    }
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // REQ-808-2: the registry's "808" on A1 (55 Hz) for a second, its defaults but no click, no drive and a long decay (8 s:
 // steady enough in a window to read its pitch)
 static std::vector<double> render808(double)
@@ -1365,6 +1390,7 @@ int main(int argc, char **argv)
     else if (scenario == "saturator") samples = renderSaturator(arg);
     else if (scenario == "bitcrusher") samples = renderBitcrusher(arg);
     else if (scenario == "phaser") samples = renderPhaser(arg);
+    else if (scenario == "flanger") samples = renderFlanger(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

@@ -688,6 +688,13 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   (still: each f_k cancels to the float floor at 4 and 8 stages; the break frequency at 0 dB; with feedback, every
   frequency the closed form's to 0.01 dB), `Phaser_sweeps_its_break` (to 1e−9), `Phaser_dry_is_the_input`,
   `Phaser_same_in_any_blocks_and_does_not_allocate`, and the integration check `phaser_notches`.
+- `REQ-fx-flanger-1` — **A flanger** (source: Solaris R-FX-12, "implement all", 2026-10-17): `Flanger` — one library
+  `Delay` per channel (REQ-delay-1), its length swept by a raised cosine from `delay` to `delay + depth` (rate; the odd
+  channels `stereo` degrees ahead), what it reads fed back into what it writes (±0.95), mixed with the dry sound; the
+  registry's "flanger". (FL1)–(FL4). Guarded by `Flanger_is_a_comb_where_it_stands` (still: notches to the float
+  floor; with feedback the comb's closed form to 0.01 dB), `Flanger_sweeps_its_delay` (to 1e−9),
+  `Flanger_fed_back_hard_stays_bounded`, `Flanger_dry_is_the_input`, `Flanger_same_in_any_blocks_and_does_not_allocate`,
+  and the integration check `flanger_comb`.
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

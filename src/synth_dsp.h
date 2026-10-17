@@ -52,6 +52,7 @@
 #include "effects/Saturator.h"
 #include "effects/Bitcrusher.h"
 #include "effects/Phaser.h"
+#include "effects/Flanger.h"
 #include "effects/Overdrive.h"
 #include "effects/Chorus.h"
 #include "effects/Repeater.h"

@@ -1007,3 +1007,143 @@ TEST(Delay_reads_between_samples)
     std::printf("    a 20 kHz sine through a delay of 20.5 samples: %.2f dB (interpolation's %.2f)\n", db(g), db(want));
     CHECK(std::fabs(db(g) - db(want)) < 0.01);
 }
+
+namespace
+{
+    /** (FL2)–(FL4) still at a whole D: (1 − m) + m·z^−D / (1 − fb·z^−D). */
+    double flangerAt(double fb, double mix, int D, double hz)
+    {
+        const std::complex<double> zD = std::polar(1.0, -kTau * hz * D / 48000.0);
+        return std::abs((1.0 - mix) + mix * zD / (1.0 - fb * zD));
+    }
+    Flanger stillFlanger(double ms, double fb, double mix)
+    {
+        Flanger f;
+        f.setDelayMs(ms);
+        f.setDepthMs(0.0);
+        f.setFeedback(fb);
+        f.setMix(mix);
+        return f;
+    }
+}
+
+TEST(Flanger_is_a_comb_where_it_stands)
+{
+    // (FL4) still, 1 ms (48 samples): no feedback, mix ½ — a sine at (2k + 1)·500 Hz cancels, one at 1 kHz passes at
+    // 0 dB; feedback 0.7, mix 0.6 — every frequency the closed form's, to 0.01 dB
+    configure48();
+    for (double hz : {500.0, 1500.0, 2500.0})
+    {
+        Flanger f = stillFlanger(1.0, 0.0, 0.5);
+        std::vector<Sample> L, R;
+        tones(L, R, 24000, {{hz, 0.5}});
+        blocks(f, L, R);
+        const double left = db(amp(L, 4800, 19200, hz) / 0.5);
+        std::printf("    1 ms still, %.0f Hz: %.1f dB\n", hz, left);
+        CHECK(left < -100.0);
+    }
+    double worst = 0;
+    for (double hz : {130.0, 1000.0, 1234.0, 3700.0, 9000.0})
+    {
+        Flanger f = stillFlanger(1.0, 0.7, 0.6);
+        std::vector<Sample> L, R;
+        tones(L, R, 48000, {{hz, 0.25}});
+        blocks(f, L, R);
+        worst = std::max(worst, std::fabs(db(amp(L, 24000, 24000, hz) / 0.25) - db(flangerAt(0.7, 0.6, 48, hz))));
+    }
+    std::printf("    feedback 0.7, mix 0.6: off the closed form by %.4f dB\n", worst);
+    CHECK(worst < 0.01);
+}
+
+TEST(Flanger_sweeps_its_delay)
+{
+    // (FL1): D = (delay + depth·(1 − cos 2π(rate·n/fs + offset))/2)·fs/1000 — the right channel `stereo` ahead
+    configure48();
+    Flanger f;
+    f.setDelayMs(0.5);
+    f.setDepthMs(4.0);
+    f.setRateHz(1.5);
+    f.setStereoDeg(90.0);
+    std::vector<Sample> L, R;
+    tones(L, R, 48000, {{440.0, 0.3}});
+    double worst = 0, lo = 1e9, hi = 0;
+    for (size_t at = 0; at < L.size(); at += 1000)
+    {
+        Sample *io[2] = {L.data() + at, R.data() + at};
+        f.process(io, 2, 1000);
+        const double n = (double)(at + 999);
+        for (int c : {0, 1})
+        {
+            const double want = (0.5 + 4.0 * 0.5 * (1.0 - std::cos(kTau * (1.5 * n / 48000.0 + (c ? 0.25 : 0.0))))) * 48.0;
+            worst = std::max(worst, std::fabs(f.delaySamples(c) - want));
+            lo = std::min(lo, f.delaySamples(c));
+            hi = std::max(hi, f.delaySamples(c));
+        }
+    }
+    std::printf("    swept %.1f … %.1f samples; off the formula by %.2g\n", lo, hi, worst);
+    CHECK(worst < 1e-9);
+}
+
+TEST(Flanger_fed_back_hard_stays_bounded)
+{
+    // (FL2), REQ-delay-1: feedback ±0.95, swept fast through the shortest delays, a loud broadband input — the loop's
+    // gain is under 1 at every frequency (the line never amplifies), so the output stays bounded: under 1/(1 − 0.95)
+    // of the input's peak
+    configure48();
+    for (double fb : {0.95, -0.95})
+    {
+        Flanger f;
+        f.setDelayMs(0.05);
+        f.setDepthMs(10.0);
+        f.setRateHz(7.0);
+        f.setFeedback(fb);
+        f.setMix(1.0);
+        std::vector<Sample> L(96000), R;
+        unsigned s = 12345;
+        for (auto &x : L) { s = s * 1103515245u + 12345u; x = 0.5 * ((double)(s >> 8) / 16777216.0 - 0.5); }
+        R = L;
+        blocks(f, L, R);
+        double most = 0;
+        bool finite = true;
+        for (Sample x : L) { finite = finite && std::isfinite(x); most = std::max(most, (double)std::fabs(x)); }
+        std::printf("    feedback %+.2f: the loudest sample %.3f (the input's 0.25)\n", fb, most);
+        CHECK(finite && most < 0.25 / (1.0 - 0.95));
+    }
+}
+
+TEST(Flanger_dry_is_the_input)
+{
+    // (FL3): mix 0 — the input, to the bit
+    configure48();
+    Flanger f;
+    f.setMix(0.0);
+    std::vector<Sample> L, R;
+    tones(L, R, 4800, {{440.0, 0.5}, {3000.0, 0.2}});
+    const std::vector<Sample> X = L;
+    blocks(f, L, R);
+    CHECK(L == X);
+}
+
+TEST(Flanger_same_in_any_blocks_and_does_not_allocate)
+{
+    configure48();
+    auto run = [](int block) {
+        Flanger f;
+        f.setRateHz(2.0);
+        std::vector<Sample> L, R;
+        tones(L, R, 9600, {{220.0, 0.5}, {2500.0, 0.2}});
+        blocks(f, L, R, block);
+        return L;
+    };
+    const auto a = run(1), b = run(128), c = run(777);
+    CHECK(a == b && a == c);
+    Flanger f;
+    std::vector<Sample> L, R;
+    tones(L, R, 4096, {{220.0, 0.5}});
+    Sample *io[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    f.process(io, 2, 4096);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0);
+}

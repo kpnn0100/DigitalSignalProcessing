@@ -1590,6 +1590,25 @@ def check_phaser_notches(binpath):
 
 CHECKS.append(("phaser_notches", check_phaser_notches))
 
+def check_flanger_comb(binpath):
+    """REQ-fx-flanger-1 (FL4): still at 1 ms (48 samples), feedback 0.6, mix ½ — each tone (300, 500, 1000, 1700 Hz)
+    comes out |(1 − m) + m·e^(−jωD)/(1 − fb·e^(−jωD))| of itself, the comb computed here, to 0.05 dB (whole
+    cycles of each in the window)."""
+    y = render(binpath, "flanger", 0)[SR // 2:]
+    worst, said = 0.0, []
+    for f in (300.0, 500.0, 1000.0, 1700.0):
+        z = cmath.exp(-1j * 2 * math.pi * f * 48 / SR)
+        want = 20 * math.log10(abs(0.5 + 0.5 * z / (1 - 0.6 * z)))
+        got = 20 * math.log10(goertzel(y, f) / 0.2)
+        worst = max(worst, abs(got - want))
+        said.append(f"{f:.0f} Hz {got:+.2f}")
+        if abs(got - want) > 0.05:
+            raise Failure(f"{f:.0f} Hz at {got:+.3f} dB, the comb says {want:+.3f}")
+    return ", ".join(said) + f" dB — off the comb by {worst:.4f}"
+
+
+CHECKS.append(("flanger_comb", check_flanger_comb))
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:
