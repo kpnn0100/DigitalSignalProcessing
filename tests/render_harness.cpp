@@ -1129,6 +1129,28 @@ static std::vector<double> renderGate(double ratio)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-fx-transient-1: a 1 kHz square (|x| steady) through the registry's "transient" — arg 0: attack +100 %, the square
+// ±0.02 from 0.1 s out of silence; arg 1: sustain +100 %, ±0.25 then ±0.025 from 0.5 s
+static std::vector<double> renderTransient(double which)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("transient");
+    d->setParam(which > 0 ? "sustain" : "attack", 100.0);
+    std::vector<Sample> L(72000), R(72000);
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        const double a = which > 0 ? (n < 24000 ? 0.25 : 0.025) : (n < 4800 ? 0.0 : 0.02);
+        L[n] = R[n] = n % 48 < 24 ? a : -a;
+    }
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // REQ-808-2: the registry's "808" on A1 (55 Hz) for a second, its defaults but no click, no drive and a long decay (8 s:
 // steady enough in a window to read its pitch)
 static std::vector<double> render808(double)
@@ -1248,6 +1270,7 @@ int main(int argc, char **argv)
     else if (scenario == "808") samples = render808(arg);
     else if (scenario == "multiband") samples = renderMultiband(arg);
     else if (scenario == "gate") samples = renderGate(arg);
+    else if (scenario == "transient") samples = renderTransient(arg);
     else { std::fprintf(stderr, "unknown scenario: %s\n", scenario.c_str()); return 1; }
 
     writeWavMono16(outfile, samples, kSampleRate);

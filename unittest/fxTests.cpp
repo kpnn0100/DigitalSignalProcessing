@@ -216,3 +216,182 @@ TEST(Gate_keyed_opens_on_another_track)
     std::printf("    keyed: open %.4f, shut %.2g (the tone 0.1)\n", open, amp(M, 19200, 4800, 1000.0));
     CHECK(std::fabs(open - 0.1) < 1e-3 && amp(M, 19200, 4800, 1000.0) < 1e-4);
 }
+
+namespace
+{
+    /** A 1 kHz square (|x| steady: its level exact) — `a` before `at`, `b` from it. */
+    void squares(std::vector<Sample> &L, std::vector<Sample> &R, int frames, double a, int at, double b)
+    {
+        L.assign((size_t)frames, 0.0);
+        for (int i = 0; i < frames; ++i) L[(size_t)i] = (i % 48 < 24 ? 1.0 : -1.0) * (i < at ? a : b);
+        R = L;
+    }
+    /** Its gain, dB, after every frame (processed one at a time). */
+    std::vector<double> trace(TransientShaper &t, std::vector<Sample> &L, std::vector<Sample> &R)
+    {
+        std::vector<double> g(L.size());
+        for (size_t i = 0; i < L.size(); ++i)
+        {
+            Sample *io[2] = {L.data() + i, R.data() + i};
+            t.process(io, 2, 1);
+            g[i] = t.gainDb();
+        }
+        return g;
+    }
+    double pole(double ms) { return std::exp(-1.0 / (ms * 48.0)); }
+}
+
+TEST(Transient_at_nothing_is_the_input_to_the_bit)
+{
+    // (TS4)–(TS5): attack and sustain at 0 — the input untouched, to the bit; the output gain alone, exactly
+    configure48();
+    std::vector<Sample> L, R, L0, R0;
+    tones(L, R, 48000, {{55.0, 0.4}, {1234.5, 0.2}});
+    for (int i = 0; i < 48000; i += 6000) L[(size_t)i] = R[(size_t)i] = 0.9; // clicks: transients it must not touch
+    L0 = L;
+    R0 = R;
+    TransientShaper t;
+    blocks(t, L, R);
+    CHECK(L == L0 && R == R0);
+    TransientShaper o;
+    o.setOutputDb(-6.0);
+    blocks(o, L, R);
+    double worst = 0;
+    for (size_t i = 0; i < L.size(); ++i) worst = std::max(worst, std::fabs(L[i] - L0[i] * std::pow(10.0, -6.0 / 20.0)));
+    CHECK(worst < 1e-15);
+}
+
+TEST(Transient_attack_shapes_the_rise)
+{
+    // (TS6): a square from silence — the gain is A·20·log10(e_f / e_r) from the closed forms, to 1e-9 dB, until the
+    // limit; −100 % its mirror; the sustain does nothing on a rise; steady, nothing at all
+    configure48();
+    const double l = 0.02, af = pole(TransientShaper::kFastAttackMs), as = pole(TransientShaper::kSlowAttackMs), eps = 1e-5;
+    auto want = [&](int n) {
+        const double ef = l * (1.0 - std::pow(af, n + 1));
+        const double er = l * ((1.0 - std::pow(as, n + 1)) - (1.0 - as) * af * (std::pow(as, n + 1) - std::pow(af, n + 1)) / (as - af));
+        return 20.0 * std::log10((ef + eps) / (er + eps));
+    };
+    std::vector<double> g[3];
+    const double amounts[3][2] = {{100, 0}, {-100, 0}, {0, 100}};
+    for (int k = 0; k < 3; ++k)
+    {
+        TransientShaper t;
+        t.setAttack(amounts[k][0]);
+        t.setSustain(amounts[k][1]);
+        std::vector<Sample> L, R;
+        squares(L, R, 48000, 0.0, 0, l);
+        g[k] = trace(t, L, R);
+    }
+    double worst = 0, sus = 0;
+    int limited = 0;
+    for (int n = 0; n < 48000; ++n)
+    {
+        const double w = want(n);
+        if (w >= TransientShaper::kLimitDb) { limited += g[0][(size_t)n] == TransientShaper::kLimitDb && g[1][(size_t)n] == -TransientShaper::kLimitDb; continue; }
+        worst = std::max({worst, std::fabs(g[0][(size_t)n] - w), std::fabs(g[1][(size_t)n] + w)});
+        sus = std::max(sus, std::fabs(g[2][(size_t)n]));
+    }
+    std::printf("    +100 %%: %.2f dB at 2 ms, %.2f at 10, %.2f at 50, %.4f at 500 (limited at 24 for %d samples); off the closed form by %.2g\n",
+                g[0][96], g[0][480], g[0][2400], g[0][23999], limited, worst);
+    CHECK(worst < 1e-9);
+    CHECK(limited > 0 && g[0][0] == TransientShaper::kLimitDb);
+    CHECK(g[0][480] > 3.0 && g[0][23999] < 1e-3);
+    CHECK(sus == 0.0);
+}
+
+TEST(Transient_sustain_shapes_the_fall)
+{
+    // (TS6): a square falls 20 dB — the gain is S·20·log10(e_s / e_f) from the closed forms, to 1e-9 dB; −100 % its
+    // mirror; the attack does nothing on a fall
+    configure48();
+    const double hi = 0.25, lo = 0.025, d = hi - lo, eps = 1e-5;
+    const double rf = pole(TransientShaper::kFastReleaseMs), rs = pole(TransientShaper::kSlowReleaseMs);
+    const int at = 24000;
+    auto want = [&](int k) {
+        const double u = d * std::pow(rf, k + 1);
+        const double v = d * (std::pow(rs, k + 1) + rf * (1.0 - rs) * (std::pow(rs, k + 1) - std::pow(rf, k + 1)) / (rs - rf));
+        return 20.0 * std::log10((lo + v + eps) / (lo + u + eps));
+    };
+    std::vector<double> g[3];
+    const double amounts[3][2] = {{0, 100}, {0, -100}, {100, 0}};
+    for (int k = 0; k < 3; ++k)
+    {
+        TransientShaper t;
+        t.setAttack(amounts[k][0]);
+        t.setSustain(amounts[k][1]);
+        std::vector<Sample> L, R;
+        squares(L, R, 72000, hi, at, lo);
+        g[k] = trace(t, L, R);
+    }
+    double worst = 0, att = 0;
+    for (int k = 0; k < 48000; ++k)
+    {
+        const double w = std::min(want(k), TransientShaper::kLimitDb);
+        worst = std::max({worst, std::fabs(g[0][(size_t)(at + k)] - w), std::fabs(g[1][(size_t)(at + k)] + w)});
+        att = std::max(att, std::fabs(g[2][(size_t)(at + k)]));
+    }
+    std::printf("    +100 %%: %.2f dB 10 ms after the fall, %.2f at 100, %.2f at 500; off the closed form by %.2g\n",
+                g[0][(size_t)(at + 480)], g[0][(size_t)(at + 4800)], g[0][(size_t)(at + 23999)], worst);
+    CHECK(worst < 1e-9);
+    CHECK(g[0][(size_t)(at + 4800)] > 6.0);
+    CHECK(att == 0.0);
+}
+
+TEST(Transient_steady_is_untouched)
+{
+    // (TS3): a steady sound — its envelopes meet: a square (|x| steady) at ±100 % exactly 0 dB; a 100 Hz sine, its |x|
+    // rippling, within 0.2 dB at its frequency (each envelope reads the ripple: 0.07 dB the attack's, 0.07 the sustain's)
+    configure48();
+    for (double a : {100.0, -100.0})
+    {
+        TransientShaper t;
+        t.setAttack(a);
+        t.setSustain(a);
+        std::vector<Sample> L, R;
+        squares(L, R, 48000, 0.25, 0, 0.25);
+        const auto g = trace(t, L, R);
+        CHECK(std::fabs(g[47999]) < 1e-9);
+        TransientShaper s;
+        s.setAttack(a);
+        s.setSustain(a);
+        tones(L, R, 96000, {{100.0, 0.25}});
+        blocks(s, L, R);
+        const double off = db(amp(L, 48000, 48000, 100.0) / 0.25);
+        std::printf("    %+.0f %%: a steady 100 Hz sine %+.3f dB\n", a, off);
+        CHECK(std::fabs(off) < 0.2);
+    }
+}
+
+TEST(Transient_is_linked)
+{
+    // (TS1): the left loud and steady, the right rising under it — the loudest channel's level never moved, so the
+    // right's rise passes untouched
+    configure48();
+    TransientShaper t;
+    t.setAttack(100);
+    std::vector<Sample> L, R, Rq, unused;
+    squares(L, unused, 96000, 0.5, 0, 0.5);
+    squares(Rq, unused, 96000, 0.0, 72000, 0.25); // 1.5 s on: the left's own rise long gone (a_s^72000 = e^−50)
+    R = Rq;
+    const auto g = trace(t, L, R);
+    double moved = 0;
+    for (int i = 72000; i < 72480; ++i) moved = std::max(moved, std::fabs(g[(size_t)i]));
+    CHECK(moved < 1e-9);
+}
+
+TEST(Transient_does_not_allocate)
+{
+    configure48();
+    TransientShaper t;
+    t.setAttack(50);
+    t.setSustain(-50);
+    std::vector<Sample> L, R;
+    tones(L, R, 4096, {{110.0, 0.5}});
+    Sample *io[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    t.process(io, 2, 4096);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0);
+}

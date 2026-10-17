@@ -640,6 +640,15 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   → −10.000 dB; open within 0.6 dB 5 ms into a tone; a right-only tone carries the left), `Gate_holds_open_before_it_closes`,
   `Gate_keyed_opens_on_another_track`, and the integration check `gate_curve` (a square at −20 then −50 dBFS: 2:1
   → −10 dB in 16 bits; gated: silence).
+- `REQ-fx-transient-1` — **A transient shaper** (source: Solaris R-FX-8, "implement all", 2026-10-17):
+  `TransientShaper` — more or less attack and more or less sustain, whatever the level: a fast envelope (1 ms / 100 ms)
+  against two slow ones that follow it, one only up (30 ms), one only down (1 s); the rise and the fall in dB, each
+  scaled by its amount (−100 … +100 %), are the gain, limited at ±24 dB; linked across channels; at 0 % the input to
+  the bit; an output gain; the registry's "transient". (TS1)–(TS6). Guarded by `Transient_at_nothing_is_the_input_to_the_bit`,
+  `Transient_attack_shapes_the_rise` and `Transient_sustain_shapes_the_fall` (each sample to the step's closed forms
+  within 1e−9 dB; −100 % the mirror; the other amount does nothing), `Transient_steady_is_untouched` (a square: 0 dB;
+  a 100 Hz sine within 0.2 dB), `Transient_is_linked`, `Transient_does_not_allocate`, and the integration check
+  `transient_follows_its_closed_forms` (from the WAV, to 0.02 dB).
 - `REQ-resample-2` — **A stream held to another clock** (source: Solaris R-DEV-2, user request 2026-10-08: *"handle
   multiple audio devices"*; discussion Round 11, 2026-10-17): `AdaptiveResampler` — interleaved, any channel count,
   read `step` input frames an output frame, the step free to change every block with no click (the read position

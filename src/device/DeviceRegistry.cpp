@@ -5,6 +5,7 @@
 #include "../effects/Limiter.h"
 #include "../effects/MultibandCompressor.h"
 #include "../effects/Gate.h"
+#include "../effects/TransientShaper.h"
 #include "../instrument/Sampler.h"
 #include "../effects/Overdrive.h"
 #include "../effects/Repeater.h"
@@ -725,6 +726,17 @@ namespace arstro
             return b;
         }
 
+        // REQ-fx-transient-1: more or less attack, more or less sustain
+        const std::vector<Binding<TransientShaper>> &transientBindings()
+        {
+            static const std::vector<Binding<TransientShaper>> b = {
+                {num("attack", "Attack", "%", -100, 100, 0), [](TransientShaper &t, double x) { t.setAttack(x); }},
+                {num("sustain", "Sustain", "%", -100, 100, 0), [](TransientShaper &t, double x) { t.setSustain(x); }},
+                {num("output", "Output", "dB", -24, 24, 0), [](TransientShaper &t, double x) { t.setOutputDb(x); }},
+            };
+            return b;
+        }
+
         // REQ-fx-gate-1: a gate and a downward expander
         const std::vector<Binding<Gate>> &gateBindings()
         {
@@ -990,6 +1002,7 @@ namespace arstro
                 gate.takesKey = true;
                 v.push_back(gate);
             }
+            v.push_back(effectType<TransientShaper>("transient", "Transient Shaper", "More or less attack, more or less sustain, whatever the level: a fast envelope against two slow ones.", &transientBindings)); // REQ-fx-transient-1
             v.push_back(effectType<MultibandCompressor>("multiband", "Multiband", "Three bands split by Linkwitz-Riley crossovers, each compressed alone; flat when nothing is.", &multibandBindings)); // REQ-fx-multiband-1
             v.push_back(effectType<Reverb>("reverb", "Reverb", "Feedback-delay-network reverb, decorrelated stereo.", &reverbBindings));
             v.push_back(effectType<Repeater>("delay", "Delay", "Feedback echo, each repeat darker.", &delayBindings));

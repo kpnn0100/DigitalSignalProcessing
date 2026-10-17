@@ -282,3 +282,50 @@ on another track).
 from the sample rate. A 2:1 expander 10 dB under its threshold turns down 10.000 dB (`Gate_passes_the_loud_and_shuts_the_quiet`,
 `gate_curve`); held 20 ms past a fall from a tone, then closed by 80·(1 − e⁻⁴) = 78.5 dB four release constants on
 (`Gate_holds_open_before_it_closes`).
+
+## Math — `TransientShaper.cpp` (REQ-fx-transient-1)
+
+More or less attack, more or less sustain — whatever the level. **Why not composed (rule 1):** the `Compressor` and the
+`Gate` turn a sound toward a curve OF its level, so a loud hit and a quiet one are treated differently; a transient
+shaper compares the envelope with a slower copy of itself, so it acts on how the level MOVES, at any level. It keeps
+(C2)'s follower form, three times over.
+
+```
+(TS1) Level — linked across channels:  ℓ[n] = max_c |x_c[n]|
+(TS2) The fast envelope (C2's form):  e_f[n] = a_f·(e_f[n−1] − ℓ) + ℓ   if ℓ > e_f[n−1]
+                                             = r_f·(e_f[n−1] − ℓ) + ℓ   otherwise
+      a_f, r_f = e^(−1/(τ·fs/1000)), τ = 1 ms, 100 ms
+(TS3) Two slow envelopes that follow e_f — one only up, one only down:
+      e_r[n] = a_s·(e_r[n−1] − e_f[n]) + e_f[n]   if e_f[n] > e_r[n−1],  else e_f[n]      (up at 30 ms, down at once)
+      e_s[n] = r_s·(e_s[n−1] − e_f[n]) + e_f[n]   if e_f[n] < e_s[n−1],  else e_f[n]      (down at 1 s, up at once)
+      so e_r ≤ e_f ≤ e_s always, and on a steady level the three meet
+(TS4) The rise and the fall, in dB:  D_a = 20·log10((e_f + ε)/(e_r + ε)) ≥ 0,  D_s = 20·log10((e_s + ε)/(e_f + ε)) ≥ 0
+      ε = 10^−5 (−100 dB: silence reads as no movement)
+      g = clamp(A·D_a + S·D_s, −24, +24) dB,   A = attack / 100,  S = sustain / 100
+(TS5) y_c = x_c · 10^((g + out)/20);   A = S = 0 and out = 0: y = x, to the bit
+(TS6) After a step — the closed forms its tests hold it to:
+      from silence to a steady ℓ at n = 0:
+        e_f[n] = ℓ·(1 − a_f^(n+1))
+        e_r[n] = ℓ·[(1 − a_s^(n+1)) − (1 − a_s)·a_f·(a_s^(n+1) − a_f^(n+1)) / (a_s − a_f)]
+      a fall from ℓ1 to ℓ2 (Δ = ℓ1 − ℓ2), k samples on:
+        e_f = ℓ2 + Δ·r_f^(k+1)
+        e_s = ℓ2 + Δ·[r_s^(k+1) + r_f·(1 − r_s)·(r_s^(k+1) − r_f^(k+1)) / (r_s − r_f)]
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `attack` | A·100 | % −100 … +100 (−100 takes the rise away, +100 doubles it in dB) | 0 |
+| `sustain` | S·100 | % −100 … +100 (−100 takes the tail away, +100 holds it toward the 1 s fall) | 0 |
+| `output` | out | dB −24 … +24 | 0 |
+
+The time constants are chosen, not derived (`kFastAttackMs` … `kSlowReleaseMs`): 1 ms catches a drum's front; 30 ms is
+how long a rise counts as an attack; 1 s is the fall a tail is measured against; 100 ms for the fast envelope's fall
+halves the steady ripple 50 ms gives while still following a decay. The ±24 dB limit (`kLimitDb`) keeps a sound
+starting from silence — an infinite rise — finite. A steady sine's |x| ripples, which the envelopes read as a small
+rise and fall: 0.07 dB each at 100 Hz, 0.2 at 30 Hz (`Transient_steady_is_untouched`); a square, its |x| steady,
+is untouched exactly.
+
+At +100 % attack a sound from silence is 11.70 dB louder 10 ms in and 1.89 dB at 50 ms; at +100 % sustain a 20 dB fall
+is 7.03 dB less 100 ms on (`Transient_attack_shapes_the_rise`, `Transient_sustain_shapes_the_fall`, both to (TS6) within
+1e−9 dB; `transient_follows_its_closed_forms` from the WAV). (TS1)–(TS5) are `TransientShaper::process`; the
+per-sample constants are the constructor's, from the sample rate.

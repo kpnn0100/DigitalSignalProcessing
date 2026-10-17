@@ -1449,6 +1449,38 @@ def check_gate_curve(binpath):
 
 CHECKS.append(("gate_curve", check_gate_curve))
 
+def check_transient_follows_its_closed_forms(binpath):
+    """REQ-fx-transient-1 (TS6): a 1 kHz square (|x| steady, so every sample shows the gain) — attack +100 % out of
+    silence, and sustain +100 % on a 20 dB fall: the gain each sample of the first 100 ms is the closed forms' (written
+    here from the README, not from the code), limited at 24 dB, to 0.02 dB (16 bits: 655 and 819 LSB)."""
+    def p(ms):
+        return math.exp(-1.0 / (ms * SR / 1000.0))
+    af, rf, as_, rs, eps = p(1.0), p(100.0), p(30.0), p(1000.0), 1e-5
+    rise = render(binpath, "transient", 0)
+    fall = render(binpath, "transient", 1)
+    worst_a = worst_s = 0.0
+    for n in range(0, 4800):
+        l = 0.02
+        ef = l * (1 - af ** (n + 1))
+        er = l * ((1 - as_ ** (n + 1)) - (1 - as_) * af * (as_ ** (n + 1) - af ** (n + 1)) / (as_ - af))
+        want = min(24.0, 20 * math.log10((ef + eps) / (er + eps)))
+        got = 20 * math.log10(abs(rise[4800 + n]) / l)
+        worst_a = max(worst_a, abs(got - want))
+        d, lo = 0.25 - 0.025, 0.025
+        u = d * rf ** (n + 1)
+        v = d * (rs ** (n + 1) + rf * (1 - rs) * (rs ** (n + 1) - rf ** (n + 1)) / (rs - rf))
+        want = min(24.0, 20 * math.log10((lo + v + eps) / (lo + u + eps)))
+        got = 20 * math.log10(abs(fall[24000 + n]) / lo)
+        worst_s = max(worst_s, abs(got - want))
+    if worst_a > 0.02 or worst_s > 0.02:
+        raise Failure(f"off the closed forms: the rise by {worst_a:.3f} dB, the fall by {worst_s:.3f} dB")
+    at10 = 20 * math.log10(abs(rise[4800 + 480]) / 0.02)
+    at100 = 20 * math.log10(abs(fall[24000 + 4800 - 1]) / 0.025)
+    return f"rise +{at10:.2f} dB at 10 ms, fall +{at100:.2f} dB at 100 ms; off the closed forms by {worst_a:.4f} / {worst_s:.4f} dB"
+
+
+CHECKS.append(("transient_follows_its_closed_forms", check_transient_follows_its_closed_forms))
+
 def main():
     binpath = os.path.join(tempfile.gettempdir(), "arstro_render_harness")
     try:

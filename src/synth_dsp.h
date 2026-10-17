@@ -47,6 +47,7 @@
 #include "effects/Limiter.h"
 #include "effects/MultibandCompressor.h"
 #include "effects/Gate.h"
+#include "effects/TransientShaper.h"
 #include "effects/Overdrive.h"
 #include "effects/Chorus.h"
 #include "effects/Repeater.h"
