@@ -10,6 +10,7 @@
 #include "../effects/Saturator.h"
 #include "../effects/Bitcrusher.h"
 #include "../effects/Phaser.h"
+#include "../effects/Shaper.h"
 #include "../effects/Flanger.h"
 #include "../effects/Imager.h"
 #include "../effects/Convolver.h"
@@ -684,6 +685,7 @@ namespace arstro
             int latency() const override { return latencyOf(mProc, 0); }
             void setSample(const float *x, long long frames, int channels, double rate) override { sampleOf(mProc, x, frames, channels, rate, 0); }
             double reading(int i) const override { return readingOf(mProc, i, 0); }
+            void setTransport(const Transport &t) override { transportOf(mProc, t, 0); }
 
         protected:
             void apply(int i, double v) override { mB[i].set(mProc, v); }
@@ -709,6 +711,12 @@ namespace arstro
             // REQ-device-11: an effect that measures says what it measured
             template <class Q> static auto readingOf(const Q &p, int i, int) -> decltype(p.reading(i), 0.0) { return p.reading(i); }
             template <class Q> static double readingOf(const Q &, int, long) { return 0.0; }
+            // REQ-device-12: an effect that follows the song's beat is told where the song is
+            template <class Q> static auto transportOf(Q &p, const Transport &t, int) -> decltype(p.setTransport(t.sample, t.samplesPerBeat, t.beatOffset), void())
+            {
+                p.setTransport(t.sample, t.samplesPerBeat, t.beatOffset);
+            }
+            template <class Q> static void transportOf(Q &, const Transport &, long) {}
             Proc mProc;
             const std::vector<Binding<Proc>> &mB;
         };
@@ -794,6 +802,21 @@ namespace arstro
                 {num("rate", "Rate", "Hz", 100, 96000, 96000, true), [](Bitcrusher &c, double x) { c.setRate(x); }},
                 {num("mix", "Mix", "", 0, 1, 1), [](Bitcrusher &c, double x) { c.setMix(x); }},
                 {num("output", "Output", "dB", -24, 12, 0), [](Bitcrusher &c, double x) { c.setOutputDb(x); }},
+            };
+            return b;
+        }
+
+        // REQ-fx-shaper-1: a volume shaped by the song's beat
+        const std::vector<Binding<Shaper>> &shaperBindings()
+        {
+            static const std::vector<Binding<Shaper>> b = {
+                {choice("rate", "Rate", {"1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/4T", "1/8T", "1/16T", "1/4D", "1/8D"}, 3),
+                 [](Shaper &p, double x) { p.setRate((int)x); }},
+                {choice("shape", "Shape", {"sine", "triangle", "saw down", "saw up", "square", "pump"}, 5), [](Shaper &p, double x) { p.setShape((int)x); }},
+                {num("depth", "Depth", "", 0, 1, 0.8), [](Shaper &p, double x) { p.setDepth(x); }},
+                {num("phase", "Phase", "", 0, 1, 0), [](Shaper &p, double x) { p.setPhase(x); }},
+                {num("stereo", "Stereo", "", 0, 0.5, 0), [](Shaper &p, double x) { p.setStereo(x); }},
+                {num("smooth", "Smooth", "ms", 0, 20, 2), [](Shaper &p, double x) { p.setSmoothMs(x); }},
             };
             return b;
         }
@@ -1167,6 +1190,7 @@ namespace arstro
             v.push_back(effectType<PitchShifter>("pitch", "Pitch Shifter", "A sound moved up or down, its length kept: two taps sweeping a delay line, crossfaded; its latency reported.", &pitchBindings)); // REQ-fx-pitch-1
             v.push_back(effectType<Imager>("imager", "Imager", "Wider or narrower, and mono below a frequency: mid and side, the side scaled, its lows taken away.", &imagerBindings)); // REQ-fx-imager-1
             v.push_back(effectType<Flanger>("flanger", "Flanger", "A short delay swept by an LFO and fed back: a comb whose teeth sweep.", &flangerBindings)); // REQ-fx-flanger-1
+            v.push_back(effectType<Shaper>("shaper", "Shaper", "A volume shaped by the song's beat: a tempo-synced LFO — a sine, triangle, saw, square or pump, a note value long — turning the sound down and up.", &shaperBindings)); // REQ-fx-shaper-1
             v.push_back(effectType<Phaser>("phaser", "Phaser", "Notches swept by an LFO: first-order all-passes fed back, mixed with the dry sound.", &phaserBindings)); // REQ-fx-phaser-1
             v.push_back(effectType<Saturator>("saturator", "Saturator", "A curve driven — soft, hard, tube or fold — four times oversampled, its latency reported.", &saturatorBindings)); // REQ-fx-saturator-1
             v.push_back(effectType<Bitcrusher>("bitcrusher", "Bitcrusher", "Fewer bits and a lower rate: each sample rounded to a coarser grid, held for longer.", &bitcrusherBindings)); // REQ-fx-bitcrusher-1

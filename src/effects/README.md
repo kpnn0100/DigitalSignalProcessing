@@ -458,6 +458,42 @@ Linkwitz-Riley biquads, the reverb's diffusion an FDN); the stage is one line, s
 Still, a sine at each f_k cancels to the float floor (4 and 8 stages); with feedback ½ and mix 0.7 every frequency
 is (PH5) to 0.0000 dB (`Phaser_notches_where_the_phase_says`); the sweep is (PH2) to 1e−9 (`Phaser_sweeps_its_break`).
 
+## Math — `Shaper.cpp` (REQ-fx-shaper-1)
+
+A volume shaped by the song's beat — the tempo-synced volume LFO electronic music uses for wobbling chords and a pump
+without a key. **Why not composed:** the library's LFOs (the phaser's, the flanger's, the chorus's) run free in Hz; this
+one must sit on the song's grid, so its phase is read from the host's transport (`Device::Transport`, REQ-device-12),
+not accumulated. The rest is one multiply.
+
+```
+(SH1) The cycle — a note value P beats long (a beat a quarter note): 1/1 4 · 1/2 2 · 1/4 1 · 1/8 ½ · 1/16 ¼ · 1/32 ⅛ ·
+      1/4T ⅔ · 1/8T ⅓ · 1/16T ⅙ · 1/4D 3/2 · 1/8D ¾. The beat at a block's i-th sample, from the transport:
+      b = offset + (sample + i) / samplesPerBeat     — (sample + i) a whole number: the same however a render is cut
+      φ_c = frac(b / P + phase + (c odd ? stereo : 0))              (`Shaper::process`; `Shaper::beatsOfRate`)
+(SH2) The shape's open amount w(φ), 0 the floor, 1 open — each closed where the beat falls but the saw down:
+      sine ½ − ½·cos 2πφ · triangle 1 − |2φ − 1| · saw down 1 − φ · saw up φ · square 0 below ½, 1 from ½ ·
+      pump (1 − e^(−φ/τ)) / (1 − e^(−1/τ)), τ = 0.18 (empirical: a kick's duck back to 63 % in under a fifth of the
+      cycle, as a sidechain's release sounds)                              (`Shaper::shapeAt`)
+(SH3) The gain:  g = 1 − depth·(1 − w)
+(SH4) A one-pole glide toward it:  ĝ ← ĝ + α·(g − ĝ),  α = 1 − e^(−1/(fs·t_s)),  t_s = smooth (0: ĝ = g)
+(SH5) y = x·ĝ
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `rate` | P | a note value, 1/1 … 1/32, triplets, dotted | 1/8 |
+| `shape` | w | sine, triangle, saw down, saw up, square, pump | pump |
+| `depth` | depth | 0 … 1 | 0.8 |
+| `phase` | phase | cycles 0 … 1 | 0 |
+| `stereo` | stereo | cycles 0 … 0.5 (the odd channels ahead) | 0 |
+| `smooth` | t_s | ms 0 … 20 | 2 |
+
+Without a transport (a host that never says where the song is) it counts its own samples at 120 bpm. Guarded by
+`Shaper_follows_the_song_beat` (every sample's gain (SH1)–(SH3) to 1e−12 at an arbitrary place in a song),
+`_shapes_open_and_close_on_the_beat`, `_rates_are_note_values`, `_stereo_offsets_the_odd_channels`,
+`_smooths_its_edges`, `_same_in_any_blocks_and_does_not_allocate`, `_device_follows_the_transport`; integration
+`shaper_on_the_grid` (a sixteenth square at 128 bpm: each closed half under −80 dB, each open half the sine to 0.05 dB).
+
 ## Math — `Flanger.cpp` (REQ-fx-flanger-1)
 
 A short delay swept and fed back. **Composed of:** one library `Delay` per channel (interpolated between samples —

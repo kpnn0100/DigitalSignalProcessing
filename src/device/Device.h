@@ -155,6 +155,17 @@ namespace arstro
         {
             (void)name; (void)interleaved; (void)frames; (void)channels; (void)rate;
         }
+        /** REQ-device-12: where the song is, for a device that follows its beat (a shaper). `sample` is the absolute
+         *  sample the NEXT process() call starts at; the beat at its i-th frame is
+         *  `beatOffset + (sample + i) / samplesPerBeat` — on a steady tempo the same arithmetic however a render is cut
+         *  into blocks, so a render stays byte-identical. Between blocks, on the thread that renders; others ignore it. */
+        struct Transport
+        {
+            long long sample = 0;
+            double samplesPerBeat = 24000.0; // 120 bpm at 48 kHz
+            double beatOffset = 0.0;
+        };
+        virtual void setTransport(const Transport &t) { (void)t; }
         /** Clear all state: tails, voices, filter memory (a seek). */
         virtual void reset() = 0;
         /** Voices still sounding (instruments); 0 for an effect. */

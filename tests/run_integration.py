@@ -1644,6 +1644,27 @@ def check_phaser_notches(binpath):
 
 CHECKS.append(("phaser_notches", check_phaser_notches))
 
+
+def check_shaper_on_the_grid(binpath):
+    """REQ-fx-shaper-1 (SH1)–(SH5), REQ-device-12: a square a sixteenth long at 128 bpm — every first half of each
+    5625-sample cycle silent (under −80 dB), every second half the sine whole (0.354 rms, within 0.05 dB), all 2 s."""
+    y = render(binpath, "shaper", 0)
+    cyc, half, worst_closed, worst_open = 5625, 2812, -999.0, 0.0
+    for k in range(int(len(y) / cyc) - 1):
+        a = k * cyc
+        closed = y[a + 8:a + half - 8]
+        opened = y[a + half + 8:a + cyc - 8]
+        rc = math.sqrt(sum(v * v for v in closed) / len(closed))
+        ro = math.sqrt(sum(v * v for v in opened) / len(opened))
+        worst_closed = max(worst_closed, 20 * math.log10(max(rc, 1e-9) / 0.3536))
+        worst_open = max(worst_open, abs(20 * math.log10(max(ro, 1e-9) / 0.3536)))
+    if worst_closed > -80 or worst_open > 0.05:
+        raise Failure(f"closed halves up to {worst_closed:.1f} dB, open halves {worst_open:.3f} dB off")
+    return f"{int(len(y) / cyc) - 1} sixteenths: closed ≤ {worst_closed:.1f} dB, open within {worst_open:.3f} dB"
+
+
+CHECKS.append(("shaper_on_the_grid", check_shaper_on_the_grid))
+
 def check_flanger_comb(binpath):
     """REQ-fx-flanger-1 (FL4): still at 1 ms (48 samples), feedback 0.6, mix ½ — each tone (300, 500, 1000, 1700 Hz)
     comes out |(1 − m) + m·e^(−jωD)/(1 − fb·e^(−jωD))| of itself, the comb computed here, to 0.05 dB (whole

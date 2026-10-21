@@ -968,6 +968,152 @@ TEST(Phaser_same_in_any_blocks_and_does_not_allocate)
     CHECK(gAllocs.load() == 0);
 }
 
+// REQ-fx-shaper-1 (SH2): each shape's open amount through its cycle — closed where the beat falls (a saw down open)
+TEST(Shaper_shapes_open_and_close_on_the_beat)
+{
+    using S = Shaper::Shape;
+    CHECK(std::fabs(Shaper::shapeAt(S::Sine, 0.0)) < 1e-12 && std::fabs(Shaper::shapeAt(S::Sine, 0.5) - 1.0) < 1e-12 &&
+          std::fabs(Shaper::shapeAt(S::Sine, 0.25) - 0.5) < 1e-12);
+    CHECK(std::fabs(Shaper::shapeAt(S::Triangle, 0.25) - 0.5) < 1e-12 && std::fabs(Shaper::shapeAt(S::Triangle, 0.5) - 1.0) < 1e-12);
+    CHECK(std::fabs(Shaper::shapeAt(S::SawDown, 0.0) - 1.0) < 1e-12 && std::fabs(Shaper::shapeAt(S::SawUp, 0.75) - 0.75) < 1e-12);
+    CHECK(Shaper::shapeAt(S::Square, 0.49) == 0.0 && Shaper::shapeAt(S::Square, 0.5) == 1.0);
+    // the pump: (1 − e^(−φ/τ)) / (1 − e^(−1/τ)), τ 0.18 — closed on the beat, back to 63 % of open by τ
+    const double tau = 0.18, want = (1 - std::exp(-1.0)) / (1 - std::exp(-1.0 / tau));
+    CHECK(Shaper::shapeAt(S::Pump, 0.0) == 0.0 && std::fabs(Shaper::shapeAt(S::Pump, tau) - want) < 1e-12 &&
+          std::fabs(Shaper::shapeAt(S::Pump, 1.0 - 1e-12) - 1.0) < 1e-9);
+}
+
+// (SH1) a note value in beats — straight, triplet, dotted
+TEST(Shaper_rates_are_note_values)
+{
+    const double want[] = {4, 2, 1, 0.5, 0.25, 0.125, 2.0 / 3.0, 1.0 / 3.0, 1.0 / 6.0, 1.5, 0.75};
+    for (int r = 0; r < Shaper::kRates; ++r) CHECK(std::fabs(Shaper::beatsOfRate(r) - want[r]) < 1e-15);
+}
+
+// REQ-device-12, (SH1)/(SH3): the gain at each sample is the shape at the SONG's beat there — told by the transport
+TEST(Shaper_follows_the_song_beat)
+{
+    configure48();
+    Shaper sh;
+    sh.setRate(3); // an eighth: half a beat
+    sh.setShape(0);
+    sh.setDepth(0.75);
+    sh.setSmoothMs(0);
+    const long long at = 1234567;
+    const double spb = 22500.0, offset = 3.25; // 128 bpm, a song whose line starts at beat 3.25
+    sh.setTransport(at, spb, offset);
+    std::vector<Sample> L(4096, 1.0), R(4096, 1.0);
+    Sample *io[2] = {L.data(), R.data()};
+    sh.process(io, 2, 4096);
+    double worst = 0;
+    for (int i = 0; i < 4096; ++i)
+    {
+        double phi = (offset + (double)(at + i) / spb) / 0.5;
+        phi -= std::floor(phi);
+        const double want = 1.0 - 0.75 * (1.0 - (0.5 - 0.5 * std::cos(2 * 3.14159265358979323846 * phi))); // (SH3)
+        worst = std::max(worst, std::fabs(L[(size_t)i] - want));
+    }
+    CHECK(worst < 1e-12);
+}
+
+// the odd channels a `stereo` of a cycle ahead
+TEST(Shaper_stereo_offsets_the_odd_channels)
+{
+    configure48();
+    Shaper sh;
+    sh.setRate(2); // a quarter: one beat
+    sh.setShape(1);
+    sh.setDepth(1);
+    sh.setSmoothMs(0);
+    sh.setStereo(0.5);
+    sh.setTransport(0, 24000.0, 0.0);
+    std::vector<Sample> L(24000, 1.0), R(24000, 1.0);
+    Sample *io[2] = {L.data(), R.data()};
+    sh.process(io, 2, 24000);
+    double worst = 0;
+    for (int i = 0; i < 12000; ++i) worst = std::max(worst, std::fabs(R[(size_t)i] - L[(size_t)i + 12000]));
+    CHECK(worst < 1e-12 && L[0] < 1e-12 && std::fabs(R[0] - 1.0) < 1e-12);
+}
+
+// (SH4) a square's edge glides: 1 − e^(−1) of the way after one time constant
+TEST(Shaper_smooths_its_edges)
+{
+    configure48();
+    Shaper sh;
+    sh.setRate(2);
+    sh.setShape(4);
+    sh.setDepth(1);
+    sh.setSmoothMs(5);
+    sh.setTransport(0, 24000.0, 0.0);
+    std::vector<Sample> L(24000, 1.0), R(24000, 1.0);
+    Sample *io[2] = {L.data(), R.data()};
+    sh.process(io, 2, 24000);
+    // the edge at half a beat (12000): 240 samples (5 ms) later the gain has come 63 % of the way
+    const double got = L[12000 + 240], want = 1.0 - std::exp(-241.0 / 240.0);
+    CHECK(L[11999] < 1e-9 && std::fabs(got - want) < 0.01 && L[12000] < 0.01);
+}
+
+// the same however a render is cut, told the transport each block or counting its own; nothing allocated
+TEST(Shaper_same_in_any_blocks_and_does_not_allocate)
+{
+    configure48();
+    auto run = [](int block, bool told) {
+        Shaper sh;
+        sh.setRate(8); // a sixteenth triplet
+        sh.setShape(5);
+        sh.setStereo(0.25);
+        std::vector<Sample> L, R;
+        tones(L, R, 9600, {{220.0, 0.5}, {2500.0, 0.2}});
+        for (size_t at = 0; at < L.size(); at += (size_t)block)
+        {
+            if (told) sh.setTransport(777000 + (long long)at, 22500.0, 1.5);
+            Sample *io[2] = {L.data() + at, R.data() + at};
+            sh.process(io, 2, (int)std::min((size_t)block, L.size() - at));
+        }
+        return L;
+    };
+    const auto a = run(1, true), b = run(128, true), c = run(777, true);
+    CHECK(a == b && a == c);
+    const auto d = run(1, false), e = run(500, false);
+    CHECK(d == e);
+    Shaper sh;
+    std::vector<Sample> L, R;
+    tones(L, R, 4096, {{220.0, 0.5}});
+    Sample *io[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    sh.process(io, 2, 4096);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0);
+}
+
+// REQ-device-12: the registry's "shaper" is told where the song is through Device::setTransport
+TEST(Shaper_device_follows_the_transport)
+{
+    configure48();
+    auto d = DeviceRegistry::create("shaper");
+    CHECK(d != nullptr);
+    d->setParam("rate", 4); // a sixteenth
+    d->setParam("shape", 4);
+    d->setParam("depth", 1);
+    d->setParam("smooth", 0);
+    Device::Transport t;
+    t.sample = 0;
+    t.samplesPerBeat = 24000.0;
+    t.beatOffset = 0.125; // half a sixteenth in: the square already open
+    d->setTransport(t);
+    std::vector<Sample> L(64, 1.0), R(64, 1.0);
+    Sample *io[2] = {L.data(), R.data()};
+    d->process(io, 2, 64);
+    CHECK(std::fabs(L[0] - 1.0) < 1e-12);
+    t.beatOffset = 0.0; // on the sixteenth: closed
+    d->setTransport(t);
+    std::fill(L.begin(), L.end(), 1.0);
+    std::fill(R.begin(), R.end(), 1.0);
+    d->process(io, 2, 64);
+    CHECK(L[0] < 1e-12);
+}
+
 TEST(Delay_reads_between_samples)
 {
     // D-18 (Solaris DEFECTS): read(D + f) before a write lies between the samples D + 1 and D + 2 back —

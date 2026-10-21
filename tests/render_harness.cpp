@@ -1299,6 +1299,32 @@ static std::vector<double> renderBitcrusher(double)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-fx-shaper-1, REQ-device-12: a 1 kHz sine at 0.5 through the registry's "shaper" — a square, a sixteenth long,
+// all the way down, at 128 bpm (22 500 samples a beat), told where the song is each 128-frame block; 2 s
+static std::vector<double> renderShaper(double)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("shaper");
+    d->setParam("rate", 4.0);
+    d->setParam("shape", 4.0);
+    d->setParam("depth", 1.0);
+    d->setParam("smooth", 0.0);
+    std::vector<Sample> L(96000), R(96000);
+    for (size_t n = 0; n < L.size(); ++n) L[n] = R[n] = 0.5 * std::sin(2 * M_PI * 1000.0 * (double)n / kSampleRate);
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Device::Transport t;
+        t.sample = (long long)pos;
+        t.samplesPerBeat = 22500.0;
+        t.beatOffset = 0.0;
+        d->setTransport(t);
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // REQ-fx-phaser-1: still (depth 0), 4 stages at 1 kHz, no feedback, mix ½ — 0.3 each of the two notches (414.7 and
 // 2397.8 Hz) and of the break frequency, 1 s through the registry's "phaser"
 static std::vector<double> renderPhaser(double)
@@ -1592,6 +1618,7 @@ int main(int argc, char **argv)
     else if (scenario == "saturator") samples = renderSaturator(arg);
     else if (scenario == "bitcrusher") samples = renderBitcrusher(arg);
     else if (scenario == "phaser") samples = renderPhaser(arg);
+    else if (scenario == "shaper") samples = renderShaper(arg);
     else if (scenario == "flanger") samples = renderFlanger(arg);
     else if (scenario == "imager") samples = renderImager(arg);
     else if (scenario == "convolution") samples = renderConvolution(arg);

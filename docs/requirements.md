@@ -682,6 +682,13 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   "bitcrusher". (BC1)–(BC3). Guarded by `Bitcrusher_rounds_to_its_grid` (the grid exactly; SNR 6.02·b + 1.76 +
   20·log10 a to 0.5 dB at 8 and 12 bits), `Bitcrusher_holds_at_its_rate`, `Bitcrusher_dry_is_the_input`,
   `Bitcrusher_does_not_allocate`, and the integration check `bitcrusher_grid_and_hold`.
+- `REQ-fx-shaper-1` — **A volume shaped by the song's beat** (source: Solaris R-FX-18, user request 2026-10-21): `Shaper`
+  — a tempo-synced LFO a note value long (1/1 … 1/32, triplets, dotted) turning the sound down by `depth` in a shape
+  (sine, triangle, saw down, saw up, square, pump), its phase the song's beat (REQ-device-12), the odd channels
+  `stereo` of a cycle ahead, glided by `smooth` ms; the registry's "shaper". (SH1)–(SH5). Guarded by
+  `Shaper_follows_the_song_beat`, `Shaper_shapes_open_and_close_on_the_beat`, `Shaper_rates_are_note_values`,
+  `Shaper_stereo_offsets_the_odd_channels`, `Shaper_smooths_its_edges`, `Shaper_same_in_any_blocks_and_does_not_allocate`,
+  `Shaper_device_follows_the_transport`; integration `shaper_on_the_grid`.
 - `REQ-fx-phaser-1` — **A phaser** (source: Solaris R-FX-11, "implement all", 2026-10-17): `Phaser` — 2 … 12 first-order
   all-passes (the bilinear transform's, a = (t − 1)/(t + 1)), their break frequency swept by a sine in log frequency
   (centre, depth in octaves, rate; the odd channels `stereo` degrees ahead), fed back a sample on, mixed with the dry
@@ -736,6 +743,12 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   kept in atomics the thread that runs it writes and any thread reads; an effect's processor that has `reading(i)` is
   read through the registry's adapter (found by member); a device that measures nothing reads 0. Guarded by
   `Tuner_device_reads_through_its_face`.
+- `REQ-device-12` — **A device knows where the song is** (source: Solaris R-FX-18, user request 2026-10-21: tracks in
+  styles whose chords wobble on the beat): `Device::setTransport(Transport)` before a block — the absolute sample it
+  starts at, the samples a beat lasts, the beat at the start of that tempo's line — so a device that follows the beat
+  reads `offset + (sample + i)/samplesPerBeat` at its i-th frame, whole-sample arithmetic that is the same however a
+  render is cut; a device that does not ignores it; an effect's processor that has `setTransport(sample, spb, offset)`
+  is told through the registry's adapter (found by member). Guarded by `Shaper_device_follows_the_transport`.
 - `REQ-tuner-1` — **A tuner** (source: Solaris R-FX-17, "implement all", Round 12, 2026-10-17): `Tuner` (src/meter/) —
   YIN over a 2048-sample window every 512: the difference function by the FFT's correlation and running energies,
   normalised by its running mean, the first dip under 0.15, a parabola through d itself; under −60 dBFS no pitch; its

@@ -90,6 +90,7 @@ package device {
     +setParam(i|name, v) : clamped
     +noteOn / noteOff / reset
     +latency() : samples its output lags (REQ-device-8)
+    +setTransport(Transport) : where the song is, before a block (REQ-device-12)
     #apply(i, v)
   }
   class DeviceRegistry <<static>> {
@@ -289,6 +290,12 @@ package effects {
   class Bitcrusher {
     +setBits / setRate / setMix / setOutputDb
     +process(io**, ch, frames) : (BC1)-(BC3) the grid, the hold
+  }
+  class Shaper {
+    +setRate / setShape / setDepth / setPhase / setStereo / setSmoothMs
+    +setTransport(sample, samplesPerBeat, beatOffset) : REQ-device-12
+    +process(io**, ch, frames) : (SH1)-(SH5) the song's beat, a shape, a glide
+    +{static} shapeAt(shape, φ) / beatsOfRate(rate)
   }
   class Phaser {
     +setStages / setRateHz / setCenterHz / setDepthOct / setFeedback / setStereoDeg / setMix
