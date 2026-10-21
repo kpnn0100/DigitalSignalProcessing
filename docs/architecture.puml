@@ -291,6 +291,12 @@ package effects {
     +setBits / setRate / setMix / setOutputDb
     +process(io**, ch, frames) : (BC1)-(BC3) the grid, the hold
   }
+  class Vowel {
+    +setVowel / setShift / setResonance / setMix / setOutputDb / setGlideMs
+    +process(io**, ch, frames) : (VW1)-(VW5) three formants, morphed, summed
+    +{static} formantHz(v, k, shift)
+  }
+  Vowel ..> Biquad : design(BandPass) per formant
   class Shaper {
     +setRate / setShape / setDepth / setPhase / setStereo / setSmoothMs
     +setTransport(sample, samplesPerBeat, beatOffset) : REQ-device-12

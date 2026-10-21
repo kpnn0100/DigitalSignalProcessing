@@ -1114,6 +1114,130 @@ TEST(Shaper_device_follows_the_transport)
     CHECK(L[0] < 1e-12);
 }
 
+// REQ-fx-vowel-1 (VW1)/(VW2): the formants are the table's at each vowel, between two in log frequency, shifted in semitones
+TEST(Vowel_formants_are_the_table)
+{
+    for (int v = 0; v < Vowel::kVowels; ++v)
+        for (int k = 0; k < Vowel::kFormants; ++k) CHECK(std::fabs(Vowel::formantHz(v, k, 0) - Vowel::kTable[v][k]) < 1e-9);
+    CHECK(std::fabs(Vowel::formantHz(0.5, 0, 0) - std::sqrt(730.0 * 530.0)) < 1e-9);  // A to E, half way: the geometric mean
+    CHECK(std::fabs(Vowel::formantHz(2, 1, 12) - 2 * 2290.0) < 1e-9);                // an octave up
+}
+
+// (VW3)/(VW4): a sine at each of A's formants comes through at that band's weight; far from them it is held down
+TEST(Vowel_peaks_at_its_formants)
+{
+    configure48();
+    auto through = [](double hz, double vowel) {
+        Vowel f;
+        f.setVowel(vowel);
+        f.setGlideMs(0);
+        f.setOutputDb(0);
+        std::vector<Sample> L, R;
+        tones(L, R, 48000, {{hz, 0.5}});
+        blocks(f, L, R);
+        return amp(L, 24000, 24000, hz) / 0.5;
+    };
+    const double a1 = through(730, 0), a2 = through(1090, 0), a3 = through(2440, 0), far = through(6000, 0);
+    CHECK(std::fabs(20 * std::log10(a1)) < 1.0);             // F1 about 0 dB
+    CHECK(std::fabs(20 * std::log10(a2 / 0.63)) < 1.5);      // F2 its −4 dB
+    CHECK(std::fabs(20 * std::log10(a3 / 0.32)) < 1.5);      // F3 its −10 dB
+    CHECK(20 * std::log10(far) < -20.0);                     // between and beyond: down
+    // (VW3) narrower with resonance: a tenth off F1 falls further at resonance 4 than at 1
+    auto off = [](double res) {
+        Vowel f;
+        f.setVowel(0);
+        f.setGlideMs(0);
+        f.setOutputDb(0);
+        f.setResonance(res);
+        std::vector<Sample> L, R;
+        tones(L, R, 48000, {{803.0, 0.5}});
+        blocks(f, L, R);
+        return 20 * std::log10(amp(L, 24000, 24000, 803.0) / 0.5);
+    };
+    CHECK(off(1.0) - off(4.0) > 6.0);
+}
+
+// (VW2): a vowel's own formants pass, another's are held down — A opens 730 Hz, I opens 2290 Hz
+TEST(Vowel_morphs_between_vowels)
+{
+    configure48();
+    auto through = [](double hz, double vowel) {
+        Vowel f;
+        f.setVowel(vowel);
+        f.setGlideMs(0);
+        std::vector<Sample> L, R;
+        tones(L, R, 48000, {{hz, 0.5}});
+        blocks(f, L, R);
+        return 20 * std::log10(amp(L, 24000, 24000, hz) / 0.5);
+    };
+    CHECK(through(730, 0) - through(730, 2) > 10.0);   // A's first formant: open at A, shut at I
+    CHECK(through(2290, 2) - through(2290, 0) > 10.0); // I's second: open at I, shut at A
+}
+
+// the vowel glides to a new setting: 1 − e^(−1) of the way after one time constant
+TEST(Vowel_glides_between_vowels)
+{
+    configure48();
+    Vowel f;
+    f.setGlideMs(0);
+    f.setVowel(0);
+    std::vector<Sample> L(64, 0.0), R(64, 0.0);
+    Sample *io[2] = {L.data(), R.data()};
+    f.process(io, 2, 64);
+    f.setGlideMs(10);
+    f.setVowel(4);
+    std::vector<Sample> L2(480, 0.0), R2(480, 0.0);
+    Sample *io2[2] = {L2.data(), R2.data()};
+    f.process(io2, 2, 480);
+    CHECK(std::fabs(f.vowelNow() - 4.0 * (1 - std::exp(-1.0))) < 0.02);
+    // the bands follow the glide: settled at U, U's first formant (300 Hz) passes and A's (730) is held down
+    std::vector<Sample> L3, R3;
+    tones(L3, R3, 48000, {{300.0, 0.25}, {730.0, 0.25}});
+    blocks(f, L3, R3);
+    CHECK(amp(L3, 24000, 24000, 300.0) > 4.0 * amp(L3, 24000, 24000, 730.0));
+}
+
+// (VW5) dry: the input times the output gain
+TEST(Vowel_dry_is_the_input)
+{
+    configure48();
+    Vowel f;
+    f.setMix(0);
+    f.setOutputDb(0);
+    std::vector<Sample> L, R;
+    tones(L, R, 4800, {{440.0, 0.5}, {3000.0, 0.2}});
+    const auto x = L;
+    blocks(f, L, R);
+    double worst = 0;
+    for (size_t i = 0; i < L.size(); ++i) worst = std::max(worst, std::fabs(L[i] - x[i]));
+    CHECK(worst < 1e-12);
+}
+
+TEST(Vowel_same_in_any_blocks_and_does_not_allocate)
+{
+    configure48();
+    auto run = [](int block) {
+        Vowel f;
+        f.setVowel(1.3);
+        f.setShift(3);
+        std::vector<Sample> L, R;
+        tones(L, R, 9600, {{110.0, 0.4}, {880.0, 0.2}, {2500.0, 0.1}});
+        blocks(f, L, R, block);
+        return L;
+    };
+    const auto a = run(1), b = run(128), c = run(777);
+    CHECK(a == b && a == c);
+    Vowel f;
+    std::vector<Sample> L, R;
+    tones(L, R, 4096, {{220.0, 0.5}});
+    Sample *io[2] = {L.data(), R.data()};
+    gAllocs = 0;
+    gCounting = true;
+    f.process(io, 2, 4096);
+    gCounting = false;
+    CHECK(gAllocs.load() == 0);
+}
+
 TEST(Delay_reads_between_samples)
 {
     // D-18 (Solaris DEFECTS): read(D + f) before a write lies between the samples D + 1 and D + 2 back —

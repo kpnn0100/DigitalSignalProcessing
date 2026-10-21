@@ -1665,6 +1665,28 @@ def check_shaper_on_the_grid(binpath):
 
 CHECKS.append(("shaper_on_the_grid", check_shaper_on_the_grid))
 
+
+def check_vowel_formants(binpath):
+    """REQ-fx-vowel-1 (VW1)–(VW4): a 110 Hz tone rich in harmonics through A then I — the filter's gain at its 7th
+    harmonic (770 Hz, by A's first formant) at least 10 dB over its gain at the 21st (2310 Hz, I's second) at A, and the
+    other way at I: the formants moved."""
+    def harm(y, hz):
+        y = y[len(y) // 2:]
+        om = 2 * math.pi * hz / SR
+        re = sum(v * math.cos(om * i) for i, v in enumerate(y))
+        im = sum(v * math.sin(om * i) for i, v in enumerate(y))
+        return 20 * math.log10(max(2 * math.hypot(re, im) / len(y), 1e-12))
+    a, i = render(binpath, "vowel", 0), render(binpath, "vowel", 2)
+    # the filter's GAIN at each harmonic: what came out against what went in (the k-th harmonic 0.3/k)
+    g = lambda y, k: harm(y, 110 * k) - 20 * math.log10(0.3 / k)
+    a7, a21, i7, i21 = g(a, 7), g(a, 21), g(i, 7), g(i, 21)
+    if a7 - a21 < 10 or i21 - i7 < 10:
+        raise Failure(f"A: 770 Hz {a7:.1f}, 2310 Hz {a21:.1f} dB; I: 770 Hz {i7:.1f}, 2310 Hz {i21:.1f} dB (gains)")
+    return f"A passes 770 Hz {a7 - a21:.1f} dB over 2310; I passes 2310 Hz {i21 - i7:.1f} dB over 770"
+
+
+CHECKS.append(("vowel_formants", check_vowel_formants))
+
 def check_flanger_comb(binpath):
     """REQ-fx-flanger-1 (FL4): still at 1 ms (48 samples), feedback 0.6, mix ½ — each tone (300, 500, 1000, 1700 Hz)
     comes out |(1 − m) + m·e^(−jωD)/(1 − fb·e^(−jωD))| of itself, the comb computed here, to 0.05 dB (whole

@@ -11,6 +11,7 @@
 #include "../effects/Bitcrusher.h"
 #include "../effects/Phaser.h"
 #include "../effects/Shaper.h"
+#include "../effects/Vowel.h"
 #include "../effects/Flanger.h"
 #include "../effects/Imager.h"
 #include "../effects/Convolver.h"
@@ -821,6 +822,20 @@ namespace arstro
             return b;
         }
 
+        // REQ-fx-vowel-1: a sound shaped like a voice saying a vowel
+        const std::vector<Binding<Vowel>> &vowelBindings()
+        {
+            static const std::vector<Binding<Vowel>> b = {
+                {num("vowel", "Vowel", "", 0, 4, 0), [](Vowel &p, double x) { p.setVowel(x); }},
+                {num("shift", "Shift", "st", -12, 12, 0), [](Vowel &p, double x) { p.setShift(x); }},
+                {num("resonance", "Resonance", "", 0.5, 4, 1), [](Vowel &p, double x) { p.setResonance(x); }},
+                {num("glide", "Glide", "ms", 0, 200, 20), [](Vowel &p, double x) { p.setGlideMs(x); }},
+                {num("mix", "Mix", "", 0, 1, 1), [](Vowel &p, double x) { p.setMix(x); }},
+                {num("output", "Output", "dB", -24, 24, 6), [](Vowel &p, double x) { p.setOutputDb(x); }},
+            };
+            return b;
+        }
+
         // REQ-fx-phaser-1: notches swept by an LFO
         const std::vector<Binding<Phaser>> &phaserBindings()
         {
@@ -1190,6 +1205,7 @@ namespace arstro
             v.push_back(effectType<PitchShifter>("pitch", "Pitch Shifter", "A sound moved up or down, its length kept: two taps sweeping a delay line, crossfaded; its latency reported.", &pitchBindings)); // REQ-fx-pitch-1
             v.push_back(effectType<Imager>("imager", "Imager", "Wider or narrower, and mono below a frequency: mid and side, the side scaled, its lows taken away.", &imagerBindings)); // REQ-fx-imager-1
             v.push_back(effectType<Flanger>("flanger", "Flanger", "A short delay swept by an LFO and fed back: a comb whose teeth sweep.", &flangerBindings)); // REQ-fx-flanger-1
+            v.push_back(effectType<Vowel>("vowel", "Vowel", "A sound shaped like a voice saying a vowel: three formant band-passes morphing through A, E, I, O, U — a bright synth through it reads as a vocal chop.", &vowelBindings)); // REQ-fx-vowel-1
             v.push_back(effectType<Shaper>("shaper", "Shaper", "A volume shaped by the song's beat: a tempo-synced LFO — a sine, triangle, saw, square or pump, a note value long — turning the sound down and up.", &shaperBindings)); // REQ-fx-shaper-1
             v.push_back(effectType<Phaser>("phaser", "Phaser", "Notches swept by an LFO: first-order all-passes fed back, mixed with the dry sound.", &phaserBindings)); // REQ-fx-phaser-1
             v.push_back(effectType<Saturator>("saturator", "Saturator", "A curve driven — soft, hard, tube or fold — four times oversampled, its latency reported.", &saturatorBindings)); // REQ-fx-saturator-1

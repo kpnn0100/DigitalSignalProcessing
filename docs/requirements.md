@@ -682,6 +682,13 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   "bitcrusher". (BC1)–(BC3). Guarded by `Bitcrusher_rounds_to_its_grid` (the grid exactly; SNR 6.02·b + 1.76 +
   20·log10 a to 0.5 dB at 8 and 12 bits), `Bitcrusher_holds_at_its_rate`, `Bitcrusher_dry_is_the_input`,
   `Bitcrusher_does_not_allocate`, and the integration check `bitcrusher_grid_and_hold`.
+- `REQ-fx-vowel-1` — **A sound shaped like a voice saying a vowel** (source: Solaris R-FX-19, user request 2026-10-21):
+  `Vowel` — three RBJ band-passes at a vowel's first three formants (Peterson & Barney's A E I O U), weighted 0, −4,
+  −10 dB, morphing in log frequency as `vowel` moves 0 … 4, moved by `shift` semitones, narrowed by `resonance`, the
+  vowel gliding (`glide` ms) with the bands redesigned as it moves; `mix`, `output`. The registry's "vowel". (VW1)–(VW5).
+  Guarded by `Vowel_formants_are_the_table`, `Vowel_peaks_at_its_formants`, `Vowel_morphs_between_vowels`,
+  `Vowel_glides_between_vowels`, `Vowel_dry_is_the_input`, `Vowel_same_in_any_blocks_and_does_not_allocate`;
+  integration `vowel_formants`.
 - `REQ-fx-shaper-1` — **A volume shaped by the song's beat** (source: Solaris R-FX-18, user request 2026-10-21): `Shaper`
   — a tempo-synced LFO a note value long (1/1 … 1/32, triplets, dotted) turning the sound down by `depth` in a shape
   (sine, triangle, saw down, saw up, square, pump), its phase the song's beat (REQ-device-12), the odd channels

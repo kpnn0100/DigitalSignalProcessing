@@ -458,6 +458,39 @@ Linkwitz-Riley biquads, the reverb's diffusion an FDN); the stage is one line, s
 Still, a sine at each f_k cancels to the float floor (4 and 8 stages); with feedback ½ and mix 0.7 every frequency
 is (PH5) to 0.0000 dB (`Phaser_notches_where_the_phase_says`); the sweep is (PH2) to 1e−9 (`Phaser_sweeps_its_break`).
 
+## Math — `Vowel.cpp` (REQ-fx-vowel-1)
+
+A sound shaped like a voice saying a vowel — the formant filter that turns a bright synth into a vocal-chop-like lead
+with no recording. **Composed:** each formant is the library's RBJ band-pass (`Biquad::design`, constant 0 dB peak);
+what is new is the table, the morph between vowels and the redesign as the vowel glides.
+
+```
+(VW1) The formants F1, F2, F3 of five vowels, Hz — Peterson & Barney (1952), the men's averages:
+      A /ɑ/ 730 1090 2440 · E /ɛ/ 530 1840 2480 · I /i/ 270 2290 3010 · O /ɔ/ 570 840 2410 · U /u/ 300 870 2240
+(VW2) Between two vowels (v = a + f, a = ⌊v⌋, 0 ≤ v ≤ 4) each formant moves in log frequency, all moved by `shift`:
+      F_k(v) = exp(ln F_k[a] + f·(ln F_k[a+1] − ln F_k[a])) · 2^(shift/12)          (`Vowel::formantHz`)
+(VW3) Each band an RBJ band-pass at F_k, its Q from a voice's bandwidth narrowed by the resonance:
+      Q_k = F_k / (B_k / resonance),  B = 80, 90, 120 Hz                             (`Vowel::design`)
+(VW4) Summed by weight, F2 −4 dB and F3 −10 dB under F1 (a voice's spectral tilt, rounded):
+      y_formant = Σ w_k·BP_k(x),  w = 1, 0.63, 0.32;  each band transposed direct form II
+(VW5) Mixed and gained:  y = out·((1 − mix)·x + mix·y_formant)
+      The vowel glides: v ← v + α·(v_target − v), α = 1 − e^(−1/(fs·t_g)); the bands redesigned every 16 samples it moves.
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `vowel` | v | 0 … 4 (A E I O U and between) | 0 |
+| `shift` | shift | semitones −12 … 12 | 0 |
+| `resonance` | resonance | 0.5 … 4 | 1 |
+| `glide` | t_g | ms 0 … 200 | 20 |
+| `mix` | mix | 0 … 1 | 1 |
+| `output` | out | dB −24 … 24 | +6 |
+
+Guarded by `Vowel_formants_are_the_table`, `_peaks_at_its_formants` (A's F1 0 dB, F2 −4, F3 −10 within 1.5 dB, 6 kHz
+under −20 dB; a tenth off F1 6 dB further down at resonance 4), `_morphs_between_vowels`, `_glides_between_vowels` (and
+the bands follow), `_dry_is_the_input`, `_same_in_any_blocks_and_does_not_allocate`; integration `vowel_formants` (a
+harmonic-rich tone: A passes 770 Hz 19 dB over 2310, I the other way 15 dB).
+
 ## Math — `Shaper.cpp` (REQ-fx-shaper-1)
 
 A volume shaped by the song's beat — the tempo-synced volume LFO electronic music uses for wobbling chords and a pump

@@ -1299,6 +1299,31 @@ static std::vector<double> renderBitcrusher(double)
     return std::vector<double>(L.begin(), L.end());
 }
 
+// REQ-fx-vowel-1: a 110 Hz tone rich in harmonics (the first 40, each 1/k) through the registry's "vowel" at vowel
+// `arg` (0 A, 2 I), its glide off, 1 s
+static std::vector<double> renderVowel(double vowel)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("vowel");
+    d->setParam("vowel", vowel);
+    d->setParam("glide", 0.0);
+    d->setParam("output", 0.0);
+    std::vector<Sample> L(48000), R(48000);
+    for (size_t n = 0; n < L.size(); ++n)
+    {
+        double x = 0;
+        for (int k = 1; k <= 40; ++k) x += std::sin(2 * M_PI * 110.0 * k * (double)n / kSampleRate) / k;
+        L[n] = R[n] = 0.3 * x;
+    }
+    for (size_t pos = 0; pos < L.size(); pos += 128)
+    {
+        Sample *io[2] = {L.data() + pos, R.data() + pos};
+        d->process(io, 2, (int)std::min<size_t>(128, L.size() - pos));
+    }
+    return std::vector<double>(L.begin(), L.end());
+}
+
 // REQ-fx-shaper-1, REQ-device-12: a 1 kHz sine at 0.5 through the registry's "shaper" — a square, a sixteenth long,
 // all the way down, at 128 bpm (22 500 samples a beat), told where the song is each 128-frame block; 2 s
 static std::vector<double> renderShaper(double)
@@ -1619,6 +1644,7 @@ int main(int argc, char **argv)
     else if (scenario == "bitcrusher") samples = renderBitcrusher(arg);
     else if (scenario == "phaser") samples = renderPhaser(arg);
     else if (scenario == "shaper") samples = renderShaper(arg);
+    else if (scenario == "vowel") samples = renderVowel(arg);
     else if (scenario == "flanger") samples = renderFlanger(arg);
     else if (scenario == "imager") samples = renderImager(arg);
     else if (scenario == "convolution") samples = renderConvolution(arg);
