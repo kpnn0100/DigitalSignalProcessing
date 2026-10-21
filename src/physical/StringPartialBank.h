@@ -98,6 +98,13 @@ namespace arstro
         // Zeroes every partial's resonator history and lifts the damper — call
         // before striking a reused (voice-stolen) string.
         void reset();
+        // README ## 14 (REQ-guitar-1): PLUCK the string — released from rest at the
+        // excitation position, every partial set ringing from its peak with
+        // A_n = amplitude*|sin(n*pi*beta)|/n * share * L(f_n), L the pick's release
+        // (a one-pole roll-off at pickCornerHz). An initial condition, not a force:
+        // it REPLACES the history (a pick stops what it touches), on every channel,
+        // at the coefficients as they stand (damper, bend). The hammer path is untouched.
+        void pluck(Sample amplitude, Sample pickCornerHz);
 
         // Zeroes every partial's history and SEATS the damper at once, not over its
         // ramp: a host's seek (REQ-inst-piano-1) — nothing left to hear, nothing to
@@ -151,6 +158,8 @@ namespace arstro
         std::array<Sample, kMaxEntries> mCosTheta{};
         std::array<Sample, kMaxEntries> mDrive{};       // sin(theta)*g_n*split/(m*fs)
         std::array<Sample, kMaxEntries> mDispWeight{};  // g_n/omega_n; ZERO for horizontal
+        std::array<Sample, kMaxEntries> mPluckGain{};   // README ## 14: g_n*share/n
+        std::array<Sample, kMaxEntries> mEntryHz{};     // the entry's own frequency (## 14's L(f))
         std::array<Sample, kMaxEntries> mA1{};          // 2*r*cos(theta*(1+delta))
         std::array<Sample, kMaxEntries> mA2{};          // r^2
         // README ## 12.5: first-order pitch-bend sensitivity b_n = -theta_n*sin(theta_n),

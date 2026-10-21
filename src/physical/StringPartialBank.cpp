@@ -116,6 +116,31 @@ namespace arstro
         recomputeEffectivePartials();
     }
 
+    void StringPartialBank::pluck(Sample amplitude, Sample pickCornerHz)
+    {
+        // README ## 14. y_i[k] = A_i r^k cos(k theta) from k = 0: its two samples of history are
+        // y[-1] = A cos(theta)/r and y[-2] = A cos(2 theta)/r^2 — read off the coefficients as they
+        // stand (a1 = 2 r cos theta, a2 = r^2), so the damper and a bend are honoured exactly.
+        ensureChannels();
+        const Sample fp = pickCornerHz < 1.0 ? 1.0 : pickCornerHz;
+        const int channels = AudioConfig::instance().channelCount();
+        for (int i = 0; i < mTotalCount; ++i)
+        {
+            const Sample u = mEntryHz[i] / fp;
+            const Sample a = amplitude * mPluckGain[i] / std::sqrt(1.0 + u * u); // (P2) the pick's release
+            const Sample rr = std::sqrt(mA2[i]);
+            const Sample r = rr > 1e-12 ? rr : 1e-12;
+            const Sample c = mA1[i] / (2.0 * r);
+            const Sample c2 = 2.0 * c * c - 1.0;
+            for (int ch = 0; ch < channels; ++ch)
+            {
+                mY1[(size_t)ch * kMaxEntries + i] = a * c / r;
+                mY2[(size_t)ch * kMaxEntries + i] = a * c2 / (r * r);
+            }
+        }
+        mLastDisplacement = 0.0;
+    }
+
     void StringPartialBank::silence()
     {
         std::fill(mY1.begin(), mY1.end(), (Sample)0);
@@ -257,6 +282,9 @@ namespace arstro
             mDrive[i] = sinTheta * gn * vertShare / (modalMass * sr);
             mDispWeight[i] = gn / wn; // ...displacement recovered by weighting
             mEntryT60[i] = kT60Constant / alphaVert;
+            // README ## 14: a released string's bridge force goes as g_n/n, split as a strike's is
+            mPluckGain[i] = gn * vertShare / (Sample)(i + 1);
+            mEntryHz[i] = fn;
 
             // --- horizontal twin: weakly coupled, slow decay, does NOT push the felt ---
             if (hasTwin)
@@ -269,6 +297,8 @@ namespace arstro
                 mCosTheta[h] = std::cos(thetaH);
                 mCosBend[h] = -thetaH * sinThetaH; // README ## 12.5, horizontal twin
                 mDrive[h] = sinThetaH * gn * mPolarizationSplit / (modalMass * sr);
+                mPluckGain[h] = gn * mPolarizationSplit / (Sample)(i + 1);
+                mEntryHz[h] = fh;
                 // Horizontal motion is perpendicular to the hammer's compression axis,
                 // so it does not change c = x_h - y_string (README ## 5b, ## 6).
                 mDispWeight[h] = 0.0;

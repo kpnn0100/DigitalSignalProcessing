@@ -8,6 +8,7 @@
 | `Piano` | the physical piano (`physical/PianoEngine`) as an instrument, 16 voices | REQ-inst-piano-1 |
 | `FMSynth` | four sine operators by phase modulation — eight algorithms, a feedback operator, an ADSR each; 16 voices | REQ-fm-1…3 |
 | `Bass808` | a tuned bass drum — a sine's pitch punched down to the note, gliding between notes, a click, drive and tone; mono | REQ-808-1…2 |
+| `Guitar` | a plucked string — the piano's modal string released from rest at a pluck position, the pick rounding its highs; a body, a palm mute, a fret release; 8 strings | REQ-guitar-1…2 |
 | `GranularSampler` | a recorded sound as a cloud of short grains — size, density, position (and its scan), spray of place, pitch and pan; 16 voices | REQ-granular-1…2 |
 | `Sfz` · `MultiSampler` | a multi-sample instrument read from SFZ text: regions by key, velocity, round robin and chance; loops, one-shots, choke groups; 32 voices | REQ-multisample-1…3 |
 
@@ -428,3 +429,45 @@ constant time. What is its own: the punch, the drive's normalisation, and the mo
 
 **Limits, said:** mono (an 808 bassline is); the drive is not oversampled — at high drive its harmonics fold above
 about 4 kHz (the tone's low-pass is there for them).
+
+## Guitar — Math (REQ-guitar-1…2)
+
+A plucked string, for the clean electric of San Holo's future bass and an acoustic's strum. **A composition
+(rule 1):** the piano's modal string, `physical/StringPartialBank` — inharmonic partials (§2), the highs dying first
+(§3: the two decay times), the damper (§7) — PLUCKED by its new initial condition (physical/README.md §14), and three
+`physical/StringResonator`s (§1, sustained-normalised, the soundboard's mode type) for the body. What is its own: the
+pitch's dependence of the ring, the pick's velocity, the palm, and the voices' bookkeeping.
+
+```
+(GT1) Pitch — f0 = 440·2^((note + b − 69)/12),  b = wheel·range; a bend retunes every sounding string AT ONCE (the host
+      splits its blocks at events — Solaris R-DSP-5 — and nothing else moves the pitch inside a block, so no grid)
+(GT2) The string — StringPartialBank: B = stiffness·10⁻⁴;  T60 at 5 kHz = brightness;  β = position;  modal mass 1;
+      T60_1 = sustain·(f_E2/f0)^0.5   (a higher string rings shorter — TUNED by ear against recorded guitars, not derived:
+      a real string's loss follows its gauge and winding, which this model does not carry; f_E2 = 82.41 Hz)
+(GT3) The pluck — strength = 1 − v_s + v_s·v,  v = velocity/127;  pluck(0.25·strength, f_p·(0.5 + 0.5·v))
+      (a harder pluck leaves the pick faster: brighter — empirical)
+(GT4) The hand — palm: the damper held at `mute` while the note is held (engaging over 5 ms from the pluck);
+      release: the damper to 1 over `release` ms on note-off (a finger lifting off the fret)
+(GT5) The body — b = Σ_k w_k·R_k(y), y the strings' sum; three modes (f_k, T60_k, w_k) = (100 Hz, 0.25 s, 1.5),
+      (200 Hz, 0.15 s, 2.0), (400 Hz, 0.08 s, 1.2) — a flat-top's air mode and its top plate's first two, EMPIRICAL
+      (inside the ranges measured on steel-string guitars; weights set so body = 1 is plainly an acoustic's colour)
+(GT6) Out — o = vol·(y + body·b), the same on every channel (mono: a guitar's width is its chorus and its room)
+(GT7) A voice ends when a whole window of 64 of ITS OWN samples stays under 10⁻⁵ (−100 dB) — counted from its pluck,
+      so the same sample however a host cuts time — and its string is zeroed; the body ends the same way once no
+      string sounds, its modes zeroed: a host that skips a silent instrument hears what one that runs it hears
+(GT8) Eight strings: a note already sounding is re-plucked on its own string; else a free one; else the oldest
+```
+
+| parameter | symbol | unit / range | default |
+|---|---|---|---|
+| `pluck.position`, `pluck.pick` | β, f_p | 0.05 … 0.5, Hz 500 … 12000 | 0.18, 4000 |
+| `string.sustain`, `string.brightness` | T60 at E2, T60 at 5 kHz | s 0.3 … 20, s 0.03 … 3 | 5, 0.5 |
+| `string.stiffness` | B / 10⁻⁴ | 0 … 3 | 0.5 |
+| `body` | — | 0 … 1 | 0.3 |
+| `mute`, `release` | the palm, the fret | 0 … 1, ms 5 … 1000 | 0, 80 |
+| `volume`, `velocity`, `voice.bend` | vol, v_s, range | dB, 0 … 1, semitones | −6, 0.6, 2 |
+
+Code: `Guitar::tune` (GT1, GT2), `Guitar::noteOn` (GT3, GT4, GT8), `Guitar::noteOff` (GT4), `Guitar::render` (GT5–GT7),
+`Guitar::sustainAt` (GT2). **Limits, said:** no strum (a player's timing — write it in the notes), no pickup position
+(an electric's comb is its pluck position's here), no fret buzz, no string-to-string sympathy; mono.
+

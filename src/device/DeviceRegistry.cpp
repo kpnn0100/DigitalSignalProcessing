@@ -29,6 +29,7 @@
 #include "../instrument/GranularSampler.h"
 #include "../instrument/Bass808.h"
 #include "../instrument/Piano.h"
+#include "../instrument/Guitar.h"
 #include "../instrument/DrumMachine.h"
 #include "../reverb/Reverb.h"
 #include <algorithm>
@@ -422,6 +423,54 @@ namespace arstro
         private:
             Bass808 m808;
             Bass808::Params mP;
+        };
+
+        // ── the guitar (REQ-guitar-2): a plucked string ──
+
+        const std::vector<Binding<Guitar::Params>> &guitarBindings()
+        {
+            using P = Guitar::Params;
+            static const std::vector<Binding<P>> b = [] {
+                const P d;
+                std::vector<Binding<P>> v;
+                v.push_back({num("pluck.position", "Position", "", 0.05, 0.5, d.position), [](P &p, double x) { p.position = x; }});
+                v.push_back({num("pluck.pick", "Pick", "Hz", 500, 12000, d.pick, true), [](P &p, double x) { p.pick = x; }});
+                v.push_back({num("string.sustain", "Sustain", "s", 0.3, 20, d.sustain, true), [](P &p, double x) { p.sustain = x; }});
+                v.push_back({num("string.brightness", "Brightness", "s", 0.03, 3, d.brightness, true), [](P &p, double x) { p.brightness = x; }});
+                v.push_back({num("string.stiffness", "Stiffness", "", 0, 3, d.stiffness), [](P &p, double x) { p.stiffness = x; }});
+                v.push_back({num("body", "Body", "", 0, 1, d.body), [](P &p, double x) { p.body = x; }});
+                v.push_back({num("mute", "Palm Mute", "", 0, 1, d.mute), [](P &p, double x) { p.mute = x; }});
+                v.push_back({num("release", "Release", "ms", 5, 1000, d.release, true), [](P &p, double x) { p.release = x; }});
+                v.push_back({num("volume", "Volume", "dB", -60, 6, d.volumeDb), [](P &p, double x) { p.volumeDb = x; }});
+                v.push_back({num("velocity", "Velocity", "", 0, 1, d.velocity), [](P &p, double x) { p.velocity = x; }});
+                v.push_back({num("voice.bend", "Bend Range", "st", 0, 24, d.bendRange, false, true), [](P &p, double x) { p.bendRange = x; }});
+                return v;
+            }();
+            return b;
+        }
+
+        class GuitarDevice : public Device
+        {
+        public:
+            explicit GuitarDevice(const DeviceType &t) : Device(t), mP(mGuitar.params()) { applyAll(); }
+            void process(Sample *const *io, int channels, int frames) override { mGuitar.render(io, channels, frames); }
+            void noteOn(int n, int v) override { mGuitar.noteOn(n, v); }
+            void noteOff(int n) override { mGuitar.noteOff(n); }
+            void allNotesOff() override { mGuitar.allNotesOff(); }
+            void pitchBend(double a) override { mGuitar.pitchBend(a); }
+            void reset() override { mGuitar.reset(); }
+            int activeVoices() const override { return mGuitar.activeVoices(); }
+
+        protected:
+            void apply(int i, double v) override
+            {
+                guitarBindings()[i].set(mP, v);
+                mGuitar.setParams(mP);
+            }
+
+        private:
+            Guitar mGuitar;
+            Guitar::Params mP;
         };
 
         // ── the granular sampler (REQ-granular-2): a sound as a cloud of grains ──
@@ -1147,6 +1196,16 @@ namespace arstro
             b808.groupLabels = {{"punch", "Punch"}, {"amp", "Amplifier"}, {"", "Tone & Output"}, {"voice", "Voice"}};
             b808.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<Bass808Device>(self); };
             v.push_back(b808);
+
+            DeviceType guitar; // REQ-guitar-2
+            guitar.name = "guitar"; guitar.label = "Guitar"; guitar.kind = DeviceKind::Instrument;
+            guitar.summary = "A plucked string: the piano's modal string released from rest at a pluck position, the pick's "
+                             "release rounding its highs, the highs dying first; a body; a palm mute and a fret release; "
+                             "eight strings.";
+            guitar.params = specsOf(guitarBindings());
+            guitar.groupLabels = {{"pluck", "Pluck"}, {"string", "String"}, {"", "Hand & Output"}, {"voice", "Voice"}};
+            guitar.create = [](const DeviceType &self) -> std::unique_ptr<Device> { return std::make_unique<GuitarDevice>(self); };
+            v.push_back(guitar);
 
             DeviceType granular; // REQ-granular-2
             granular.name = "granular"; granular.label = "Granular"; granular.kind = DeviceKind::Instrument;

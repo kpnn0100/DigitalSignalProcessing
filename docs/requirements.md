@@ -624,6 +624,21 @@ EQ, Reverb, …; make sure all the core of those instruments and basic filters i
   `…_does_not_allocate`.
 - `REQ-808-2` — **The registry's "808"** (same source): punch, punch time, glide, attack, decay, release, click,
   drive, tone, volume, velocity, bend range. Guarded by the registry's tests; integration `808_is_tuned`.
+- `REQ-guitar-1` — **A plucked string** (source: Solaris R-INST-12, user request 2026-10-21: *"make me another future bass
+  banger … apply style from san holo, illenium"* — the style's clean guitar): `Guitar` — the piano's modal string
+  (`StringPartialBank`) released from rest at a pluck position by a new initial condition, `StringPartialBank::pluck`
+  (physical/README.md §14, (P1)–(P3): each partial from its peak at |sin(nπβ)|/n, the pick's release a one-pole
+  roll-off), its ring by its pitch (T60_1 = sustain·(f_E2/f0)^0.5, empirical), a palm mute and a fret release on the
+  damper, a three-mode body, eight strings, a bend at once. src/instrument/README.md (GT1)–(GT8). Guarded by
+  `Guitar_pluck_sets_each_partial_as_a_released_string` (0.8090 and 0.5393 as the formula; the 5th 5·10⁻⁸ at β = 1/5),
+  `…_pick_rounds_the_highs_as_a_one_pole` (−6.73 dB, as (P2)), `…_pluck_starts_at_rest_from_its_peak`,
+  `…_is_tuned_and_plucked` (110 Hz; brighter by 1.147 as (GT3) says), `…_sustains_as_set_and_the_highs_die_first`,
+  `…_mutes_and_releases`, `…_bends_and_renders_the_same_however_chopped` (blocks of 1, 128, 777),
+  `…_ends_its_voices_and_steals_the_oldest`, `…_body_rings_its_modes`, `…_does_not_allocate`.
+- `REQ-guitar-2` — **The registry's "guitar"** (same source): pluck position, pick, sustain, brightness, stiffness, body,
+  palm mute, release, volume, velocity, bend range. Guarded by the registry's tests; integration `guitar_plucked` (110 Hz;
+  the 5th missing at a fifth of the string; the 2nd over the 1st 0.804 against 0.809; it rings down; a palm mute 20 dB
+  under).
 - `REQ-delay-1` — **A fractional delay interpolates** (source: Solaris D-18, found building the flanger, 2026-10-17):
   `Delay::read(D)` before a write, D = i + f, is (1 − f)·b[i] + f·b[i + 1] — between the samples D + 1 and D + 2 back,
   its gain |(1 − f) + f·e^(−jω)| never above 1; a whole D reads the sample it always did. src/simpleProcessor/README.md

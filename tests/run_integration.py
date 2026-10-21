@@ -1446,6 +1446,34 @@ def check_808_is_tuned(binpath):
 CHECKS.append(("808_is_tuned", check_808_is_tuned))
 
 
+def check_guitar_plucked(binpath):
+    """REQ-guitar-1/2 (P1), (GT1), (GT2), (GT4): the registry's guitar plucked on A2 at a fifth of its string — it sounds
+    at 110 Hz; its partials fall as |sin(nπ/5)|/n, so the 5th (550 Hz) is missing between a sounding 4th and 6th and the
+    2nd over the 1st reads |sin(2π/5)|/(2·sin(π/5)) = 0.809 (to 10 %: the pick's roll-off and the decay are in it); it
+    rings down; a palm mute of 0.5 is at least 20 dB under it a second on."""
+    y = render(binpath, "guitar", 0)
+    w = y[2400:2400 + 24000]  # 0.05 … 0.55 s: 55 whole cycles of 110 Hz
+    f1, f2, f4, f5, f6 = (goertzel(w, 110.0 * k) for k in (1, 2, 4, 5, 6))
+    lo, hi = goertzel(w, 100.0), goertzel(w, 120.0)
+    if f1 < 10 * max(lo, hi):
+        raise Failure(f"not at 110 Hz: {f1:.4f} against {lo:.4f} / {hi:.4f}")
+    if f5 > 0.02 * min(f4, f6):
+        raise Failure(f"the 5th not missing: {f5:.5f} against the 4th {f4:.4f} and the 6th {f6:.4f}")
+    if abs(f2 / f1 - 0.809) > 0.081:
+        raise Failure(f"the 2nd over the 1st {f2 / f1:.3f}, not 0.809")
+    start, later = rms(y[2400:7200]), rms(y[SR:SR + 4800])
+    if not later < start * 0.7:
+        raise Failure(f"no decay: {start:.4f} then {later:.4f}")
+    muted = rms(render(binpath, "guitar", 1)[SR:SR + 4800])
+    if not muted < later * 0.1:
+        raise Failure(f"the palm mute did not shorten it: {muted:.5f} against {later:.5f}")
+    return (f"110 Hz {f1:.3f} (100/120 Hz {lo:.4f}/{hi:.4f}); 2nd/1st {f2 / f1:.3f}; the 5th {f5:.5f} under the 4th "
+            f"{f4:.4f} and the 6th {f6:.4f}; rms {start:.3f} → {later:.3f}, muted {muted:.5f}")
+
+
+CHECKS.append(("guitar_plucked", check_guitar_plucked))
+
+
 def check_multiband_bands(binpath):
     """REQ-fx-multiband-1 (MB1)–(MB4): 60 Hz and 5 kHz, 0.25 each — at 1:1 the bands sum flat (each tone within
     0.02 dB); the low band at −30 dB, 4:1, the 60 Hz is what (C1)–(C4) make of its low band, computed here from the

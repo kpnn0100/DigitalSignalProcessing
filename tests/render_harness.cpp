@@ -1540,6 +1540,31 @@ static std::vector<double> render808(double)
     return y;
 }
 
+// REQ-guitar-2: the registry's "guitar" plucked on A2 (110 Hz) at a fifth of the string, no body, no stiffness, for two
+// seconds — arg 0; arg 1 the same with a palm mute of 0.5
+static std::vector<double> renderGuitar(double arg)
+{
+    AudioConfig::instance().setSampleRate(kSampleRate);
+    AudioConfig::instance().setChannelCount(2);
+    auto d = DeviceRegistry::create("guitar");
+    d->setParam("pluck.position", 0.2);
+    d->setParam("body", 0.0);
+    d->setParam("string.stiffness", 0.0);
+    d->setParam("mute", arg > 0.5 ? 0.5 : 0.0);
+    d->noteOn(45, 110);
+    std::vector<double> y;
+    std::vector<Sample> L(128), R(128);
+    while ((int)y.size() < 2 * kSampleRate)
+    {
+        std::fill(L.begin(), L.end(), 0.0);
+        std::fill(R.begin(), R.end(), 0.0);
+        Sample *io[2] = {L.data(), R.data()};
+        d->process(io, 2, 128);
+        y.insert(y.end(), L.begin(), L.end());
+    }
+    return y;
+}
+
 static std::vector<double> renderMeters()
 {
     AudioConfig::instance().setSampleRate(kSampleRate);
@@ -1636,6 +1661,7 @@ int main(int argc, char **argv)
     else if (scenario == "multisample") samples = renderMultisample(arg);
     else if (scenario == "granular") samples = renderGranular(arg);
     else if (scenario == "808") samples = render808(arg);
+    else if (scenario == "guitar") samples = renderGuitar(arg);
     else if (scenario == "multiband") samples = renderMultiband(arg);
     else if (scenario == "gate") samples = renderGate(arg);
     else if (scenario == "transient") samples = renderTransient(arg);

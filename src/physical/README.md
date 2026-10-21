@@ -1258,6 +1258,35 @@ arpeggio keeps sounding (`PianoEngine::allocateVoice`).
 
 ---
 
+### 14. A pluck — the string released from rest (REQ-guitar-1)
+
+The guitar (`instrument/Guitar`) plays this string PLUCKED, not struck. A hammer is a force — §6's contact ODE pushes
+the string through `process(forceIn)`. A pluck is not a force at all: the string is held displaced, at rest, and let
+go. So it is an **initial condition**, `StringPartialBank::pluck(A, f_p)`, and the hammer path is untouched (a piano
+never calls it). **Why a method and not a force pulse (rule 1):** feeding the bank a short pulse would set every mode
+moving from zero displacement — a strike's sine-phase start — and its quasi-static part (the string pushed aside while
+the pulse lasts) is a low thump a released string does not make.
+
+```
+(P1) A triangle released from rest at x = βL — its modes, and what the bank radiates:
+     q_n(0) = 2h·sin(nπβ) / (n²π²β(1−β)),  q̇_n(0) = 0   →   q_n(t) = q_n(0)·e^(−α_n t)·cos(ω_n t)
+     the bank's output is the string's slope at the bridge (§12.2), ∝ n·q_n:   A_n = A·|sin(nπβ)|·s_n / n
+     s_n the entry's polarisation share, as a strike's (§5b: 1 − ε for a twinned vertical, ε for its twin, 1 else)
+(P2) The pick's release: it leaves the string over a time τ_p, not at once — a first-order low-pass on the excitation,
+     A_n ← A_n / √(1 + (f_n/f_p)²),   f_p = 1/(2π τ_p)     (pickCornerHz)
+(P3) The discrete free response y_n[k] = A_n·r_n^k·cos(k θ_n), k = 0 at the pluck — set through §1's two-sample
+     history, read off the coefficients AS THEY STAND (so the damper and a bend are honoured exactly):
+     r_n = √a2_n,  cos θ_n = a1_n / (2 r_n)
+     y_n[−1] = A_n·cos θ_n / r_n,   y_n[−2] = A_n·cos 2θ_n / r_n²       (then §1 gives y_n[0] = A_n)
+     every channel alike; it REPLACES the history — a pick stops what it touches
+```
+
+`StringPartialBank::pluck` is (P1)–(P3); the per-entry gain `|sin(nπβ)|·s_n/n` is computed with the strike gains in
+`update()` (`mPluckGain`), the entry's own frequency beside it (`mEntryHz`). Guarded by `Guitar_pluck_sets_each_partial_as_a_released_string`
+(the 2nd and 3rd over the 1st to 1 %, the 5th at β = 1/5 under 10⁻³), `Guitar_pick_rounds_the_highs_as_a_one_pole`
+(2 kHz over 250 Hz −6.73 dB with a 1 kHz pick, as (P2) says), `Guitar_pluck_starts_at_rest_from_its_peak` (the first
+sample the first period's largest; no DC).
+
 ## Parameters
 
 | Class | Setter | Unit | Symbol |

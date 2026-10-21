@@ -153,6 +153,13 @@ package instrument {
   Bass808 *-- DecayEnvelope
   Bass808 *-- Noise : the click
   Bass808 ..> Biquad : design() for its tone
+  class Guitar {
+    +setParams(position, pick, sustain, brightness, stiffness, body, mute, release)  -- 8 strings
+    -(GT2) T60_1 = sustain*(f_E2/f0)^0.5; (GT7) a voice ends on its own clock
+  }
+  Guitar ..|> Instrument
+  Guitar *-- "8" StringPartialBank : pluck() — README §14
+  Guitar *-- "3" StringResonator : the body
   class GranularSampler {
     +setSample(frames) / setParams(size, density, position, scan, spray, pitch, spread)
     -(G1) a grain every fs/density from the note; (G3) Hann; (G4) the overlap divided out
@@ -458,6 +465,7 @@ package physical {
     + setFundamentalHz / setInharmonicity(B)
     + setBaseDecaySeconds / setBrightnessDecaySeconds(t60@5k)
     + setStrikePosition(beta) / setDamperEngagement(d) / setDamperEngageMs
+    + pluck(A, f_p)   ' README §14: released from rest, A_n = A|sin n pi beta|/n
     - mPartials : StringResonator[N]   ' f_n = n*f0*sqrt(1+B*n^2)
   }
   class HammerExciter {
