@@ -1,7 +1,7 @@
 @startuml arstro_architecture
 '  Arstro DSP Library — architecture (channel-aware synth subset of synth_dsp.h).
 '  This diagram is the design surface: keep it in sync with the code (see
-'  .claude/skills/implement_with_sync_and_test). Spatial modules are legacy
+'  .claude/skills/arstro.dsp.implement.sync). Spatial modules are legacy
 '  (not migrated to the channel-aware base) and shown separately.
 title Arstro DSP — Class Architecture (v1.0.0)
 

@@ -1,9 +1,9 @@
 ---
-name: implement_with_sync_and_test
+name: arstro.dsp.implement.sync
 description: Use when implementing, changing, removing, or fixing ANY feature in the Arstro DSP library (this repo — namespace `arstro`, the channel-aware synth in synth_dsp.h). Enforces a V-model loop that keeps DOCS, DESIGN (PlantUML), CODE, UNIT TESTS (100% coverage), and the PYTHON integration tests in sync: check/create the doc first, update the .puml, implement, write + run unit tests, then run the Python feature tests. Invoke for tasks like "add an effect", "change the envelope", "fix the filter", "add a synth param".
 ---
 
-# implement_with_sync_and_test
+# arstro.dsp.implement.sync
 
 > **Invoke `arstro.rule` first.** It carries the suite-wide rules this skill builds on:
 > requirements-first and the conflict rule, the V-model doc-sync loop, the agent-drivable surface,

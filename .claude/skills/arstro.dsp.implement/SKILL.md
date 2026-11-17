@@ -41,7 +41,7 @@ Skipping a rule is the bug — do not reorder or shortcut them.
   `0 failed`); `python3 tests/run_integration.py` (Python, renders WAV via
   `tests/render_harness.cpp`, asserts behavior numerically); or both via
   `cmake -S . -B build && cmake --build build && (cd build && ctest)`.
-- This skill is deliberately stricter than the general `implement_with_sync_and_test` skill
+- This skill is deliberately stricter than the general `arstro.dsp.implement.sync` skill
   in this repo: it adds mandatory composition-search, math derivation, equation
   documentation, and requirement traceability on top of that skill's doc/design/code/test
   sync loop. Follow both; where they overlap, this one's checklist is the one to satisfy.

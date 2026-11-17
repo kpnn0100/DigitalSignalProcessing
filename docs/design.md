@@ -1,7 +1,7 @@
 # Arstro DSP — Design Overview
 
 > Design surface for the Arstro DSP library. Kept in sync with the code by the
-> `implement_with_sync_and_test` skill (V-model: doc → design → code → unit test →
+> `arstro.dsp.implement.sync` skill (V-model: doc → design → code → unit test →
 > integration test, all moving together).
 
 ## What this is
